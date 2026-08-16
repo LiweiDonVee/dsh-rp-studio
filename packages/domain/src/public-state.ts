@@ -144,6 +144,17 @@ function checkpointSummary(metaValue: unknown): PublicGameState['checkpoints'] {
   const checkpoints = Array.isArray(meta?.checkpoints)
     ? meta.checkpoints.flatMap((item) => record(item) ? [item as UnknownRecord] : [])
     : []
+  if (checkpoints.length === 0 && Array.isArray(meta?.history)) {
+    const history = meta.history.flatMap((item) => record(item) ? [item as UnknownRecord] : [])
+    const active = history.at(-1)
+    return {
+      count: history.length,
+      canRollback: history.length > 0,
+      activeTurn: typeof active?.turn === 'number' && Number.isInteger(active.turn) && active.turn >= 0
+        ? active.turn
+        : null,
+    }
+  }
   const activeId = typeof meta?.activeCheckpointId === 'string' ? meta.activeCheckpointId : null
   const active = checkpoints.find(item => item.id === activeId)
   return {

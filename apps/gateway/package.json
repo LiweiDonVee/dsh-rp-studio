@@ -1,0 +1,21 @@
+{
+  "name": "@dsh-rp/gateway",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/server.ts",
+    "start": "node --conditions=dsh-rp-production dist/server.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@dsh-rp/domain": "workspace:*",
+    "@dsh-rp/protocol": "workspace:*",
+    "fastify": "^5.6.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.6"
+  }
+}
