@@ -20,22 +20,55 @@ export interface DshResponse<T> {
 
 export function assertLoopbackUrl(raw: string): URL {
   const url = new URL(raw)
-  const host = url.hostname.toLowerCase()
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/gu, '')
   if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(host)) {
     throw new Error('DSH upstream must use an HTTP loopback URL')
   }
   return url
 }
 
-export function safeDshError(result: DshFailure): Error {
+export class DshRpcError extends Error {
+  override readonly name = 'DshRpcError'
+
+  constructor(readonly code: string, message: string) {
+    super(message)
+  }
+}
+
+export function safeDshError(result: DshFailure): DshRpcError {
+  const code = typeof result.error.code === 'string' && /^[a-z0-9-]+$/u.test(result.error.code)
+    ? result.error.code
+    : 'internal'
   const message = typeof result.error.message === 'string' && result.error.message.trim()
     ? result.error.message
     : 'DSH rejected the request'
-  return new Error(message)
+  return new DshRpcError(code, message)
 }
 
 export function mapDshError(error: unknown): ApiError {
   const message = error instanceof Error ? error.message : 'DSH upstream unavailable'
+  if (error instanceof DshRpcError) {
+    const upstreamCode = error.code
+    switch (upstreamCode) {
+      case 'agent-busy':
+        return { code: 'agent-busy', message: '当前回合仍在运行，请等待它完成。', upstreamCode }
+      case 'session-not-found':
+        return { code: 'not-found', message: '找不到该 RP 会话。', upstreamCode }
+      case 'bad-request':
+        return { code: 'bad-request', message: 'DSH 拒绝了无效请求。', upstreamCode }
+      case 'command-error':
+        return { code: 'bad-request', message: '该 RP 命令当前无法执行。', upstreamCode }
+      case 'fork-unavailable':
+        return { code: 'bad-request', message: '当前节点无法创建分支。', upstreamCode }
+      case 'agent-preset-not-found':
+      case 'agent-preset-invalid':
+        return { code: 'card-unavailable', message: '所选 RP 卡片当前不可用。', upstreamCode }
+      case 'internal':
+        return { code: 'internal', message: 'DSH 处理请求时发生内部错误。', upstreamCode }
+      default:
+        return { code: 'upstream-unavailable', message: 'DSH 当前无法完成该请求。', upstreamCode }
+    }
+  }
   if (/already has active work|agent.*busy|active work/i.test(message)) {
     return { code: 'agent-busy', message: '当前回合仍在运行，请等待它完成。' }
   }
@@ -43,4 +76,11 @@ export function mapDshError(error: unknown): ApiError {
     return { code: 'upstream-protocol', message: 'DSH 返回了无法识别的响应。' }
   }
   return { code: 'upstream-unavailable', message: 'DSH 当前不可用，请检查本地 Harness。' }
+}
+
+export function statusForDshError(error: ApiError): number {
+  if (error.code === 'not-found') return 404
+  if (error.code === 'bad-request') return 400
+  if (error.code === 'agent-busy' || error.code === 'card-unavailable' || error.code === 'rollback-unavailable') return 409
+  return 503
 }

@@ -16,6 +16,7 @@ export const apiErrorCodeSchema = z.enum([
 export const apiErrorSchema = z.object({
   code: apiErrorCodeSchema,
   message: z.string().min(1),
+  upstreamCode: z.string().regex(/^[a-z0-9-]+$/u).optional(),
 }).strict()
 
 export const apiSuccessEnvelopeSchema = z.object({
@@ -139,6 +140,13 @@ export const sessionDetailSchema = z.object({
   messages: z.array(transcriptMessageSchema),
   state: publicGameStateSchema,
 }).strict()
+
+export const healthStatusSchema = z.object({
+  upstream: z.string().min(1),
+  version: z.string().min(1),
+}).strict()
+
+export const acceptedResponseSchema = z.object({ accepted: z.literal(true) }).strict()
 
 export const streamEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('connected'), sessionId: z.string() }).strict(),

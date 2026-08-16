@@ -32,11 +32,11 @@ Set-Location E:\WorkSpace\dsh-rp-studio
 ## 验证
 
 ```powershell
-pnpm check
-pnpm e2e
+pnpm verify
+pnpm smoke:real
 ```
 
-`pnpm check` 执行 workspace typecheck、单元测试与生产构建。`pnpm e2e` 使用隔离的 mock Gateway 运行 Playwright，覆盖 SSE 流式输出、回退、分支、自动续跑、移动 sheet、四个目标视口、secret canary 扫描与 axe 无障碍检查，不会调用真实模型。
+`pnpm verify` 执行零 warning lint、workspace typecheck、单元测试、生产构建和 Playwright。浏览器验收覆盖 SSE 流式输出、取消、连续回退、分支、自动续跑启停、刷新恢复、卡片切换、移动 sheet、四个目标视口、secret canary 扫描与 axe 无障碍检查。`pnpm smoke:real` 只读检查真实 DSH 和生产页面，不会发送模型 prompt。
 
 ## API
 

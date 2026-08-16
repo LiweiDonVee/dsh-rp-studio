@@ -95,6 +95,22 @@ describe('player-safe state projection', () => {
     expect(JSON.stringify(state)).not.toContain('secrets')
     expect(JSON.stringify(state)).not.toContain('offscreen')
   })
+
+  it('reports rollback depth from the active checkpoint lineage', () => {
+    const state = projectPublicState({
+      game: { started: true, statusLines: [] },
+      meta: {
+        checkpoints: [
+          { id: 'one', turn: 1, parentId: null, snapshot: {} },
+          { id: 'two', turn: 2, parentId: 'one', snapshot: {} },
+          { id: 'three', turn: 3, parentId: 'two', snapshot: {} },
+        ],
+        activeCheckpointId: 'two',
+      },
+    })
+
+    expect(state.checkpoints).toEqual({ count: 2, canRollback: true, activeTurn: 2 })
+  })
 })
 
 describe('transcript projection', () => {
@@ -111,7 +127,7 @@ describe('transcript projection', () => {
           content: [
             { type: 'reasoning', text: SECRET },
             { type: 'text', text: '冷风卷着灰烬扑来。' },
-            { type: 'tool-call', id: 'call', name: 'lookup_world', arguments: `{\"secret\":\"${SECRET}\"}` },
+            { type: 'tool-call', id: 'call', name: 'lookup_world', arguments: `{"secret":"${SECRET}"}` },
           ],
         },
       }, 'append'),

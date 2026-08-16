@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DshClient, DshHistoryEntry, DshStreamFrame } from './dsh/client.js'
+import { DshRpcError } from './dsh/wire.js'
+import { GatewayError } from './errors.js'
 import { SessionService } from './session-service.js'
 
 function assistantEvent(seq: number, text: string): DshHistoryEntry {
@@ -23,7 +25,10 @@ function assistantEvent(seq: number, text: string): DshHistoryEntry {
   }
 }
 
-async function fixture(historyAll: DshClient['historyAll']): Promise<{
+async function fixture(
+  historyAll: DshClient['historyAll'],
+  prompt: DshClient['prompt'] = async () => ({ accepted: true }),
+): Promise<{
   service: SessionService
   emit(frame: DshStreamFrame): void
   disconnect(): void
@@ -63,7 +68,7 @@ async function fixture(historyAll: DshClient['historyAll']): Promise<{
     createSession: async () => ({ sessionId: 'session-1' }),
     history: async () => ({ events: [], hasMore: false }),
     historyAll,
-    prompt: async () => ({ accepted: true }),
+    prompt,
     cancel: async () => ({ accepted: true }),
     fork: async () => ({ sessionId: 'session-1' }),
     connectStreams: (onFrame, onClose, onOpen) => {
@@ -89,6 +94,40 @@ afterEach(() => {
 })
 
 describe('SessionService transcript recovery', () => {
+  it('publishes a completed player message from the real DSH user event shape', async () => {
+    const harness = await fixture(async () => [])
+    services.push(harness.service)
+    await harness.service.session('session-1')
+    const completed = new Promise<Extract<import('@dsh-rp/protocol').StreamEvent, { type: 'message.completed' }>>((resolve) => {
+      const unsubscribe = harness.service.subscribe('session-1', (event) => {
+        if (event.type !== 'message.completed') return
+        unsubscribe()
+        resolve(event)
+      })
+    })
+
+    harness.emit({
+      type: 'session/event',
+      sessionId: 'session-1',
+      event: {
+        seq: 2,
+        time: 1_700_000_000_002,
+        type: 'user/message',
+        data: {
+          id: 'player-2',
+          role: 'user',
+          source: { kind: 'user' },
+          content: [{ type: 'text', text: '检查门后。' }],
+        },
+        surfaceOp: 'append',
+      },
+    })
+
+    await expect(completed).resolves.toMatchObject({
+      message: { id: 'player-2', role: 'player', text: '检查门后。' },
+    })
+  })
+
   it('invalidates cached history after both DSH streams recover', async () => {
     let history = [assistantEvent(1, '断线前')]
     const historyAll = vi.fn(async () => history)
@@ -126,5 +165,25 @@ describe('SessionService transcript recovery', () => {
     await expect(detail).resolves.toMatchObject({
       messages: [{ text: '历史记录' }, { text: '实时到达' }],
     })
+  })
+
+  it('maps a command-error rollback to the public rollback contract', async () => {
+    const harness = await fixture(
+      async () => [],
+      async () => { throw new DshRpcError('command-error', 'raw checkpoint internals') },
+    )
+    services.push(harness.service)
+    let caught: unknown
+    try { await harness.service.rollback('session-1') } catch (error) { caught = error }
+    expect(caught).toBeInstanceOf(GatewayError)
+    expect(caught).toMatchObject({
+      statusCode: 409,
+      apiError: {
+        code: 'rollback-unavailable',
+        message: '当前没有可回退的 RP 回合。',
+        upstreamCode: 'command-error',
+      },
+    })
+    expect(JSON.stringify(caught)).not.toContain('raw checkpoint internals')
   })
 })

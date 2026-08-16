@@ -156,9 +156,18 @@ function checkpointSummary(metaValue: unknown): PublicGameState['checkpoints'] {
     }
   }
   const activeId = typeof meta?.activeCheckpointId === 'string' ? meta.activeCheckpointId : null
-  const active = checkpoints.find(item => item.id === activeId)
+  const byId = new Map(checkpoints.flatMap(checkpoint => typeof checkpoint.id === 'string'
+    ? [[checkpoint.id, checkpoint] as const]
+    : []))
+  const active = activeId ? byId.get(activeId) : undefined
+  const visited = new Set<string>()
+  let cursor = active
+  while (cursor && typeof cursor.id === 'string' && !visited.has(cursor.id)) {
+    visited.add(cursor.id)
+    cursor = typeof cursor.parentId === 'string' ? byId.get(cursor.parentId) : undefined
+  }
   return {
-    count: checkpoints.length,
+    count: visited.size,
     canRollback: active !== undefined,
     activeTurn: typeof active?.turn === 'number' && Number.isInteger(active.turn) && active.turn >= 0
       ? active.turn

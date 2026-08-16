@@ -2,7 +2,7 @@ import { foldSurface, projectPublicState, toTranscript, type RawSessionEvent, ty
 import type { Card, SessionDetail, SessionSummary, StreamEvent } from '@dsh-rp/protocol'
 import { discoverCards } from './cards.js'
 import type { DshClient, DshHistoryEntry, DshSessionListItem, DshStreamFrame } from './dsh/client.js'
-import { mapDshError } from './dsh/wire.js'
+import { mapDshError, statusForDshError } from './dsh/wire.js'
 import { GatewayError } from './errors.js'
 import { EventHub } from './event-hub.js'
 import type { SessionApi } from './app.js'
@@ -31,6 +31,11 @@ function rawEvent(entry: DshHistoryEntry['event']): RawSessionEvent {
     ...(surfaceOp ? { surfaceOp } : {}),
     ...(Array.isArray(entry.sourceEventSeqs) ? { sourceEventSeqs: entry.sourceEventSeqs } : {}),
   }
+}
+
+function upstreamError(error: unknown): GatewayError {
+  const apiError = mapDshError(error)
+  return new GatewayError(apiError, statusForDshError(apiError))
 }
 
 export interface SessionServiceOptions {
@@ -87,7 +92,7 @@ export class SessionService implements SessionApi {
       const description = await this.options.dsh.hostDescribe()
       return { upstream: 'ready', version: description.version ?? 'unknown' }
     } catch (error) {
-      throw new GatewayError(mapDshError(error), 503)
+      throw upstreamError(error)
     }
   }
 
@@ -131,7 +136,7 @@ export class SessionService implements SessionApi {
       await this.refreshSessions()
       return this.session(created.sessionId)
     } catch (error) {
-      throw new GatewayError(mapDshError(error), 503)
+      throw upstreamError(error)
     }
   }
 
@@ -141,7 +146,7 @@ export class SessionService implements SessionApi {
       await this.options.dsh.prompt(sessionId, text)
       return { accepted: true }
     } catch (error) {
-      throw new GatewayError(mapDshError(error), 503)
+      throw upstreamError(error)
     }
   }
 
@@ -151,7 +156,7 @@ export class SessionService implements SessionApi {
       await this.options.dsh.cancel(sessionId)
       return { accepted: true }
     } catch (error) {
-      throw new GatewayError(mapDshError(error), 503)
+      throw upstreamError(error)
     }
   }
 
@@ -162,12 +167,23 @@ export class SessionService implements SessionApi {
       await this.refreshSessions()
       return this.session(child.sessionId)
     } catch (error) {
-      throw new GatewayError(mapDshError(error), 503)
+      throw upstreamError(error)
     }
   }
 
-  rollback(sessionId: string): Promise<Record<string, unknown>> {
-    return this.prompt(sessionId, '/rp-rollback')
+  async rollback(sessionId: string): Promise<Record<string, unknown>> {
+    try {
+      return await this.prompt(sessionId, '/rp-rollback')
+    } catch (error) {
+      if (error instanceof GatewayError && error.apiError.upstreamCode === 'command-error') {
+        throw new GatewayError({
+          code: 'rollback-unavailable',
+          message: '当前没有可回退的 RP 回合。',
+          upstreamCode: 'command-error',
+        }, 409)
+      }
+      throw error
+    }
   }
 
   autoplay(sessionId: string, input: { off?: boolean; rounds?: number; objective?: string }): Promise<Record<string, unknown>> {
@@ -230,16 +246,16 @@ export class SessionService implements SessionApi {
       this.events.set(sessionId, [...merged.values()].sort((a, b) => a.seq - b.seq))
     } catch (error) {
       if (this.events.get(sessionId) === liveEvents) this.events.delete(sessionId)
-      throw new GatewayError(mapDshError(error), 503)
+      throw upstreamError(error)
     }
   }
 
   private async refreshCards(): Promise<void> {
     try {
-      const cards = await discoverCards(this.options.dsh, { ...(this.options.dshHome ? { dshHome: this.options.dshHome } : {}) })
+      const cards = await discoverCards(this.options.dsh, this.options.dshHome ? { dshHome: this.options.dshHome } : undefined)
       this.cardsById = new Map(cards.map(card => [card.id, card]))
     } catch (error) {
-      throw new GatewayError(mapDshError(error), 503)
+      throw upstreamError(error)
     }
   }
 
@@ -252,7 +268,7 @@ export class SessionService implements SessionApi {
         if (projection !== undefined) this.projections.set(item.sessionId, projection)
       }
     } catch (error) {
-      throw new GatewayError(mapDshError(error), 503)
+      throw upstreamError(error)
     }
   }
 
@@ -309,7 +325,9 @@ export class SessionService implements SessionApi {
       }
     }
     if ((event.type === 'assistant/message' || event.type === 'user/message') && cached) {
-      const messageId = record(event.data.message)?.id
+      const messageId = event.type === 'user/message'
+        ? event.data.id
+        : record(event.data.message)?.id
       const transcript = toTranscript(foldSurface(cached))
       const message = typeof messageId === 'string' ? transcript.find(item => item.id === messageId) : undefined
       if (message) this.hub.publish({ type: 'message.completed', sessionId: frame.sessionId, message })

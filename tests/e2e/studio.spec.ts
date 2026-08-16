@@ -19,7 +19,6 @@ test.beforeEach(async ({ page, context }, testInfo) => {
       try { jsonBodies.push(await response.text()) } catch { /* closed response */ }
     }
   })
-  await page.addInitScript(() => { window.localStorage.clear() })
   test.info().annotations.push({ type: 'network-audit', description: 'JSON response bodies captured for secret scan' })
   Reflect.set(page, '__jsonBodies', jsonBodies)
 })
@@ -37,9 +36,13 @@ test('desktop narrative workflow streams, rolls back, forks, and controls autopl
   await expect(page.locator('img[alt="魔药宗师世界档案"]').first()).toHaveJSProperty('complete', true)
   await studio.send('沿着脚印继续调查')
   await expect(page.getByText('脚印在灰土里突然转向，没入两顶帐篷之间的暗处。')).toBeVisible()
+  await expect(page.getByText('4 个关键快照')).toBeVisible()
 
   await page.getByRole('button', { name: '回退上一轮' }).click()
   await expect(page.getByText('沿着脚印继续调查')).toHaveCount(0)
+  await expect(page.getByText('3 个关键快照')).toBeVisible()
+  await page.getByRole('button', { name: '回退上一轮' }).click()
+  await expect(page.getByText('2 个关键快照')).toBeVisible()
 
   await page.getByRole('button', { name: '启动自动续跑' }).click()
   await page.getByLabel('轮数').fill('4')
@@ -47,6 +50,9 @@ test('desktop narrative workflow streams, rolls back, forks, and controls autopl
   await page.getByRole('button', { name: '启动', exact: true }).click()
   await page.getByRole('tab', { name: '任务' }).click()
   await expect(page.getByText('推进调查')).toBeVisible()
+  await page.getByRole('button', { name: '管理自动续跑' }).click()
+  await page.getByRole('button', { name: '停止', exact: true }).click()
+  await expect(page.getByText('推进调查')).toHaveCount(0)
 
   await page.getByRole('button', { name: '从当前档案创建分支' }).click()
   await expect(page.getByRole('heading', { name: /营地余烬 · 分支/ })).toBeVisible()
@@ -54,6 +60,28 @@ test('desktop narrative workflow streams, rolls back, forks, and controls autopl
 
   await mkdir('test-results/visual', { recursive: true })
   await page.screenshot({ path: 'test-results/visual/studio-1440x960.png' })
+})
+
+test('creates, resumes, cancels, and switches campaign cards', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 })
+  const studio = new StudioPage(page)
+  await studio.open()
+
+  await page.getByRole('button', { name: '以世界模拟器创建档案' }).click()
+  await expect(page.getByRole('heading', { name: '世界模拟器' })).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('heading', { name: '世界模拟器' })).toBeVisible()
+
+  await studio.send('检查门后的响动')
+  await page.getByRole('button', { name: '停止当前回合' }).click()
+  await expect(page.getByRole('button', { name: '发送行动' })).toBeVisible()
+  await page.waitForTimeout(120)
+  await expect(page.getByText('脚印在灰土里突然转向，没入两顶帐篷之间的暗处。')).toHaveCount(0)
+  await expect(page.getByText('检查门后的响动')).toBeVisible()
+
+  await page.locator('.session-entry').filter({ hasText: '营地余烬' }).click()
+  await expect(page.getByRole('heading', { name: '营地余烬' })).toBeVisible()
+  await studio.expectNoHorizontalOverflow()
 })
 
 test('mobile sheets preserve the narrative as the primary surface', async ({ page }) => {

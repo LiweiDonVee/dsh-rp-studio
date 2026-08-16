@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Card, PublicGameState, SessionDetail, SessionSummary, StreamEvent } from '@dsh-rp/protocol'
 import { buildApp, type SessionApi } from './app.js'
+import { GatewayError } from './errors.js'
 
 const SECRET = 'GATEWAY_CANARY_SECRET'
 const card: Card = {
@@ -73,5 +74,91 @@ describe('RP Gateway v1', () => {
     expect((await app.inject({ method: 'POST', url: '/api/v1/sessions/session-1/autoplay', payload: { rounds: 65 } })).statusCode).toBe(400)
     expect((await app.inject({ method: 'PUT', url: '/api/v1/sessions/session-1/autoplay', payload: { rounds: 12, objective: '推进主线' } })).statusCode).toBe(200)
     expect(calls).toEqual(['prompt:继续', 'prompt:兼容入口', 'rollback', 'autoplay:{"rounds":12,"objective":"推进主线"}'])
+  })
+
+  it('fails closed when an API implementation returns a non-public DTO', async () => {
+    const api = fakeApi()
+    api.session = async () => ({
+      ...detail,
+      state: { ...state, secrets: { answer: SECRET } },
+    } as unknown as SessionDetail)
+    const app = buildApp({ api })
+    apps.push(app)
+    const response = await app.inject({ method: 'GET', url: '/api/v1/sessions/session-1' })
+    expect(response.statusCode).toBe(500)
+    expect(response.json()).toEqual({
+      ok: false,
+      protocolVersion: 1,
+      error: { code: 'internal', message: 'RP Gateway 处理请求时发生错误。' },
+    })
+    expect(response.body).not.toContain(SECRET)
+  })
+
+  it('preserves a safe upstream code in command errors', async () => {
+    const api = fakeApi()
+    api.rollback = async () => {
+      throw new GatewayError({
+        code: 'rollback-unavailable',
+        message: '当前没有可回退的 RP 回合。',
+        upstreamCode: 'command-error',
+      }, 409)
+    }
+    const app = buildApp({ api })
+    apps.push(app)
+    const response = await app.inject({ method: 'POST', url: '/api/v1/sessions/session-1/rollback' })
+    expect(response.statusCode).toBe(409)
+    expect(response.json().error).toEqual({
+      code: 'rollback-unavailable',
+      message: '当前没有可回退的 RP 回合。',
+      upstreamCode: 'command-error',
+    })
+  })
+
+  it('streams only protocol events and rejects an invalid SSE payload', async () => {
+    let publish: (event: StreamEvent) => void = () => {}
+    const api = fakeApi()
+    api.subscribe = (_sessionId, listener) => {
+      publish = listener
+      return () => {}
+    }
+    const app = buildApp({ api })
+    apps.push(app)
+    const address = await app.listen({ host: '127.0.0.1', port: 0 })
+    const response = await fetch(`${address}/api/v1/sessions/session-1/events`)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/event-stream')
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+    let body = ''
+
+    publish({ type: 'message.delta', sessionId: 'session-1', messageId: 'stream-1', text: '夜色' })
+    publish({
+      type: 'message.completed',
+      sessionId: 'session-1',
+      message: { id: 'gm-2', seq: 2, role: 'gm', text: '夜色降临。', createdAt: 2, status: 'complete' },
+    })
+    publish({ type: 'state.updated', sessionId: 'session-1', state })
+    publish({ type: 'session.status', sessionId: 'session-1', running: true })
+    publish({ type: 'session.rebased', sessionId: 'session-1' })
+    publish({ type: 'error', sessionId: 'session-1', error: { code: 'agent-busy', message: '仍在运行。' } })
+    publish({ type: 'message.delta', sessionId: 'session-other', messageId: 'private', text: SECRET })
+    publish({
+      type: 'state.updated', sessionId: 'session-1',
+      state: { ...state, secrets: SECRET },
+    } as unknown as StreamEvent)
+
+    while (!body.includes('RP Gateway 丢弃了无效事件。')) {
+      const chunk = await reader.read()
+      if (chunk.done) break
+      body += decoder.decode(chunk.value, { stream: true })
+    }
+    await reader.cancel()
+
+    for (const event of ['connected', 'message.delta', 'message.completed', 'state.updated', 'session.status', 'session.rebased', 'error']) {
+      expect(body).toContain(`event: ${event}`)
+    }
+    expect(body).toContain('RP Gateway 丢弃了无效事件。')
+    expect(body).not.toContain(SECRET)
+    expect(body).not.toContain('"secrets"')
   })
 })

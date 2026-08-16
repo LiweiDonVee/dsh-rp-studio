@@ -49,6 +49,7 @@ function clone<T>(value: T): T {
 interface MockState {
   listeners: Map<string, Set<(event: StreamEvent) => void>>
   details: Map<string, SessionDetail>
+  timers: Map<string, Set<ReturnType<typeof setTimeout>>>
   nextSession: number
   nextMessage: number
 }
@@ -62,6 +63,7 @@ function createMockState(): MockState {
   }
   return {
     listeners: new Map(),
+    timers: new Map(),
     details: new Map([[session.id, {
       session,
       card: cards[0]!,
@@ -124,9 +126,9 @@ class MockSessionApi implements SessionApi {
     this.publish(tenant, { type: 'session.status', sessionId, running: true })
 
     const messageId = `m${tenant.nextMessage++}`
-    setTimeout(() => this.publish(tenant, { type: 'message.delta', sessionId, messageId: `stream-${messageId}`, text: '脚印在灰土里' }), 20)
-    setTimeout(() => this.publish(tenant, { type: 'message.delta', sessionId, messageId: `stream-${messageId}`, text: '突然转向。' }), 45)
-    setTimeout(() => {
+    this.schedule(tenant, sessionId, 20, () => this.publish(tenant, { type: 'message.delta', sessionId, messageId: `stream-${messageId}`, text: '脚印在灰土里' }))
+    this.schedule(tenant, sessionId, 45, () => this.publish(tenant, { type: 'message.delta', sessionId, messageId: `stream-${messageId}`, text: '突然转向。' }))
+    this.schedule(tenant, sessionId, 70, () => {
       const message: TranscriptMessage = {
         id: messageId, seq: tenant.nextMessage, role: 'gm', text: '脚印在灰土里突然转向，没入两顶帐篷之间的暗处。', createdAt: Date.now(), status: 'complete',
       }
@@ -145,13 +147,15 @@ class MockSessionApi implements SessionApi {
       this.publish(tenant, { type: 'message.completed', sessionId, message: clone(message) })
       this.publish(tenant, { type: 'state.updated', sessionId, state: clone(detail.state) })
       this.publish(tenant, { type: 'session.status', sessionId, running: false })
-    }, 70)
+    })
     return { accepted: true }
   }
 
   async cancel(sessionId: string): Promise<Record<string, unknown>> {
     const tenant = this.current()
     const detail = this.required(tenant, sessionId)
+    for (const timer of tenant.timers.get(sessionId) ?? []) clearTimeout(timer)
+    tenant.timers.delete(sessionId)
     detail.session.running = false
     this.publish(tenant, { type: 'session.status', sessionId, running: false })
     return { accepted: true }
@@ -225,6 +229,17 @@ class MockSessionApi implements SessionApi {
 
   private publish(tenant: MockState, event: StreamEvent): void {
     for (const listener of tenant.listeners.get(event.sessionId) ?? []) listener(clone(event))
+  }
+
+  private schedule(tenant: MockState, sessionId: string, delay: number, action: () => void): void {
+    const timers = tenant.timers.get(sessionId) ?? new Set()
+    const timer = setTimeout(() => {
+      timers.delete(timer)
+      if (timers.size === 0) tenant.timers.delete(sessionId)
+      action()
+    }, delay)
+    timers.add(timer)
+    tenant.timers.set(sessionId, timers)
   }
 }
 

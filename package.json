@@ -8,16 +8,18 @@
     "build": "pnpm -r build",
     "dev": "pnpm --parallel --filter @dsh-rp/gateway --filter @dsh-rp/web dev",
     "e2e": "pnpm --filter @dsh-rp/web build && playwright test",
+    "lint": "oxlint apps packages tests scripts playwright.config.ts --deny-warnings",
     "smoke:real": "node scripts/real-smoke.mjs",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "verify": "pnpm check && pnpm e2e"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
     "@playwright/test": "^1.55.0",
     "@types/node": "^24.3.0",
+    "oxlint": "^1.78.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }

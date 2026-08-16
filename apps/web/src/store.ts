@@ -30,6 +30,9 @@ interface StudioState {
 let disconnectStream: (() => void) | undefined
 let streamNeedsResync = false
 let localMessageSequence = 0
+let loadRetryAttempts = 0
+let loadRetryTimer: ReturnType<typeof setTimeout> | undefined
+let navigationSequence = 0
 const LAST_SESSION_KEY = 'dsh-rp-studio:last-session'
 
 function rememberSession(sessionId: string): void {
@@ -48,19 +51,50 @@ function messageFromLocal(text: string): TranscriptMessage {
 }
 
 export const useStudio = create<StudioState>((set, get) => {
-  async function open(id: string): Promise<void> {
+  function beginNavigation(): number {
+    navigationSequence++
     disconnectStream?.()
+    disconnectStream = undefined
     streamNeedsResync = false
+    return navigationSequence
+  }
+
+  function clearLoadRetry(): void {
+    if (loadRetryTimer) clearTimeout(loadRetryTimer)
+    loadRetryTimer = undefined
+  }
+
+  function scheduleLoadRetry(): void {
+    if (loadRetryTimer) return
+    const delay = Math.min(500 * (2 ** loadRetryAttempts), 5_000)
+    loadRetryAttempts++
+    loadRetryTimer = setTimeout(() => {
+      loadRetryTimer = undefined
+      void get().load()
+    }, delay)
+  }
+
+  function attachStream(id: string, sequence: number): void {
+    if (sequence !== navigationSequence) return
+    disconnectStream = connectEvents(id, (event) => {
+      if (sequence === navigationSequence) handleEvent(event)
+    }, () => {
+      if (sequence !== navigationSequence) return
+      streamNeedsResync = true
+      set({ connected: false })
+    })
+  }
+
+  async function open(id: string, sequence = beginNavigation()): Promise<void> {
     set({ loading: true, error: null, streaming: {}, sheet: null })
     try {
       const current = await api.session(id)
+      if (sequence !== navigationSequence) return
       set({ current, loading: false, connected: false })
       rememberSession(id)
-      disconnectStream = connectEvents(id, handleEvent, () => {
-        streamNeedsResync = true
-        set({ connected: false })
-      })
+      attachStream(id, sequence)
     } catch (error) {
+      if (sequence !== navigationSequence) return
       set({ loading: false, error: error instanceof Error ? error.message : String(error) })
     }
   }
@@ -106,33 +140,39 @@ export const useStudio = create<StudioState>((set, get) => {
     cards: [], sessions: [], current: null, streaming: {}, loading: true,
     connected: false, error: null, sheet: null, inspectorTab: 'status',
     load: async () => {
-      set({ loading: true, error: null })
+      clearLoadRetry()
+      const sequence = beginNavigation()
+      set({ loading: true, connected: false, error: null, streaming: {} })
       try {
         const [cards, sessions] = await Promise.all([api.cards(), api.sessions()])
+        if (sequence !== navigationSequence) return
+        loadRetryAttempts = 0
         set({ cards, sessions, loading: false })
         const remembered = window.localStorage.getItem(LAST_SESSION_KEY)
         const selected = sessions.find(session => session.id === remembered)
           ?? sessions.find(session => !session.blank && session.state?.started)
           ?? sessions.find(session => !session.blank)
           ?? sessions[0]
-        if (selected) await open(selected.id)
+        if (selected) await open(selected.id, sequence)
       } catch (error) {
+        if (sequence !== navigationSequence) return
         set({ loading: false, error: error instanceof Error ? error.message : String(error) })
+        scheduleLoadRetry()
       }
     },
     selectSession: open,
     createCampaign: async (cardId) => {
-      set({ loading: true, error: null })
+      if (get().loading) return
+      const sequence = beginNavigation()
+      set({ loading: true, connected: false, error: null, streaming: {}, sheet: null })
       try {
         const current = await api.create(cardId)
-        set(state => ({ current, sessions: [current.session, ...state.sessions], loading: false }))
+        if (sequence !== navigationSequence) return
+        set(state => ({ current, sessions: [current.session, ...state.sessions], loading: false, connected: false }))
         rememberSession(current.session.id)
-        disconnectStream?.()
-        disconnectStream = connectEvents(current.session.id, handleEvent, () => {
-          streamNeedsResync = true
-          set({ connected: false })
-        })
+        attachStream(current.session.id, sequence)
       } catch (error) {
+        if (sequence !== navigationSequence) return
         set({ loading: false, error: error instanceof Error ? error.message : String(error) })
       }
     },
@@ -166,17 +206,18 @@ export const useStudio = create<StudioState>((set, get) => {
     },
     fork: async () => {
       const current = get().current
-      if (!current) return
+      if (!current || get().loading) return
+      const sequence = beginNavigation()
+      set({ loading: true, connected: false, error: null, streaming: {} })
       try {
         const child = await api.fork(current.session.id)
-        set(state => ({ sessions: [child.session, ...state.sessions], current: child }))
+        if (sequence !== navigationSequence) return
+        set(state => ({ sessions: [child.session, ...state.sessions], current: child, loading: false, connected: false }))
         rememberSession(child.session.id)
-        disconnectStream?.()
-        disconnectStream = connectEvents(child.session.id, handleEvent, () => {
-          streamNeedsResync = true
-          set({ connected: false })
-        })
-      } catch (error) { set({ error: error instanceof Error ? error.message : String(error) }) }
+        attachStream(child.session.id, sequence)
+      } catch (error) {
+        if (sequence === navigationSequence) set({ loading: false, error: error instanceof Error ? error.message : String(error) })
+      }
     },
     autoplay: async (input) => {
       const current = get().current

@@ -60,6 +60,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   cleanup()
   vi.clearAllMocks()
   streamListener = undefined
@@ -67,6 +68,13 @@ afterEach(() => {
 })
 
 describe('DSH RP Studio', () => {
+  it('shows a loading state while the initial public snapshot is pending', () => {
+    vi.mocked(api.cards).mockReturnValue(new Promise(() => {}))
+    vi.mocked(api.sessions).mockReturnValue(new Promise(() => {}))
+    render(<App />)
+    expect(screen.getByLabelText('正在载入 RP Studio')).toBeInTheDocument()
+  })
+
   it('loads a persisted session, sanitizes narrative HTML, and sends a player action', async () => {
     render(<App />)
     expect(await screen.findByRole('heading', { name: '营地余烬' })).toBeInTheDocument()
@@ -107,6 +115,32 @@ describe('DSH RP Studio', () => {
     await waitFor(() => expect(api.session).toHaveBeenCalledTimes(2))
   })
 
+  it('marks the event stream connected and invokes rollback from the narrative header', async () => {
+    render(<App />)
+    await screen.findByRole('heading', { name: '营地余烬' })
+    act(() => streamListener?.({ type: 'connected', sessionId: 'session-1' }))
+    expect(screen.getByText('LIVE')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '回退上一轮' }))
+    await waitFor(() => expect(api.rollback).toHaveBeenCalledWith('session-1'))
+  })
+
+  it('retries initial loading with bounded backoff after DSH is unavailable', async () => {
+    vi.useFakeTimers()
+    vi.mocked(api.cards)
+      .mockRejectedValueOnce(new Error('DSH 当前不可用'))
+      .mockResolvedValue([card])
+    render(<App />)
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByRole('alert')).toHaveTextContent('DSH 当前不可用')
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(screen.getByRole('heading', { name: '营地余烬' })).toBeInTheDocument()
+    expect(api.cards).toHaveBeenCalledTimes(2)
+  })
+
   it('disables destructive controls while a turn is running', async () => {
     vi.mocked(api.sessions).mockResolvedValue([{ ...summary, running: true }])
     vi.mocked(api.session).mockResolvedValue({ ...detail, session: { ...summary, running: true } })
@@ -115,15 +149,21 @@ describe('DSH RP Studio', () => {
     expect(screen.getByRole('button', { name: '回退上一轮' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '从当前档案创建分支' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '停止当前回合' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: '停止当前回合' }))
+    await waitFor(() => expect(api.cancel).toHaveBeenCalledWith('session-1'))
   })
 
   it('opens the campaign sheet for compact navigation', async () => {
     render(<App />)
     await screen.findByRole('heading', { name: '营地余烬' })
-    fireEvent.click(screen.getByRole('button', { name: '打开世界与会话' }))
+    const trigger = screen.getByRole('button', { name: '打开世界与会话' })
+    trigger.focus()
+    fireEvent.click(trigger)
     expect(screen.getByRole('dialog', { name: '世界与会话' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '关闭世界与会话' }))
+    expect(screen.getByRole('button', { name: '关闭世界与会话' })).toHaveFocus()
+    fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: '世界与会话' })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
   })
 
   it('shows the card selection state when no sessions exist', async () => {
@@ -142,5 +182,22 @@ describe('DSH RP Studio', () => {
     render(<App />)
     await screen.findByRole('heading', { name: '营地余烬' })
     expect(api.session).toHaveBeenCalledWith('session-1')
+  })
+
+  it('keeps the last selected campaign when session loads resolve out of order', async () => {
+    const secondSummary = { ...summary, id: 'session-2', title: '第二档案' }
+    const resolvers = new Map<string, (value: SessionDetail) => void>()
+    vi.mocked(api.session).mockImplementation(id => new Promise(resolve => resolvers.set(id, resolve)))
+    useStudio.setState({ current: detail, sessions: [summary, secondSummary], loading: false, connected: true })
+
+    const first = useStudio.getState().selectSession('session-1')
+    const second = useStudio.getState().selectSession('session-2')
+    resolvers.get('session-2')?.({ ...detail, session: secondSummary })
+    await second
+    resolvers.get('session-1')?.(detail)
+    await first
+
+    expect(useStudio.getState().current?.session.id).toBe('session-2')
+    expect(useStudio.getState().connected).toBe(false)
   })
 })

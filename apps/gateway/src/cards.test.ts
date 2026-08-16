@@ -15,6 +15,7 @@ describe('card discovery', () => {
     await writeFile(join(home, '.agent-presets', 'stale', 'rp-card.json'), JSON.stringify({
       schemaVersion: 1, runtime: 'dsh-rp', id: 'wrong-id', title: '错误', world: 'x', protagonist: 'y', art: 'x', accent: 'jade',
     }))
+    const diagnostics: string[] = []
     const cards = await discoverCards({
       listPresets: async () => [
         { id: 'rp-runtime', trust: 'user', description: 'desc' },
@@ -22,8 +23,10 @@ describe('card discovery', () => {
         { id: 'standard', trust: 'system' },
         { id: 'broken', trust: 'user', broken: 'invalid config' },
       ],
-    }, { dshHome: home })
+    }, { dshHome: home, onDiagnostic: message => diagnostics.push(message) })
     expect(cards).toEqual([{ id: 'rp-runtime', title: '魔药宗师', description: 'desc', world: '营地', protagonist: '加斯帕', art: 'potion-master', accent: 'jade' }])
     expect(JSON.stringify(cards)).not.toContain(home)
+    expect(diagnostics).toEqual(['Ignored invalid RP manifest for preset "stale".'])
+    expect(JSON.stringify(diagnostics)).not.toContain(home)
   })
 })

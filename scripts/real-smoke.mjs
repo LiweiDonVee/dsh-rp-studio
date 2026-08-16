@@ -2,11 +2,43 @@ import { mkdir } from 'node:fs/promises'
 import { chromium } from '@playwright/test'
 
 const baseUrl = process.env.DSH_RP_URL ?? 'http://127.0.0.1:4317'
+const apiBase = new URL('/api/v1/', baseUrl)
+const forbiddenPatterns = ['"secrets"', '"offscreen"', 'hidden-canonical', 'collapse_timeline', 'meta.rp', 'tool/result', 'reasoning']
+
+async function getApi(path) {
+  const response = await fetch(new URL(path, apiBase), { headers: { accept: 'application/json' } })
+  const text = await response.text()
+  if (!response.ok) throw new Error(`GET ${path} returned ${response.status}: ${text.slice(0, 200)}`)
+  const forbidden = forbiddenPatterns.filter(pattern => text.includes(pattern))
+  if (forbidden.length > 0) throw new Error(`GET ${path} exposed forbidden fields: ${forbidden.join(', ')}`)
+  const envelope = JSON.parse(text)
+  if (envelope.ok !== true || envelope.protocolVersion !== 1 || !Object.hasOwn(envelope, 'data')) {
+    throw new Error(`GET ${path} returned an invalid protocol envelope.`)
+  }
+  return envelope.data
+}
+
+const health = await getApi('health')
+if (health.upstream !== 'ready' || typeof health.version !== 'string' || !health.version) {
+  throw new Error('Gateway health did not report a ready DSH upstream with a version.')
+}
+const cards = await getApi('cards')
+const cardIds = new Set(cards.map(card => card.id))
+for (const expected of ['rp-runtime', 'zombie-world']) {
+  if (!cardIds.has(expected)) throw new Error(`Required RP card is unavailable: ${expected}`)
+}
+const sessions = await getApi('sessions')
+if (sessions.length === 0) throw new Error('No RP session is available for the read-only detail smoke check.')
+const detail = await getApi(`sessions/${encodeURIComponent(sessions[0].id)}`)
+if (detail.session?.id !== sessions[0].id || !cardIds.has(detail.card?.id)) {
+  throw new Error('Session detail does not match the public session and card lists.')
+}
+
 const browser = await chromium.launch({ headless: true })
 const page = await browser.newPage({ viewport: { width: 1440, height: 960 } })
 const consoleErrors = []
 const failedRequests = []
-const requestUrls = []
+const browserRequests = []
 
 page.on('console', message => {
   if (message.type() === 'error') consoleErrors.push(message.text())
@@ -14,13 +46,13 @@ page.on('console', message => {
 page.on('requestfailed', request => {
   failedRequests.push(`${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
 })
-page.on('request', request => requestUrls.push(request.url()))
+page.on('request', request => browserRequests.push({ method: request.method(), url: request.url() }))
 
 try {
   await page.goto(baseUrl, { waitUntil: 'networkidle' })
   await page.locator('.story-header h1').waitFor()
   const body = await page.locator('body').innerText()
-  const forbidden = ['"secrets"', 'hidden-canonical', 'collapse_timeline', 'meta.rp', 'tool/result', 'reasoning']
+  const forbidden = forbiddenPatterns
     .filter(pattern => body.includes(pattern))
   const images = await page.locator('img').evaluateAll(items => items.map(item => ({
     alt: item.getAttribute('alt'),
@@ -28,7 +60,8 @@ try {
     naturalWidth: item.naturalWidth,
   })))
   const expectedOrigin = new URL(baseUrl).origin
-  const foreignRequests = requestUrls.filter(url => new URL(url).origin !== expectedOrigin)
+  const foreignRequests = browserRequests.filter(request => new URL(request.url).origin !== expectedOrigin)
+  const writeRequests = browserRequests.filter(request => request.method !== 'GET' || /\/(?:messages|prompt)(?:\/|$)/u.test(new URL(request.url).pathname))
   const layout = await page.evaluate(() => ({
     viewportWidth: window.innerWidth,
     documentWidth: document.documentElement.scrollWidth,
@@ -37,13 +70,21 @@ try {
   await mkdir('test-results/visual', { recursive: true })
   await page.screenshot({ path: 'test-results/visual/real-dsh-1440x960.png' })
 
-  const result = { title: await page.title(), url: page.url(), layout, images, forbidden, foreignRequests, consoleErrors, failedRequests }
+  const api = {
+    protocolVersion: 1,
+    upstreamVersion: health.version,
+    cards: cards.map(card => card.id),
+    sessionCount: sessions.length,
+    checkedSession: detail.session.id,
+  }
+  const result = { title: await page.title(), url: page.url(), api, layout, images, forbidden, foreignRequests, writeRequests, consoleErrors, failedRequests }
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
   if (
     forbidden.length > 0
     || consoleErrors.length > 0
     || failedRequests.length > 0
     || foreignRequests.length > 0
+    || writeRequests.length > 0
     || layout.documentWidth > layout.viewportWidth
     || layout.bodyWidth > layout.viewportWidth
     || images.some(image => !image.complete || image.naturalWidth <= 0)

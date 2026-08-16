@@ -2,12 +2,16 @@
 param(
   [int]$Port = 4317,
   [int]$DshPort = 3080,
-  [switch]$NoBuild
+  [switch]$NoBuild,
+  [switch]$ProbeOnly
 )
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $projectRoot
+
+if ($Port -lt 1 -or $Port -gt 65535) { throw 'Studio port must be between 1 and 65535.' }
+if ($DshPort -lt 1 -or $DshPort -gt 65535) { throw 'DSH port must be between 1 and 65535.' }
 
 function Test-LocalPortAvailable([int]$Candidate) {
   $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $Candidate)
@@ -24,6 +28,10 @@ function Test-LocalPortAvailable([int]$Candidate) {
 try {
   $existing = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/v1/health" -TimeoutSec 2
   if ($existing.protocolVersion -eq 1) {
+    if ($ProbeOnly) {
+      [pscustomobject]@{ studioUrl = "http://127.0.0.1:$Port"; dshUrl = "http://127.0.0.1:$DshPort"; existing = $true } | ConvertTo-Json -Compress
+      return
+    }
     Write-Host "DSH RP Studio is already running: http://127.0.0.1:$Port"
     return
   }
@@ -32,14 +40,20 @@ try {
 }
 
 $selectedPort = $Port
+$lastPort = [Math]::Min($Port + 20, 65535)
 while (-not (Test-LocalPortAvailable $selectedPort)) {
+  if ($selectedPort -ge $lastPort) { throw 'No local RP Studio port is available.' }
   $selectedPort++
-  if ($selectedPort -gt ($Port + 20)) { throw 'No local RP Studio port is available.' }
+}
+
+if ($ProbeOnly) {
+  [pscustomobject]@{ studioUrl = "http://127.0.0.1:$selectedPort"; dshUrl = "http://127.0.0.1:$DshPort"; existing = $false } | ConvertTo-Json -Compress
+  return
 }
 
 if (-not $NoBuild) {
-  & pnpm --filter '@dsh-rp/web' build
-  if ($LASTEXITCODE -ne 0) { throw 'Web production build failed.' }
+  & pnpm build
+  if ($LASTEXITCODE -ne 0) { throw 'Production build failed.' }
 }
 
 $env:DSH_BASE_URL = "http://127.0.0.1:$DshPort"

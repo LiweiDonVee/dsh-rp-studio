@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 import type { Card, PublicGameState, SessionSummary, TranscriptMessage } from '@dsh-rp/protocol'
 import {
   Activity,
@@ -33,12 +33,6 @@ import { useStudio } from './store.js'
 
 type InspectorTab = 'status' | 'relationships' | 'quests' | 'timeline'
 type UnknownRecord = Record<string, unknown>
-
-function record(value: unknown): UnknownRecord | undefined {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? value as UnknownRecord
-    : undefined
-}
 
 function primitive(value: unknown): string | undefined {
   if (typeof value === 'string' && value.trim()) return value
@@ -103,6 +97,38 @@ function IconButton(props: {
       <Icon aria-hidden="true" size={18} strokeWidth={1.8} />
     </button>
   )
+}
+
+function useModalFocus(open: boolean, panelRef: RefObject<HTMLElement>, onClose: () => void): void {
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  useEffect(() => {
+    if (!open) return
+    const panel = panelRef.current
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const focusable = () => [...(panel?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])') ?? [])]
+    focusable()[0]?.focus()
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') onCloseRef.current()
+      if (event.key !== 'Tab') return
+      const items = focusable()
+      if (items.length === 0) return
+      const first = items[0]!
+      const last = items.at(-1)!
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      previousFocus?.focus()
+    }
+  }, [open, panelRef])
 }
 
 function CardArtwork({ card, compact = false }: { card: Card; compact?: boolean }) {
@@ -360,6 +386,8 @@ function AutoplayDialog(props: {
 }) {
   const [rounds, setRounds] = useState(8)
   const [objective, setObjective] = useState('')
+  const panelRef = useRef<HTMLDivElement>(null)
+  useModalFocus(props.open, panelRef, props.onClose)
   if (!props.open) return null
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -367,7 +395,7 @@ function AutoplayDialog(props: {
     void props.onApply({ rounds, ...(trimmed ? { objective: trimmed } : {}) }).then(props.onClose)
   }
   return (
-    <div className="autoplay-popover" role="dialog" aria-modal="true" aria-labelledby="autoplay-title">
+    <div className="autoplay-popover" ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="autoplay-title">
       <header>
         <div>
           <span>AUTONOMOUS DRIVER</span>
@@ -546,35 +574,7 @@ function InspectorPanel(props: {
 
 function MobileSheet(props: { open: boolean; side: 'left' | 'right'; label: string; onClose(): void; children: ReactNode }) {
   const panelRef = useRef<HTMLElement>(null)
-  const onCloseRef = useRef(props.onClose)
-  onCloseRef.current = props.onClose
-  useEffect(() => {
-    if (!props.open) return
-    const panel = panelRef.current
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const focusable = () => [...(panel?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])') ?? [])]
-    focusable()[0]?.focus()
-    const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') onCloseRef.current()
-      if (event.key !== 'Tab') return
-      const items = focusable()
-      if (items.length === 0) return
-      const first = items[0]!
-      const last = items.at(-1)!
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      previousFocus?.focus()
-    }
-  }, [props.open])
+  useModalFocus(props.open, panelRef, props.onClose)
   if (!props.open) return null
   return (
     <div className="sheet-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) props.onClose() }}>

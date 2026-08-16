@@ -1,6 +1,12 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import {
+  acceptedResponseSchema,
+  cardSchema,
   failureEnvelope,
+  healthStatusSchema,
+  sessionDetailSchema,
+  sessionSummarySchema,
+  streamEventSchema,
   successEnvelope,
   type Card,
   type SessionDetail,
@@ -59,48 +65,48 @@ export function buildApp(options: { api: SessionApi }): FastifyInstance {
     void reply.code(500).send(failureEnvelope({ code: 'internal', message: 'RP Gateway 处理请求时发生错误。' }))
   })
 
-  app.get('/api/v1/health', async () => successEnvelope(await options.api.health()))
-  app.get('/api/v1/cards', async () => successEnvelope(await options.api.cards()))
-  app.get('/api/v1/sessions', async () => successEnvelope(await options.api.sessions()))
-  app.get('/api/v1/sessions/:id', async request => successEnvelope(await options.api.session(sessionId(request.params))))
+  app.get('/api/v1/health', async () => successEnvelope(healthStatusSchema.parse(await options.api.health())))
+  app.get('/api/v1/cards', async () => successEnvelope(cardSchema.array().parse(await options.api.cards())))
+  app.get('/api/v1/sessions', async () => successEnvelope(sessionSummarySchema.array().parse(await options.api.sessions())))
+  app.get('/api/v1/sessions/:id', async request => successEnvelope(sessionDetailSchema.parse(await options.api.session(sessionId(request.params)))))
 
   app.post('/api/v1/sessions', async (request) => {
     const cardId = record(request.body)?.cardId
     if (typeof cardId !== 'string' || !cardId) throw badRequest('必须选择一张 RP 卡片。')
-    return successEnvelope(await options.api.create(cardId))
+    return successEnvelope(sessionDetailSchema.parse(await options.api.create(cardId)))
   })
   const handlePrompt = async (request: FastifyRequest) => {
     const text = record(request.body)?.text
     if (typeof text !== 'string' || !text.trim() || text.length > 20_000) throw badRequest('请输入有效的玩家行动。')
-    return successEnvelope(await options.api.prompt(sessionId(request.params), text.trim()))
+    return successEnvelope(acceptedResponseSchema.parse(await options.api.prompt(sessionId(request.params), text.trim())))
   }
 
   app.post('/api/v1/sessions/:id/prompt', handlePrompt)
   app.post('/api/v1/sessions/:id/messages', handlePrompt)
-  app.post('/api/v1/sessions/:id/cancel', async request => successEnvelope(await options.api.cancel(sessionId(request.params))))
+  app.post('/api/v1/sessions/:id/cancel', async request => successEnvelope(acceptedResponseSchema.parse(await options.api.cancel(sessionId(request.params)))))
   app.post('/api/v1/sessions/:id/fork', async (request) => {
     const atSeq = record(request.body)?.atSeq
     if (atSeq !== undefined && (!Number.isInteger(atSeq) || (atSeq as number) < 0)) throw badRequest('分支事件序号无效。')
-    return successEnvelope(await options.api.fork(sessionId(request.params), atSeq as number | undefined))
+    return successEnvelope(sessionDetailSchema.parse(await options.api.fork(sessionId(request.params), atSeq as number | undefined)))
   })
-  app.post('/api/v1/sessions/:id/rollback', async request => successEnvelope(await options.api.rollback(sessionId(request.params))))
+  app.post('/api/v1/sessions/:id/rollback', async request => successEnvelope(acceptedResponseSchema.parse(await options.api.rollback(sessionId(request.params)))))
   const handleAutoplay = async (request: FastifyRequest) => {
     const body = record(request.body) ?? {}
-    if (body.off === true) return successEnvelope(await options.api.autoplay(sessionId(request.params), { off: true }))
+    if (body.off === true) return successEnvelope(acceptedResponseSchema.parse(await options.api.autoplay(sessionId(request.params), { off: true })))
     const rounds = body.rounds ?? 8
     if (!Number.isInteger(rounds) || (rounds as number) < 1 || (rounds as number) > 64) throw badRequest('自动续跑轮数必须在 1 到 64 之间。')
     if (body.objective !== undefined && (typeof body.objective !== 'string' || body.objective.length > 2_000)) throw badRequest('自动续跑目标无效。')
-    return successEnvelope(await options.api.autoplay(sessionId(request.params), {
+    return successEnvelope(acceptedResponseSchema.parse(await options.api.autoplay(sessionId(request.params), {
       rounds: rounds as number,
       ...(typeof body.objective === 'string' && body.objective.trim() ? { objective: body.objective.trim() } : {}),
-    }))
+    })))
   }
   app.post('/api/v1/sessions/:id/autoplay', handleAutoplay)
   app.put('/api/v1/sessions/:id/autoplay', handleAutoplay)
 
   const handleStream = async (request: FastifyRequest, reply: FastifyReply) => {
     const id = sessionId(request.params)
-    const detail = await options.api.session(id)
+    const detail = sessionDetailSchema.parse(await options.api.session(id))
     reply.hijack()
     reply.raw.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
@@ -108,8 +114,17 @@ export function buildApp(options: { api: SessionApi }): FastifyInstance {
       connection: 'keep-alive',
       'x-accel-buffering': 'no',
     })
-    const send = (event: StreamEvent): void => {
+    const writeEvent = (event: StreamEvent): void => {
       reply.raw.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+    }
+    const send = (event: StreamEvent): void => {
+      const parsed = streamEventSchema.safeParse(event)
+      if (parsed.success && parsed.data.sessionId === id) writeEvent(parsed.data)
+      else writeEvent({
+        type: 'error',
+        sessionId: id,
+        error: { code: 'internal', message: 'RP Gateway 丢弃了无效事件。' },
+      })
     }
     send({ type: 'connected', sessionId: id })
     send({ type: 'session.status', sessionId: id, running: detail.session.running })

@@ -28,6 +28,10 @@ export interface ServerOptions {
   publicDir?: string
 }
 
+function loopbackHostname(value: string): boolean {
+  return ['127.0.0.1', 'localhost', '::1'].includes(value.toLowerCase().replace(/^\[|\]$/gu, ''))
+}
+
 function isInside(root: string, target: string): boolean {
   const path = relative(root, target)
   return path === '' || (!path.startsWith(`..${sep}`) && path !== '..' && !isAbsolute(path))
@@ -73,7 +77,7 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   url: string
 }> {
   const host = options.host ?? process.env.DSH_RP_HOST ?? '127.0.0.1'
-  if (!['127.0.0.1', 'localhost', '::1'].includes(host.toLowerCase())) {
+  if (!loopbackHostname(host)) {
     throw new Error('DSH RP Studio must bind to a loopback host')
   }
   const port = options.port ?? Number(process.env.DSH_RP_PORT ?? 4317)
@@ -86,13 +90,38 @@ export async function startServer(options: ServerOptions = {}): Promise<{
     ...(dshHome ? { dshHome } : {}),
   })
   const app = buildApp({ api: service })
+  app.addHook('onRequest', async (request, reply) => {
+    const requestHost = request.headers.host
+    let hostUrl: URL
+    try {
+      hostUrl = new URL(`http://${requestHost ?? ''}`)
+    } catch {
+      return reply.code(421).send(failureEnvelope({ code: 'bad-request', message: '请求主机无效。' }))
+    }
+    if (!loopbackHostname(hostUrl.hostname)) {
+      return reply.code(421).send(failureEnvelope({ code: 'bad-request', message: '请求主机无效。' }))
+    }
+    const origin = request.headers.origin
+    if (origin && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
+      let originUrl: URL
+      try {
+        originUrl = new URL(origin)
+      } catch {
+        return reply.code(403).send(failureEnvelope({ code: 'bad-request', message: '请求来源无效。' }))
+      }
+      if (originUrl.protocol !== 'http:' || originUrl.host.toLowerCase() !== hostUrl.host.toLowerCase()) {
+        return reply.code(403).send(failureEnvelope({ code: 'bad-request', message: '请求来源无效。' }))
+      }
+    }
+  })
   const defaultPublicDir = fileURLToPath(new URL('../../web/dist/', import.meta.url))
   registerStaticApp(app, options.publicDir ?? process.env.DSH_RP_WEB_DIST ?? defaultPublicDir)
   app.addHook('onClose', async () => service.stop())
 
   await service.start()
   await app.listen({ host, port })
-  return { app, service, url: `http://${host}:${port}` }
+  const displayHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host
+  return { app, service, url: `http://${displayHost}:${port}` }
 }
 
 const launchedDirectly = process.argv[1] !== undefined
