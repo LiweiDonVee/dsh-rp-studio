@@ -1,0 +1,17 @@
+DSH RP Studio 1.0.1 preview
+Copyright (c) 2026 LiweiDonVee and contributors
+Licensed under MIT; see LICENSE.
+
+This distribution includes the dsh-tavern-renderer 0.2.1 core and CSS.
+Copyright (c) 2026 LiweiDonVee and contributors.
+MIT license retained in packages/renderer/LICENSE.
+Source: https://github.com/LiweiDonVee/dsh-tavern-renderer
+Exact vendored files and hashes: packages/renderer/UPSTREAM.md.
+
+Renderer provenance statements are the renderer project's own statements;
+this cleanup does not independently establish its full authorship history.
+No claim of endorsement by DeepSeek Harness or SillyTavern is made.
+Other installed dependencies retain their own licenses, including React (MIT),
+Fastify (MIT), ws (MIT), Zod (MIT), Zustand (MIT), and Lucide (ISC, with Feather MIT portions).
+Frontend license texts are included in THIRD_PARTY_NOTICES.md and copied into web builds.
+No third-party story, prompt pack, card or artwork is included.

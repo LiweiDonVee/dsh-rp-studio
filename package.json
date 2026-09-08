@@ -1,0 +1,32 @@
+{
+  "name": "dsh-rp-studio",
+  "version": "1.0.1",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "build": "node scripts/clean-build.mjs && pnpm -r build && node --conditions=dsh-rp-production --test tests/production.test.mjs",
+    "dev": "pnpm --parallel --filter @dsh-rp/gateway --filter @dsh-rp/web dev",
+    "e2e": "pnpm --filter @dsh-rp/web build && playwright test",
+    "lint": "oxlint apps packages/domain packages/protocol tests scripts playwright.config.ts --deny-warnings",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "verify": "pnpm check && pnpm e2e",
+    "start": "pnpm --filter @dsh-rp/gateway start"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.3.0",
+    "oxlint": "^1.78.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/LiweiDonVee/dsh-rp-studio.git" },
+  "bugs": { "url": "https://github.com/LiweiDonVee/dsh-rp-studio/issues" },
+  "engines": {
+    "node": ">=24 <25"
+  }
+}

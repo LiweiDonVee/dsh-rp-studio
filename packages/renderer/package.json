@@ -1,0 +1,11 @@
+{
+  "name": "dsh-tavern-renderer",
+  "version": "0.2.1",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./core": "./src/core/index.js",
+    "./styles": "./plugin.css"
+  }
+}
