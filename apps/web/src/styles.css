@@ -217,6 +217,17 @@ input:disabled {
   background: #cdd2cd;
 }
 
+.card-artwork.is-template {
+  display: grid;
+  place-items: center;
+  background: var(--paper-deep);
+  color: var(--ink-soft);
+}
+
+.card-artwork.is-template .art-index {
+  position: absolute;
+}
+
 .card-artwork.is-compact {
   width: 48px;
   height: 52px;
@@ -757,7 +768,7 @@ input:disabled {
 
 .inspector-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border-bottom: 1px solid var(--rule-dark);
   background: #e3e4de;
 }
@@ -954,6 +965,182 @@ input:disabled {
   padding: 8px 9px;
   color: var(--jade-dark);
   font-size: 10px;
+}
+
+.prompt-methods {
+  min-width: 0;
+}
+
+.prompt-core-section {
+  background: #eff1ed;
+}
+
+.prompt-core-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  border-top: 1px solid var(--rule);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.prompt-lock {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--ink-soft);
+  border-radius: 3px;
+  color: var(--ink-soft);
+}
+
+.prompt-core-row strong,
+.prompt-core-row small,
+.prompt-profile-toggle strong,
+.prompt-profile-toggle small,
+.prompt-entry strong,
+.prompt-entry small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.prompt-core-row strong {
+  font-size: 12px;
+}
+
+.prompt-core-row small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.prompt-core-state {
+  border: 1px solid var(--ink-soft);
+  padding: 3px 5px;
+  color: var(--ink-soft);
+  font-family: Consolas, monospace;
+  font-size: 8px;
+}
+
+.prompt-empty-warning,
+.prompt-unavailable,
+.prompt-notice {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  border-bottom: 1px solid #c9ad75;
+  background: #f5eedc;
+  padding: 11px 16px;
+  color: #694c19;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.prompt-unavailable {
+  border-bottom-color: #c99295;
+  background: var(--red-pale);
+  color: #72262a;
+}
+
+.prompt-notice {
+  display: block;
+  border-bottom-color: #9ebcac;
+  background: var(--jade-pale);
+  color: var(--jade-dark);
+}
+
+.prompt-profile {
+  border-bottom: 1px solid var(--rule-dark);
+}
+
+.prompt-profile-toggle,
+.prompt-entry {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 17px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  cursor: pointer;
+}
+
+.prompt-profile-toggle {
+  background: #e8e9e3;
+  padding: 12px 17px;
+}
+
+.prompt-profile-toggle input,
+.prompt-entry input {
+  width: 15px;
+  height: 15px;
+  margin: 1px 0 0;
+  accent-color: var(--jade);
+}
+
+.prompt-profile-toggle strong {
+  font-family: "Noto Serif CJK SC", "Songti SC", serif;
+  font-size: 12px;
+}
+
+.prompt-profile-toggle small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-family: Consolas, monospace;
+  font-size: 8px;
+}
+
+.prompt-entry-list {
+  display: grid;
+}
+
+.prompt-entry {
+  min-height: 47px;
+  border-top: 1px solid var(--rule);
+  padding: 10px 17px 10px 30px;
+}
+
+.prompt-entry:hover {
+  background: rgb(255 255 255 / 48%);
+}
+
+.prompt-entry strong {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.prompt-entry small {
+  margin-top: 3px;
+  color: var(--blue);
+  font-family: Consolas, monospace;
+  font-size: 8px;
+}
+
+.prompt-actions {
+  position: sticky;
+  z-index: 2;
+  bottom: 0;
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  border-top: 1px solid var(--rule-dark);
+  border-bottom: 1px solid var(--rule);
+  background: #f0efe9;
+  padding: 10px 16px;
+}
+
+.prompt-next-turn {
+  border-left: 3px solid var(--blue);
+  margin: 12px 16px;
+  background: #e2e9ec;
+  padding: 8px 9px;
+  color: var(--blue);
+  font-family: Consolas, monospace;
+  font-size: 9px;
 }
 
 .checkpoint-footer {
@@ -1305,3 +1492,158 @@ input:disabled {
     border: 1px solid CanvasText;
   }
 }
+
+/* Product console and mobile companion */
+.product-root {
+  display: grid;
+  width: 100%;
+  height: 100dvh;
+  grid-template-columns: 258px minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.product-navigation {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--rule-dark);
+  background: var(--paper-cool);
+}
+
+.product-brand {
+  display: grid;
+  min-height: 84px;
+  grid-template-columns: 38px 1fr;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--rule);
+  padding: 14px 18px;
+}
+
+.product-brand strong,
+.product-brand span { display: block; }
+.product-brand strong { font-family: "Palatino Linotype", "Noto Serif CJK SC", serif; font-size: 17px; }
+.product-brand span { margin-top: 2px; color: var(--muted); font-size: 11px; }
+.product-scope { border-bottom: 1px solid var(--rule); padding: 14px 18px; }
+.product-scope span,
+.product-scope small { display: block; color: var(--muted); font-size: 10px; }
+.product-scope strong { display: block; overflow: hidden; margin: 5px 0 4px; text-overflow: ellipsis; font-family: Consolas, monospace; font-size: 11px; }
+.product-navigation nav { display: grid; gap: 3px; padding: 14px 10px; }
+.product-nav-label { padding: 4px 9px 7px; color: var(--muted); font-size: 10px; font-weight: 700; }
+.product-navigation nav button { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 8px; border: 1px solid transparent; border-radius: 3px; background: transparent; padding: 9px; color: var(--ink-soft); text-align: left; cursor: pointer; }
+.product-navigation nav button:hover,
+.product-navigation nav button.active { border-color: var(--rule); background: var(--paper); color: var(--jade-dark); }
+.product-navigation nav button > span { min-width: 0; }
+.product-navigation nav strong,
+.product-navigation nav small { display: block; }
+.product-navigation nav strong { font-size: 11px; }
+.product-navigation nav small { margin-top: 3px; color: var(--muted); font-size: 9px; }
+.product-navigation footer { display: flex; align-items: center; gap: 7px; margin-top: auto; border-top: 1px solid var(--rule); padding: 14px 18px; color: var(--jade-dark); font-family: Consolas, monospace; font-size: 8px; }
+.product-main { display: grid; min-width: 0; min-height: 0; grid-template-rows: 60px minmax(0, 1fr); }
+.product-topbar { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--rule-dark); background: var(--paper); padding: 0 28px; }
+.product-topbar > .product-button:last-child { display: none; }
+.product-button { display: inline-flex; min-height: 32px; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--rule-dark); border-radius: 3px; background: var(--paper); padding: 6px 10px; color: var(--ink-soft); font-size: 11px; cursor: pointer; }
+.product-button:hover { border-color: var(--jade); color: var(--jade-dark); }
+.product-button.accent { border-color: var(--jade); background: var(--jade); color: #fff; }
+.product-button.danger { border-color: #c99295; color: var(--red); }
+.product-mobile-title { text-align: center; }
+.product-mobile-title span { display: block; color: var(--muted); font-family: Consolas, monospace; font-size: 9px; }
+.product-mobile-title strong { display: block; margin-top: 3px; font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: 14px; }
+.product-content { min-width: 0; min-height: 0; overflow-y: auto; }
+.product-section-content { width: min(100%, 1020px); margin: 0 auto; padding: 34px 42px 70px; }
+.product-panel-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--rule-dark); padding-bottom: 18px; }
+.product-eyebrow { color: var(--jade-dark); font-family: Consolas, monospace; font-size: 9px; letter-spacing: .07em; }
+.product-panel-header h2 { margin: 6px 0 0; font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: 26px; font-weight: 600; }
+.product-safety-note,
+.product-source-badge { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; }
+.product-source-badge { border: 1px solid var(--rule-dark); border-radius: 3px; padding: 4px 6px; font-family: Consolas, monospace; font-size: 8px; }
+.product-source-badge.user { border-color: #9ebcac; background: var(--jade-pale); color: var(--jade-dark); }
+.product-source-badge.rp { border-color: #a9bac5; background: #e2e9ec; color: var(--blue); }
+.product-upload-card,
+.product-form-card { border: 1px solid var(--rule); margin-top: 22px; background: #f1f1eb; padding: 18px; }
+.upload-title { display: flex; align-items: center; gap: 8px; }
+.upload-title strong { font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: 14px; }
+.upload-title span { color: var(--muted); font-size: 10px; }
+.product-form-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(130px, .7fr) minmax(0, 1fr); gap: 12px; margin-top: 16px; }
+.product-form-grid label,
+.product-form-card label { display: grid; gap: 6px; color: var(--muted); font-size: 10px; }
+.product-form-grid input,
+.product-form-grid select,
+.product-form-card input,
+.product-form-card select,
+.product-form-card textarea { width: 100%; min-height: 36px; border: 1px solid var(--rule-dark); border-radius: 2px; background: var(--paper); padding: 7px 9px; font-size: 12px; resize: vertical; }
+.file-drop { position: relative; display: grid !important; min-height: 78px; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 2px 8px !important; border: 1px dashed var(--jade); background: var(--jade-pale); padding: 10px; color: var(--jade-dark) !important; cursor: pointer; }
+.file-drop small { grid-column: 2; color: var(--muted); font-size: 9px; }
+.file-drop input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
+.product-form-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 15px; }
+.product-form-actions small { color: var(--muted); font-size: 9px; }
+.product-inline-message { margin: 12px 0 0; border-left: 3px solid var(--jade); background: var(--jade-pale); padding: 8px 9px; color: var(--jade-dark); font-size: 10px; }
+.product-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 25px 0 12px; color: var(--muted); font-size: 10px; }
+.product-filter { border: 1px solid var(--rule); border-radius: 20px; background: transparent; padding: 5px 10px; color: var(--muted); font-size: 10px; cursor: pointer; }
+.product-filter[aria-pressed="true"] { border-color: var(--jade); background: var(--jade-pale); color: var(--jade-dark); }
+.asset-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
+.asset-card { min-width: 0; border: 1px solid var(--rule); background: var(--paper); }
+.asset-card > img,
+.asset-placeholder { display: grid; width: 100%; height: 145px; place-items: center; object-fit: cover; background: var(--paper-cool); color: var(--muted); }
+.asset-placeholder { align-content: center; gap: 7px; font-family: Consolas, monospace; font-size: 9px; }
+.asset-copy { display: grid; gap: 5px; padding: 11px; }
+.asset-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.asset-copy span,
+.asset-copy small { color: var(--muted); font-size: 9px; }
+.asset-actions { border-top: 1px solid var(--rule); padding: 9px 11px; }
+.product-loading { display: flex; min-height: 120px; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: 11px; }
+.product-loading svg { animation: product-spin 1s linear infinite; }
+@keyframes product-spin { to { transform: rotate(360deg); } }
+.product-error { display: flex; min-height: 100px; align-items: center; gap: 10px; border: 1px solid #c99295; background: var(--red-pale); padding: 15px; color: #72262a; font-size: 11px; }
+.product-error > span { flex: 1; }
+.product-empty { display: grid; min-height: 130px; place-items: center; align-content: center; gap: 8px; border: 1px dashed var(--rule-dark); margin-top: 13px; color: var(--muted); font-size: 11px; }
+.product-callout,
+.product-boundary { display: flex; gap: 12px; border-left: 3px solid var(--gold); margin-top: 20px; background: #f5eedc; padding: 11px 13px; color: #694c19; font-size: 10px; }
+.product-callout strong,
+.product-boundary strong { white-space: nowrap; }
+.product-form-card { display: grid; gap: 12px; }
+.ledger-form { margin-top: 0; grid-template-columns: 1fr .65fr; }
+.ledger-form .wide { grid-column: 1 / -1; }
+.ledger-list,
+.knowledge-list,
+.notification-list,
+.backup-list,
+.client-list { display: grid; gap: 9px; margin-top: 22px; }
+.ledger-row { display: grid; grid-template-columns: 180px minmax(0, 1fr); align-items: center; gap: 18px; border-bottom: 1px solid var(--rule); padding: 12px 4px; }
+.ledger-row > span { font-family: Consolas, monospace; font-size: 14px; }
+.ledger-row .negative { color: var(--red); }.ledger-row .positive { color: var(--jade-dark); }
+.ledger-row strong,
+.ledger-row small { display: block; }.ledger-row small { margin-top: 4px; color: var(--muted); font-size: 9px; }
+.product-boundary { border-left-color: var(--blue); background: #e2e9ec; color: var(--blue); }
+.knowledge-card { border: 1px solid var(--rule); background: var(--paper); padding: 14px; }.knowledge-card.is-rp { background: #edf1f1; }
+.knowledge-card-meta { display: flex; justify-content: space-between; gap: 10px; }.knowledge-card-meta small { color: var(--muted); font-size: 9px; }
+.knowledge-card p { margin: 12px 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: 13px; line-height: 1.65; }
+.knowledge-actions { display: flex; gap: 7px; }.provenance { color: var(--blue); font-family: Consolas, monospace; font-size: 9px; }
+.rp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
+.projection-card { min-width: 0; border: 1px solid var(--rule); background: var(--paper); padding: 14px; }.projection-card h3 { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--ink-soft); font-size: 12px; }
+.projection-list { display: grid; gap: 12px; margin-top: 14px; }.projection-list > div { border-top: 1px solid var(--rule); padding-top: 10px; }.projection-list strong,.projection-list span,.projection-list small { display: block; overflow-wrap: anywhere; }.projection-list strong { font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: 12px; }.projection-list span { margin-top: 4px; color: var(--muted); font-size: 10px; }.projection-list small { margin-top: 7px; color: var(--blue); font-family: Consolas, monospace; font-size: 8px; }
+.notification-card { border: 1px solid var(--rule); background: var(--paper); padding: 15px; }.notification-card.is-read { opacity: .65; }.notification-card > div { display: flex; justify-content: space-between; color: var(--jade-dark); font-family: Consolas, monospace; font-size: 8px; }.notification-card h3 { margin: 8px 0 4px; font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: 14px; }.notification-card p { margin: 0 0 12px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.backup-card,.client-list article { display: grid; grid-template-columns: 42px minmax(0,1fr) auto; align-items: center; gap: 12px; border: 1px solid var(--rule); background: var(--paper); padding: 14px; }.backup-icon { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid var(--rule-dark); color: var(--jade-dark); }.backup-card strong,.backup-card span,.backup-card small,.client-list strong,.client-list span,.client-list small { display: block; }.backup-card strong,.client-list strong { font-size: 12px; }.backup-card span,.backup-card small,.client-list span,.client-list small { margin-top: 4px; color: var(--muted); font-size: 9px; }.backup-state { width: max-content; border: 1px solid var(--rule-dark); padding: 3px 5px; font-family: Consolas, monospace; font-size: 8px !important; }.backup-state.ready { border-color: #9ebcac; color: var(--jade-dark); }.backup-actions { display: grid; justify-items: end; gap: 8px; }.pairing-layout { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 14px; margin-top: 22px; }.muted-product-copy,.product-help { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.55; }.scope-check { display: flex !important; grid-template-columns: 17px minmax(0,1fr); align-items: start; gap: 8px; }.scope-check input { width: 15px; min-height: 15px; accent-color: var(--jade); }.scope-check strong,.scope-check small { display: block; }.pair-code-card { display: grid; min-height: 180px; place-items: center; align-content: center; gap: 10px; border: 1px solid var(--jade); background: var(--jade-pale); padding: 18px; text-align: center; }.pair-code-card span { font-family: Consolas, monospace; color: var(--jade-dark); font-size: 9px; }.pair-code-card strong { color: var(--jade-dark); font-family: Consolas, monospace; font-size: 24px; letter-spacing: .12em; overflow-wrap: anywhere; }.pair-code-card small { color: var(--muted); font-size: 9px; }.status-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }.status-strip span { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--rule); background: var(--paper); padding: 7px 9px; color: var(--muted); font-family: Consolas, monospace; font-size: 9px; }.product-subheading { margin: 30px 0 0; font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: 16px; }.client-list article { grid-template-columns: minmax(0,1fr) auto; }.client-list article > div { min-width: 0; }
+.product-mobile-nav-backdrop { display: none; }
+
+.companion-root { min-height: 100dvh; overflow: auto; background: var(--paper); color: var(--ink); padding-bottom: 40px; }
+.companion-header { display: grid; height: 62px; grid-template-columns: 38px minmax(0,1fr) 25px; align-items: center; gap: 9px; border-bottom: 1px solid var(--rule-dark); background: var(--paper-cool); padding: 0 18px; }.companion-header a { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid var(--rule-dark); color: var(--ink); }.companion-header span { display: block; color: var(--muted); font-family: Consolas, monospace; font-size: 8px; }.companion-header h1 { margin: 3px 0 0; font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: 16px; }.companion-header > svg { color: var(--jade-dark); }.companion-intro,.companion-form,.companion-state { width: min(100% - 30px, 560px); margin: 0 auto; }.companion-intro { padding: 34px 0 20px; }.companion-intro h2 { margin: 8px 0 7px; font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: 24px; }.companion-intro p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }.companion-status { display: flex; align-items: center; gap: 6px; margin-top: 14px; color: var(--jade-dark); font-family: Consolas, monospace; font-size: 9px; }.companion-form { display: grid; gap: 14px; border: 1px solid var(--rule); background: #f1f1eb; padding: 17px; }.companion-form label { display: grid; gap: 6px; color: var(--muted); font-size: 10px; }.companion-form input { min-height: 40px; border: 1px solid var(--rule-dark); background: var(--paper); padding: 8px 10px; font-size: 13px; }.companion-readonly { display: flex; gap: 8px; border-left: 3px solid var(--blue); background: #e2e9ec; padding: 9px; color: var(--blue); }.companion-readonly strong,.companion-readonly small { display: block; }.companion-readonly small { margin-top: 3px; font-size: 9px; }.companion-button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--jade-dark); background: var(--jade); color: white; font-size: 12px; cursor: pointer; }.companion-error,.companion-notice { display: flex; width: min(100% - 30px, 560px); align-items: center; gap: 7px; margin: 15px auto 0; padding: 10px; font-size: 10px; }.companion-error { border: 1px solid #c99295; background: var(--red-pale); color: #72262a; }.companion-notice { border: 1px solid #9ebcac; background: var(--jade-pale); color: var(--jade-dark); }.companion-state { display: grid; gap: 12px; margin-top: 22px; }.companion-card { border: 1px solid var(--rule); background: var(--paper-cool); padding: 14px; }.companion-card h2 { display: flex; align-items: center; gap: 7px; margin: 0 0 12px; font-size: 13px; }.companion-card p { margin: 0; color: var(--muted); font-size: 10px; }.companion-item { border-top: 1px solid var(--rule); padding: 10px 0 0; }.companion-item + .companion-item { margin-top: 10px; }.companion-item strong,.companion-item span { display: block; }.companion-item strong { font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: 12px; }.companion-item span { margin-top: 4px; color: var(--muted); font-size: 10px; }.companion-footer { margin: 24px auto 0; color: var(--muted); text-align: center; font-family: Consolas, monospace; font-size: 8px; }
+
+@media (max-width: 900px) {
+  .product-root { grid-template-columns: minmax(0, 1fr); }
+  .product-root > .product-navigation { display: none; }
+  .product-topbar { padding: 0 15px; }.product-topbar > .product-button:last-child { display: inline-flex; }.product-section-content { padding: 25px 18px 55px; }.product-panel-header h2 { font-size: 22px; }.product-form-grid,.asset-grid,.rp-grid { grid-template-columns: 1fr 1fr; }.product-form-grid .file-drop,.product-form-grid label:last-child { grid-column: 1 / -1; }.pairing-layout { grid-template-columns: 1fr; }.pair-code-card { min-height: 125px; }.product-mobile-nav-backdrop { position: fixed; z-index: 30; inset: 0; display: block; background: rgb(22 27 24 / 47%); }.product-mobile-nav { width: min(88vw, 340px); height: 100%; background: var(--paper-deep); box-shadow: var(--shadow); }.product-mobile-nav > .product-button { margin: 12px 12px 0; }.product-mobile-nav .product-navigation { display: flex; height: calc(100% - 55px); border: 0; }.product-mobile-nav .product-brand { display: none; }
+}
+@media (max-width: 560px) {
+  .product-panel-header { align-items: flex-start; flex-direction: column; gap: 10px; }.product-form-grid,.ledger-form,.asset-grid,.rp-grid { grid-template-columns: 1fr; }.product-form-grid .file-drop,.product-form-grid label:last-child,.ledger-form .wide { grid-column: auto; }.product-form-actions { align-items: stretch; flex-direction: column; }.product-form-actions .product-button { width: 100%; }.ledger-row { grid-template-columns: 1fr; gap: 5px; }.backup-card,.client-list article { grid-template-columns: 34px minmax(0,1fr); }.backup-actions { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; }.backup-actions .product-button { flex: 1; }.product-safety-note { font-size: 9px; }.product-callout,.product-boundary { align-items: flex-start; flex-direction: column; gap: 5px; }.product-topbar .product-button { padding: 6px 8px; }.product-mobile-title strong { font-size: 12px; }
+}
+
+.product-more { display: flex; justify-content: center; padding: 18px 0; }
+.product-diagnostics { margin-top: 10px; color: var(--muted); font-size: 10px; }
+.product-diagnostics p { border-left: 2px solid var(--rule-dark); padding-left: 9px; font-family: Consolas, monospace; }
+.restore-confirm { display: grid; gap: 5px; border-left: 3px solid var(--red); margin-top: 12px; background: var(--red-pale); padding: 10px; color: #72262a; font-size: 9px; }
+.restore-confirm label { display: flex; align-items: center; gap: 7px; margin-top: 5px; cursor: pointer; }
+.restore-confirm input { accent-color: var(--red); }
+.backup-card.is-staged { align-items: start; border-color: #c99295; }
+.companion-form select { width: 100%; min-height: 40px; border: 1px solid var(--rule-dark); background: var(--paper); padding: 8px 10px; font-size: 13px; }

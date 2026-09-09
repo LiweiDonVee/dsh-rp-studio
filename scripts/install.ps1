@@ -14,8 +14,18 @@ if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
 
 $presetRoot = Join-Path $DshHome '.agent-presets'
 $presetRootResolved = if (Test-Path -LiteralPath $presetRoot) { (Resolve-Path -LiteralPath $presetRoot).Path } else { $null }
-$presets = @('rp-runtime', 'zombie-world')
-$snapshotFiles = @('preset.yml', 'agent.cordis.yml', 'rp-card.json', 'plugins\rp-engine.js', 'plugins\rp-runtime.js')
+$presets = @('rp-runtime', 'zombie-world', 'hp-potion-master')
+$snapshotFiles = @(
+  'preset.yml',
+  'preset-manifest.json',
+  'prompt-manifest.json',
+  'agent.cordis.yml',
+  'rp-card.json',
+  'plugins\rp-engine.js',
+  'plugins\rp-runtime.js',
+  'plugins\rp-context.js',
+  'plugins\rp-context-runtime.js'
+)
 
 if (-not $SkipSnapshot -and $presetRootResolved) {
   $stamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'

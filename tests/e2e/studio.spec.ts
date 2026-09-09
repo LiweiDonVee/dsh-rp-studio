@@ -33,9 +33,9 @@ test('desktop narrative workflow streams, rolls back, forks, and controls autopl
   await page.setViewportSize({ width: 1440, height: 960 })
   const studio = new StudioPage(page)
   await studio.open()
-  await expect(page.locator('img[alt="魔药宗师世界档案"]').first()).toHaveJSProperty('complete', true)
+  await expect(page.locator('img[alt="世界模拟器世界档案"]').first()).toHaveJSProperty('complete', true)
   await studio.send('沿着脚印继续调查')
-  await expect(page.getByText('脚印在灰土里突然转向，没入两顶帐篷之间的暗处。')).toBeVisible()
+  await expect(page.getByText('脚印在灰土里突然转向，没入两排牢门之间的暗处。')).toBeVisible()
   await expect(page.getByText('4 个关键快照')).toBeVisible()
 
   await page.getByRole('button', { name: '回退上一轮' }).click()
@@ -55,14 +55,14 @@ test('desktop narrative workflow streams, rolls back, forks, and controls autopl
   await expect(page.getByText('推进调查')).toHaveCount(0)
 
   await page.getByRole('button', { name: '从当前档案创建分支' }).click()
-  await expect(page.getByRole('heading', { name: /营地余烬 · 分支/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /D 区封锁线 · 分支/ })).toBeVisible()
   await studio.expectNoHorizontalOverflow()
 
   await mkdir('test-results/visual', { recursive: true })
   await page.screenshot({ path: 'test-results/visual/studio-1440x960.png' })
 })
 
-test('creates, resumes, cancels, and switches campaign cards', async ({ page }) => {
+test('creates, resumes, cancels, and switches campaign sessions', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   const studio = new StudioPage(page)
   await studio.open()
@@ -76,11 +76,32 @@ test('creates, resumes, cancels, and switches campaign cards', async ({ page }) 
   await page.getByRole('button', { name: '停止当前回合' }).click()
   await expect(page.getByRole('button', { name: '发送行动' })).toBeVisible()
   await page.waitForTimeout(120)
-  await expect(page.getByText('脚印在灰土里突然转向，没入两顶帐篷之间的暗处。')).toHaveCount(0)
+  await expect(page.getByText('脚印在灰土里突然转向，没入两排牢门之间的暗处。')).toHaveCount(0)
   await expect(page.getByText('检查门后的响动')).toBeVisible()
 
-  await page.locator('.session-entry').filter({ hasText: '营地余烬' }).click()
-  await expect(page.getByRole('heading', { name: '营地余烬' })).toBeVisible()
+  await page.locator('.session-entry').filter({ hasText: 'D 区封锁线' }).click()
+  await expect(page.getByRole('heading', { name: 'D 区封锁线' })).toBeVisible()
+  await studio.expectNoHorizontalOverflow()
+})
+
+test('keeps optional narrative methods empty by default and applies them next turn', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 })
+  const studio = new StudioPage(page)
+  await studio.open()
+
+  await page.getByRole('tab', { name: '方法' }).click()
+  await expect(page.getByText(/当前没有启用任何叙事方法/)).toBeVisible()
+  await expect(page.getByText('Agent runtime core')).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: '梦鲸·实验文风（Agent）' })).not.toBeChecked()
+
+  await page.getByRole('checkbox', { name: '梦鲸思客 V3 · Agent 特调全部方法' }).check()
+  await page.getByRole('button', { name: '应用到下一轮' }).click()
+  await expect(page.getByText('叙事方法已保存，将从下一轮生效。')).toBeVisible()
+  await expect(page.getByText(/NEXT TURN/)).toBeVisible()
+
+  await page.reload()
+  await page.getByRole('tab', { name: '方法' }).click()
+  await expect(page.getByRole('checkbox', { name: '梦鲸·实验文风（Agent）' })).toBeChecked()
   await studio.expectNoHorizontalOverflow()
 })
 
@@ -95,6 +116,14 @@ test('mobile sheets preserve the narrative as the primary surface', async ({ pag
   await page.getByRole('button', { name: '关闭世界与会话' }).click()
   await studio.openInspector()
   await expect(page.getByRole('dialog', { name: '公开状态' }).getByText(/个关键快照/)).toBeVisible()
+  await page.getByRole('dialog', { name: '公开状态' }).getByRole('tab', { name: '方法' }).click()
+  const inspector = page.getByRole('dialog', { name: '公开状态' })
+  await expect(inspector.getByText('Agent runtime core')).toBeVisible()
+  const applyBox = await inspector.getByRole('button', { name: '应用到下一轮' }).boundingBox()
+  const footerBox = await inspector.locator('.checkpoint-footer').boundingBox()
+  expect(applyBox).not.toBeNull()
+  expect(footerBox).not.toBeNull()
+  expect((applyBox?.y ?? 0) + (applyBox?.height ?? 0)).toBeLessThanOrEqual(footerBox?.y ?? 0)
   await page.screenshot({ path: 'test-results/visual/studio-390x844-inspector.png' })
   await page.getByRole('button', { name: '关闭公开状态' }).click()
   await studio.expectNoHorizontalOverflow()

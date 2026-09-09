@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import type { Card, PublicGameState, SessionDetail, SessionSummary, StreamEvent } from '@dsh-rp/protocol'
+import type { Card, PromptSession, PublicGameState, SessionDetail, SessionSummary, StreamEvent } from '@dsh-rp/protocol'
 import { buildApp, type SessionApi } from './app.js'
 import { GatewayError } from './errors.js'
 
 const SECRET = 'GATEWAY_CANARY_SECRET'
 const card: Card = {
-  id: 'rp-runtime', title: '魔药宗师', description: 'desc', world: '营地', protagonist: '加斯帕', art: 'potion-master', accent: 'jade',
+  id: 'zombie-world', title: '世界模拟器', description: 'desc', world: '2005 · 洛杉矶末日第七天', protagonist: '伊莱亚斯·诺伦', art: 'zombie-world', accent: 'crimson',
 }
 const state: PublicGameState = {
   started: true,
   relationships: [], faction: [], inventory: [], memories: [], quests: [], eventLog: [],
-  statusLines: ['营地'], extensions: {}, checkpoints: { count: 2, canRollback: true, activeTurn: 2 },
+  statusLines: ['MDC D 区'], extensions: {}, checkpoints: { count: 2, canRollback: true, activeTurn: 2 },
 }
 const summary: SessionSummary = {
   id: 'session-1', cardId: card.id, title: '余烬', updatedAt: 1, running: false, blank: false, state,
@@ -18,8 +18,19 @@ const summary: SessionSummary = {
 const detail: SessionDetail = {
   session: summary,
   card,
-  messages: [{ id: 'm1', seq: 1, role: 'gm', text: '冷风卷过营地。', createdAt: 1, status: 'complete' }],
+  messages: [{ id: 'm1', seq: 1, role: 'gm', text: '冷风穿过封锁区。', createdAt: 1, status: 'complete' }],
   state,
+}
+const promptSettings: PromptSession = {
+  available: true,
+  revision: 4,
+  coreProfileIds: ['rp-narrative-base', 'zombie-world'],
+  optionalProfiles: [{
+    id: 'dreamwhale-v3-agent', name: '梦鲸 Agent', description: 'optional', version: 1,
+    entries: [{ id: 'dream-style', name: '实验文风', slot: 'render-style', selection: 'single', tags: ['rp'], enabledByDefault: false, renderOnly: true }],
+  }],
+  enabledEntryIds: [],
+  appliesFromNextTurn: false,
 }
 
 function fakeApi(): SessionApi {
@@ -34,6 +45,9 @@ function fakeApi(): SessionApi {
     fork: async () => detail,
     rollback: async () => ({ accepted: true }),
     autoplay: async () => ({ accepted: true }),
+    promptSettings: async () => promptSettings,
+    applyPromptSettings: async (_id, input) => ({ ...promptSettings, revision: input.expectedRevision + 1, enabledEntryIds: input.enabledEntryIds, appliesFromNextTurn: true }),
+    resetPromptSettings: async (_id, expectedRevision) => ({ ...promptSettings, revision: expectedRevision + 1, appliesFromNextTurn: true }),
     subscribe: (_sessionId: string, _listener: (event: StreamEvent) => void) => () => {},
   }
 }
@@ -44,6 +58,16 @@ afterEach(async () => {
 })
 
 describe('RP Gateway v1', () => {
+  it('serves the actual rc.1 Remote health metadata through the strict public schema', async () => {
+    const api = fakeApi()
+    api.health = async () => ({ upstream: 'ready', version: 'unknown', transport: 'remote', compatibility: '0.1.2-rc.1' })
+    const app = buildApp({ api })
+    apps.push(app)
+    const response = await app.inject({ method: 'GET', url: '/api/v1/health' })
+    expect(response.statusCode).toBe(200)
+    expect(response.json().data).toEqual(await api.health())
+  })
+
   it('serves health, cards, sessions, and a secret-free detail envelope', async () => {
     const app = buildApp({ api: fakeApi() })
     apps.push(app)
@@ -74,6 +98,27 @@ describe('RP Gateway v1', () => {
     expect((await app.inject({ method: 'POST', url: '/api/v1/sessions/session-1/autoplay', payload: { rounds: 65 } })).statusCode).toBe(400)
     expect((await app.inject({ method: 'PUT', url: '/api/v1/sessions/session-1/autoplay', payload: { rounds: 12, objective: '推进主线' } })).statusCode).toBe(200)
     expect(calls).toEqual(['prompt:继续', 'prompt:兼容入口', 'rollback', 'autoplay:{"rounds":12,"objective":"推进主线"}'])
+  })
+
+  it('serves and updates sanitized session prompt settings', async () => {
+    const app = buildApp({ api: fakeApi() })
+    apps.push(app)
+    const loaded = await app.inject({ method: 'GET', url: '/api/v1/sessions/session-1/prompt-presets' })
+    expect(loaded.statusCode).toBe(200)
+    expect(loaded.body).not.toContain('content')
+    expect(loaded.json().data.enabledEntryIds).toEqual([])
+
+    const applied = await app.inject({
+      method: 'PUT', url: '/api/v1/sessions/session-1/prompt-presets',
+      payload: { enabledEntryIds: ['dream-style'], expectedRevision: 4 },
+    })
+    expect(applied.statusCode).toBe(200)
+    expect(applied.json().data).toMatchObject({ revision: 5, enabledEntryIds: ['dream-style'], appliesFromNextTurn: true })
+
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/sessions/session-1/prompt-presets', payload: { enabledEntryIds: 'bad', expectedRevision: 4 } })).statusCode).toBe(400)
+    const reset = await app.inject({ method: 'DELETE', url: '/api/v1/sessions/session-1/prompt-presets', payload: { expectedRevision: 5 } })
+    expect(reset.statusCode).toBe(200)
+    expect(reset.json().data.enabledEntryIds).toEqual([])
   })
 
   it('fails closed when an API implementation returns a non-public DTO', async () => {

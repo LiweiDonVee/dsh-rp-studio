@@ -24,14 +24,20 @@ if (health.upstream !== 'ready' || typeof health.version !== 'string' || !health
 }
 const cards = await getApi('cards')
 const cardIds = new Set(cards.map(card => card.id))
-for (const expected of ['rp-runtime', 'zombie-world']) {
-  if (!cardIds.has(expected)) throw new Error(`Required RP card is unavailable: ${expected}`)
-}
+if (!cardIds.has('zombie-world')) throw new Error('Required playable RP card is unavailable: zombie-world')
+if (!cardIds.has('hp-potion-master')) throw new Error('Required playable RP card is unavailable: hp-potion-master')
+if (cardIds.has('rp-runtime')) throw new Error('Runtime template leaked into the playable card list.')
 const sessions = await getApi('sessions')
 if (sessions.length === 0) throw new Error('No RP session is available for the read-only detail smoke check.')
-const detail = await getApi(`sessions/${encodeURIComponent(sessions[0].id)}`)
-if (detail.session?.id !== sessions[0].id || !cardIds.has(detail.card?.id)) {
-  throw new Error('Session detail does not match the public session and card lists.')
+const details = await Promise.all(sessions.map(session => getApi(`sessions/${encodeURIComponent(session.id)}`)))
+for (const [index, detail] of details.entries()) {
+  const summary = sessions[index]
+  if (detail.session?.id !== summary.id || detail.card?.id !== summary.cardId) {
+    throw new Error('Session detail does not match the public session list.')
+  }
+  if (!cardIds.has(detail.card.id) && detail.card.kind !== 'template') {
+    throw new Error(`Historical session ${summary.id} is neither playable nor backed by a runtime template.`)
+  }
 }
 
 const browser = await chromium.launch({ headless: true })
@@ -75,7 +81,7 @@ try {
     upstreamVersion: health.version,
     cards: cards.map(card => card.id),
     sessionCount: sessions.length,
-    checkedSession: detail.session.id,
+    checkedSessions: details.map(detail => ({ id: detail.session.id, cardId: detail.card.id, kind: detail.card.kind ?? 'card' })),
   }
   const result = { title: await page.title(), url: page.url(), api, layout, images, forbidden, foreignRequests, writeRequests, consoleErrors, failedRequests }
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)

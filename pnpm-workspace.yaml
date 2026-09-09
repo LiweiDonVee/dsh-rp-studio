@@ -2,7 +2,19 @@ packages:
   - apps/*
   - packages/*
 
+overrides:
+  app-builder-lib>@electron/get: 3.1.0
+  fast-uri@3.1.5: 3.1.6
+  fast-uri@4.1.2: 4.1.3
+  fastify: 5.12.1
+  ini@<1.3.6: 1.3.6
+  semver@<6: 5.7.2
+  ejs@<3.1.10: 3.1.10
+  ansi-regex@<5.0.1: 5.0.1
+
 onlyBuiltDependencies:
   - esbuild
 allowBuilds:
+  electron: true
+  electron-winstaller: true
   esbuild: true

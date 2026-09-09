@@ -11,7 +11,16 @@ export const apiErrorCodeSchema = z.enum([
   'card-unavailable',
   'rollback-unavailable',
   'internal',
+  'conflict',
+  'payload-too-large',
+  'unsupported-media-type',
+  'storage-unavailable',
+  'unauthorized',
+  'forbidden',
+  'rate-limited',
 ])
+
+export * from './product.js'
 
 export const apiErrorSchema = z.object({
   code: apiErrorCodeSchema,
@@ -38,14 +47,55 @@ export const apiEnvelopeSchema = z.discriminatedUnion('ok', [
 
 export const cardAccentSchema = z.enum(['jade', 'crimson', 'graphite', 'gold'])
 
+export const cardPromptProfilesSchema = z.object({
+  coreProfileIds: z.array(z.string().regex(/^[a-z0-9][a-z0-9_-]*$/u)),
+  optionalProfileIds: z.array(z.string().regex(/^[a-z0-9][a-z0-9_-]*$/u)),
+}).strict()
+
 export const cardSchema = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/u),
+  kind: z.enum(['card', 'template']).optional(),
   title: z.string().min(1),
   description: z.string(),
   world: z.string().min(1),
   protagonist: z.string().min(1),
   art: z.string().regex(/^[a-z0-9][a-z0-9-]*$/u),
   accent: cardAccentSchema,
+  prompt: cardPromptProfilesSchema.optional(),
+}).strict()
+
+export const promptEntrySummarySchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  slot: z.string().min(1),
+  group: z.string().min(1).optional(),
+  selection: z.enum(['single', 'multiple', 'any']),
+  tags: z.array(z.string()),
+  enabledByDefault: z.boolean(),
+  renderOnly: z.boolean(),
+}).strict()
+
+export const promptProfileSummarySchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string(),
+  version: z.number().int().positive(),
+  entries: z.array(promptEntrySummarySchema),
+}).strict()
+
+export const promptSessionSchema = z.object({
+  available: z.boolean(),
+  message: z.string().min(1).optional(),
+  revision: z.number().int().nonnegative(),
+  coreProfileIds: z.array(z.string()),
+  optionalProfiles: z.array(promptProfileSummarySchema),
+  enabledEntryIds: z.array(z.string()),
+  appliesFromNextTurn: z.boolean(),
+}).strict()
+
+export const promptPresetSelectionSchema = z.object({
+  enabledEntryIds: z.array(z.string().min(1)),
+  expectedRevision: z.number().int().nonnegative(),
 }).strict()
 
 export const publicConditionSchema = z.object({
@@ -139,11 +189,14 @@ export const sessionDetailSchema = z.object({
   card: cardSchema,
   messages: z.array(transcriptMessageSchema),
   state: publicGameStateSchema,
+  prompt: promptSessionSchema.optional(),
 }).strict()
 
 export const healthStatusSchema = z.object({
   upstream: z.string().min(1),
   version: z.string().min(1),
+  transport: z.literal('remote').optional(),
+  compatibility: z.literal('0.1.2-rc.1').optional(),
 }).strict()
 
 export const acceptedResponseSchema = z.object({ accepted: z.literal(true) }).strict()
@@ -160,6 +213,10 @@ export const streamEventSchema = z.discriminatedUnion('type', [
 
 export type ApiError = z.infer<typeof apiErrorSchema>
 export type Card = z.infer<typeof cardSchema>
+export type PromptEntrySummary = z.infer<typeof promptEntrySummarySchema>
+export type PromptProfileSummary = z.infer<typeof promptProfileSummarySchema>
+export type PromptSession = z.infer<typeof promptSessionSchema>
+export type PromptPresetSelection = z.infer<typeof promptPresetSelectionSchema>
 export type PublicGameState = z.infer<typeof publicGameStateSchema>
 export type TranscriptMessage = z.infer<typeof transcriptMessageSchema>
 export type SessionSummary = z.infer<typeof sessionSummarySchema>

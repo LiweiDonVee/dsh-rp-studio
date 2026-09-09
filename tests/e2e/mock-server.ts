@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { fileURLToPath } from 'node:url'
-import type { Card, PublicGameState, SessionDetail, SessionSummary, StreamEvent, TranscriptMessage } from '@dsh-rp/protocol'
+import type { Card, PromptPresetSelection, PromptSession, PublicGameState, SessionDetail, SessionSummary, StreamEvent, TranscriptMessage } from '@dsh-rp/protocol'
 import { buildApp, type SessionApi } from '../../apps/gateway/src/app.js'
 import { GatewayError } from '../../apps/gateway/src/errors.js'
 import { registerStaticApp } from '../../apps/gateway/src/server.js'
@@ -9,33 +9,31 @@ const INTERNAL_CANARY = 'MOCK_DSH_CANARY_SECRET'
 
 const cards: Card[] = [
   {
-    id: 'rp-runtime', title: '魔药宗师', description: '世界杯营地档案', world: '1994 · 魁地奇世界杯营地',
-    protagonist: '加斯帕·拉尚斯', art: 'potion-master', accent: 'jade',
-  },
-  {
     id: 'zombie-world', title: '世界模拟器', description: '洛杉矶末日档案', world: '2005 · 洛杉矶末日第七天',
     protagonist: '伊莱亚斯·诺伦', art: 'zombie-world', accent: 'crimson',
+    prompt: { coreProfileIds: ['rp-narrative-base', 'zombie-world'], optionalProfileIds: ['dreamwhale-v3-agent'] },
   },
 ]
 
-function initialState(cardId = 'rp-runtime'): PublicGameState {
+function initialState(cardId = 'zombie-world'): PublicGameState {
+  if (cardId !== 'zombie-world') throw new Error('测试卡片不可用。')
   return {
     started: true,
-    currentDate: cardId === 'zombie-world' ? '2005-09-17' : '1994-08-20',
+    currentDate: '2005-09-17',
     currentTime: '21:40',
-    scene: { location: cardId === 'zombie-world' ? 'MDC D 区' : '世界杯营地', weather: '低云' },
+    scene: { location: 'MDC D 区', weather: '低云' },
     protagonist: {
-      name: cardId === 'zombie-world' ? '伊莱亚斯·诺伦' : '加斯帕·拉尚斯',
+      name: '伊莱亚斯·诺伦',
       conditions: [{ id: 'alert', label: '警觉' }],
       attributes: { 意志: 8, 感知: 7 },
-      resources: cardId === 'zombie-world' ? { 体力: 76, 饮水: 2 } : { 金加隆: 12, 魔力: 84 },
+      resources: { 体力: 76, 饮水: 2 },
     },
     relationships: [{ id: 'r1', name: '阿莫斯', status: '谨慎信任' }],
-    faction: [{ id: 'f1', name: '营地守卫', status: '戒备' }],
-    inventory: [{ id: 'i1', name: cardId === 'zombie-world' ? '折叠刀' : '银质药瓶', description: '可立即取用' }],
+    faction: [{ id: 'f1', name: '收押设施守卫', status: '戒备' }],
+    inventory: [{ id: 'i1', name: '折叠刀', description: '可立即取用' }],
     memories: [{ id: 'm1', title: '抵达', summary: '黄昏前抵达当前区域。' }],
     quests: [{ id: 'q1', title: '追查异常', status: '进行中' }],
-    eventLog: [{ id: 'e1', title: '营火点亮', status: '已记录' }],
+    eventLog: [{ id: 'e1', title: '封锁开始', status: '已记录' }],
     statusLines: ['夜色正在收紧，附近仍有动静。'],
     extensions: {},
     checkpoints: { count: 3, canRollback: true, activeTurn: 3 },
@@ -44,6 +42,28 @@ function initialState(cardId = 'rp-runtime'): PublicGameState {
 
 function clone<T>(value: T): T {
   return structuredClone(value)
+}
+
+function initialPrompt(cardId = 'zombie-world'): PromptSession {
+  if (cardId !== 'zombie-world') throw new Error('测试卡片不可用。')
+  return {
+    available: true,
+    revision: 4,
+    coreProfileIds: ['rp-narrative-base', 'zombie-world'],
+    optionalProfiles: [{
+      id: 'dreamwhale-v3-agent',
+      name: '梦鲸思客 V3 · Agent 特调',
+      description: 'Agent-safe DreamWhale narrative methods',
+      version: 1,
+      entries: [
+        { id: 'dreamwhale-agent-experimental-style', name: '梦鲸·实验文风（Agent）', slot: 'render-style', group: 'dreamwhale-style', selection: 'single', tags: ['rp'], enabledByDefault: false, renderOnly: true },
+        { id: 'dreamwhale-agent-person-reference-anchor', name: '梦鲸·人称与主角锚定', slot: 'render-contract', group: 'dreamwhale-pov', selection: 'single', tags: ['rp'], enabledByDefault: false, renderOnly: true },
+        { id: 'dreamwhale-agent-slow-pacing', name: '梦鲸·缓慢推进（Agent）', slot: 'render-style', group: 'dreamwhale-pacing', selection: 'single', tags: ['rp'], enabledByDefault: false, renderOnly: true },
+      ],
+    }],
+    enabledEntryIds: [],
+    appliesFromNextTurn: false,
+  }
 }
 
 interface MockState {
@@ -59,7 +79,7 @@ const tenantContext = new AsyncLocalStorage<string>()
 function createMockState(): MockState {
   const state = initialState()
   const session: SessionSummary = {
-    id: 'session-1', cardId: cards[0]!.id, title: '营地余烬', updatedAt: Date.now(), running: false, blank: false, state,
+    id: 'session-1', cardId: cards[0]!.id, title: 'D 区封锁线', updatedAt: Date.now(), running: false, blank: false, state,
   }
   return {
     listeners: new Map(),
@@ -68,10 +88,11 @@ function createMockState(): MockState {
       session,
       card: cards[0]!,
       messages: [
-        { id: 'm1', seq: 1, role: 'gm', text: '冷风越过帐篷，营火边留下了一串陌生脚印。', createdAt: Date.now() - 2_000, status: 'complete' },
+        { id: 'm1', seq: 1, role: 'gm', text: '冷风穿过 D 区铁门，走廊里留下了一串陌生脚印。', createdAt: Date.now() - 2_000, status: 'complete' },
         { id: 'm2', seq: 2, role: 'player', text: '我俯身查看脚印。', createdAt: Date.now() - 1_000, status: 'complete' },
       ],
       state,
+      prompt: initialPrompt(),
     }]]),
     nextSession: 2,
     nextMessage: 3,
@@ -107,7 +128,7 @@ class MockSessionApi implements SessionApi {
     const id = `session-${tenant.nextSession++}`
     const state = initialState(cardId)
     const session: SessionSummary = { id, cardId, title: card.title, updatedAt: Date.now(), running: false, blank: true, state }
-    const detail: SessionDetail = { session, card, messages: [], state }
+    const detail: SessionDetail = { session, card, messages: [], state, prompt: initialPrompt(cardId) }
     tenant.details.set(id, detail)
     return clone(detail)
   }
@@ -130,7 +151,7 @@ class MockSessionApi implements SessionApi {
     this.schedule(tenant, sessionId, 45, () => this.publish(tenant, { type: 'message.delta', sessionId, messageId: `stream-${messageId}`, text: '突然转向。' }))
     this.schedule(tenant, sessionId, 70, () => {
       const message: TranscriptMessage = {
-        id: messageId, seq: tenant.nextMessage, role: 'gm', text: '脚印在灰土里突然转向，没入两顶帐篷之间的暗处。', createdAt: Date.now(), status: 'complete',
+        id: messageId, seq: tenant.nextMessage, role: 'gm', text: '脚印在灰土里突然转向，没入两排牢门之间的暗处。', createdAt: Date.now(), status: 'complete',
       }
       detail.messages.push(message)
       detail.session.running = false
@@ -203,6 +224,32 @@ class MockSessionApi implements SessionApi {
     detail.session.state = detail.state
     this.publish(tenant, { type: 'state.updated', sessionId, state: clone(detail.state) })
     return { accepted: true }
+  }
+
+  async promptSettings(sessionId: string): Promise<PromptSession> {
+    const detail = this.required(this.current(), sessionId)
+    return clone(detail.prompt ?? initialPrompt(detail.card.id))
+  }
+
+  async applyPromptSettings(sessionId: string, input: PromptPresetSelection): Promise<PromptSession> {
+    const detail = this.required(this.current(), sessionId)
+    const current = detail.prompt ?? initialPrompt(detail.card.id)
+    if (input.expectedRevision !== current.revision) {
+      throw new GatewayError({ code: 'bad-request', message: '叙事方法版本冲突。' }, 409)
+    }
+    const allowed = new Set(current.optionalProfiles.flatMap(profile => profile.entries.map(entry => entry.id)))
+    if (input.enabledEntryIds.some(id => !allowed.has(id))) throw new GatewayError({ code: 'bad-request', message: '叙事方法无效。' }, 400)
+    detail.prompt = {
+      ...current,
+      revision: current.revision + 1,
+      enabledEntryIds: [...new Set(input.enabledEntryIds)],
+      appliesFromNextTurn: true,
+    }
+    return clone(detail.prompt)
+  }
+
+  async resetPromptSettings(sessionId: string, expectedRevision: number): Promise<PromptSession> {
+    return this.applyPromptSettings(sessionId, { enabledEntryIds: [], expectedRevision })
   }
 
   subscribe(sessionId: string, listener: (event: StreamEvent) => void): () => void {

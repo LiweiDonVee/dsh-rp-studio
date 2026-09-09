@@ -13,7 +13,10 @@ interface StudioState {
   connected: boolean
   error: string | null
   sheet: Sheet
-  inspectorTab: 'status' | 'relationships' | 'quests' | 'timeline'
+  inspectorTab: 'status' | 'relationships' | 'quests' | 'timeline' | 'methods'
+  promptDraftEntryIds: string[]
+  promptBusy: boolean
+  promptNotice: string | null
   load(): Promise<void>
   selectSession(id: string): Promise<void>
   createCampaign(cardId: string): Promise<void>
@@ -22,6 +25,10 @@ interface StudioState {
   rollback(): Promise<void>
   fork(): Promise<void>
   autoplay(input: { off?: boolean; rounds?: number; objective?: string }): Promise<void>
+  togglePromptEntry(entryId: string, checked: boolean): void
+  togglePromptProfile(profileId: string, checked: boolean): void
+  applyPromptSettings(): Promise<void>
+  resetPromptSettings(): Promise<void>
   dismissError(): void
   setSheet(sheet: Sheet): void
   setInspectorTab(tab: StudioState['inspectorTab']): void
@@ -90,7 +97,7 @@ export const useStudio = create<StudioState>((set, get) => {
     try {
       const current = await api.session(id)
       if (sequence !== navigationSequence) return
-      set({ current, loading: false, connected: false })
+      set({ current, loading: false, connected: false, promptDraftEntryIds: current.prompt?.enabledEntryIds ?? [], promptNotice: null })
       rememberSession(id)
       attachStream(id, sequence)
     } catch (error) {
@@ -107,7 +114,7 @@ export const useStudio = create<StudioState>((set, get) => {
       if (streamNeedsResync) {
         streamNeedsResync = false
         void api.session(event.sessionId).then((detail) => {
-          if (get().current?.session.id === event.sessionId) set({ current: detail })
+          if (get().current?.session.id === event.sessionId) set({ current: detail, promptDraftEntryIds: detail.prompt?.enabledEntryIds ?? [] })
         }).catch((error: unknown) => {
           set({ error: error instanceof Error ? error.message : String(error) })
         })
@@ -139,6 +146,7 @@ export const useStudio = create<StudioState>((set, get) => {
   return {
     cards: [], sessions: [], current: null, streaming: {}, loading: true,
     connected: false, error: null, sheet: null, inspectorTab: 'status',
+    promptDraftEntryIds: [], promptBusy: false, promptNotice: null,
     load: async () => {
       clearLoadRetry()
       const sequence = beginNavigation()
@@ -168,7 +176,10 @@ export const useStudio = create<StudioState>((set, get) => {
       try {
         const current = await api.create(cardId)
         if (sequence !== navigationSequence) return
-        set(state => ({ current, sessions: [current.session, ...state.sessions], loading: false, connected: false }))
+        set(state => ({
+          current, sessions: [current.session, ...state.sessions], loading: false, connected: false,
+          promptDraftEntryIds: current.prompt?.enabledEntryIds ?? [], promptNotice: null,
+        }))
         rememberSession(current.session.id)
         attachStream(current.session.id, sequence)
       } catch (error) {
@@ -178,7 +189,7 @@ export const useStudio = create<StudioState>((set, get) => {
     },
     send: async (text) => {
       const current = get().current
-      if (!current) return
+      if (!current || get().promptBusy) return
       set({ current: { ...current, messages: [...current.messages, messageFromLocal(text)], session: { ...current.session, running: true } }, error: null })
       try {
         await api.prompt(current.session.id, text)
@@ -212,7 +223,10 @@ export const useStudio = create<StudioState>((set, get) => {
       try {
         const child = await api.fork(current.session.id)
         if (sequence !== navigationSequence) return
-        set(state => ({ sessions: [child.session, ...state.sessions], current: child, loading: false, connected: false }))
+        set(state => ({
+          sessions: [child.session, ...state.sessions], current: child, loading: false, connected: false,
+          promptDraftEntryIds: child.prompt?.enabledEntryIds ?? [], promptNotice: null,
+        }))
         rememberSession(child.session.id)
         attachStream(child.session.id, sequence)
       } catch (error) {
@@ -223,6 +237,90 @@ export const useStudio = create<StudioState>((set, get) => {
       const current = get().current
       if (!current) return
       try { await api.autoplay(current.session.id, input) } catch (error) { set({ error: error instanceof Error ? error.message : String(error) }) }
+    },
+    togglePromptEntry: (entryId, checked) => {
+      const current = get().current
+      const prompt = current?.prompt
+      if (!prompt?.available) return
+      const owner = prompt.optionalProfiles.find(profile => profile.entries.some(entry => entry.id === entryId))
+      const entry = owner?.entries.find(item => item.id === entryId)
+      if (!owner || !entry) return
+      set(state => {
+        const selected = new Set(state.promptDraftEntryIds)
+        if (!checked) selected.delete(entryId)
+        else {
+          if (entry.group && entry.selection === 'single') {
+            for (const candidate of owner.entries) if (candidate.group === entry.group) selected.delete(candidate.id)
+          }
+          selected.add(entryId)
+        }
+        return { promptDraftEntryIds: [...selected], promptNotice: null }
+      })
+    },
+    togglePromptProfile: (profileId, checked) => {
+      const profile = get().current?.prompt?.optionalProfiles.find(item => item.id === profileId)
+      if (!profile) return
+      set(state => {
+        const selected = new Set(state.promptDraftEntryIds)
+        const ids = new Set(profile.entries.map(entry => entry.id))
+        for (const id of ids) selected.delete(id)
+        if (checked) {
+          const selectedSingleGroups = new Set<string>()
+          for (const entry of profile.entries) {
+            if (entry.group && entry.selection === 'single') {
+              if (selectedSingleGroups.has(entry.group)) continue
+              selectedSingleGroups.add(entry.group)
+            }
+            selected.add(entry.id)
+          }
+        }
+        return { promptDraftEntryIds: [...selected], promptNotice: null }
+      })
+    },
+    applyPromptSettings: async () => {
+      const current = get().current
+      const prompt = current?.prompt
+      if (!current || !prompt?.available || get().promptBusy) return
+      const selected = get().promptDraftEntryIds
+      set({ promptBusy: true, error: null })
+      try {
+        const saved = await api.applyPromptSettings(current.session.id, selected, prompt.revision)
+        set(state => state.current?.session.id === current.session.id
+          ? {
+              current: { ...state.current, prompt: saved },
+              promptDraftEntryIds: saved.enabledEntryIds,
+              promptBusy: false,
+              promptNotice: saved.enabledEntryIds.length === 0
+                ? '当前没有启用任何叙事方法；下一轮仅使用 Agent runtime 核心与卡片底座。'
+                : '叙事方法已保存，将从下一轮生效。',
+            }
+          : { promptBusy: false })
+      } catch (error) {
+        set(state => state.current?.session.id === current.session.id
+          ? { promptBusy: false, error: error instanceof Error ? error.message : String(error) }
+          : { promptBusy: false })
+      }
+    },
+    resetPromptSettings: async () => {
+      const current = get().current
+      const prompt = current?.prompt
+      if (!current || !prompt?.available || get().promptBusy) return
+      set({ promptBusy: true, error: null })
+      try {
+        const saved = await api.resetPromptSettings(current.session.id, prompt.revision)
+        set(state => state.current?.session.id === current.session.id
+          ? {
+              current: { ...state.current, prompt: saved },
+              promptDraftEntryIds: [],
+              promptBusy: false,
+              promptNotice: '当前没有启用任何叙事方法；下一轮仅使用 Agent runtime 核心与卡片底座。',
+            }
+          : { promptBusy: false })
+      } catch (error) {
+        set(state => state.current?.session.id === current.session.id
+          ? { promptBusy: false, error: error instanceof Error ? error.message : String(error) }
+          : { promptBusy: false })
+      }
     },
     dismissError: () => set({ error: null }),
     setSheet: sheet => set({ sheet }),

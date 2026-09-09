@@ -1,60 +1,51 @@
 # DSH RP Studio Verification
 
-Date: 2026-08-17 (Asia/Shanghai)
+Date: 2026-08-19 (Asia/Shanghai)
 
-## Release Outcome
+## Release Contract
 
 ```text
-React SPA http://127.0.0.1:4317
+RP Studio http://127.0.0.1:4317
   -> RP Gateway /api/v1 + SSE
   -> DSH http://127.0.0.1:3080
+  -> Prompt Presets http://127.0.0.1:3091
 ```
 
-The latest production build is deployed. Both processes listen only on `127.0.0.1`; Studio runs as `node --conditions=dsh-rp-production dist/server.js` and reports DSH `0.0.1` ready.
+`rp-runtime` is a card-neutral factory template, not a playable profile. RP Studio lists only finalized cards under `/cards`, rejects new sessions for the template, and can still restore historical `rp-runtime` sessions as read-compatible template sessions. Optional prompt methods are disabled by default and take effect only after explicit next-turn activation.
 
-## Automated Checks
+## Automated Evidence
 
-`pnpm verify` covers:
+- `pnpm verify`: lint, strict TypeScript checks, production builds, 62/62 unit/component tests, and 7/7 Chromium E2E tests PASS.
+- Test split: protocol 3, domain 4, Gateway 39, Web 16.
+- E2E covers streaming, cancel, rollback, fork, autoplay, card switching, empty-by-default prompt methods, next-turn activation, responsive layouts, accessibility, and bounded mobile sheets.
+- `npm run check` in Prompt Presets: 24/24 tests and host/client build PASS.
+- `npm run check` in Preset Library: 52/52 tests and host/client build PASS.
+- RP runtime suite: 31/31 tests PASS; smoke exposes 19 generic tools and seven prompt sections.
+- Source and installed `rp-runtime` mountchecks: PASS with 38 registered tools each.
+- All 21 files owned by the template manifest match their declared SHA-256 and the installed copy.
+- HP source and installed domain suites: 8/8 tests each; 537 world entries, schema-v3 state, magic settlement, potion ledgers, canonical quest ids, secret boundaries, single-use anchors, direction-packet firewall, and first-person contract PASS.
+- Deterministic 30-turn in-memory playtest: 97 domain events, 30 digest/context records, bounded ledgers, safe hidden-term filtering, one-shot anchor consumption, and evidence-gated secret reveal PASS without creating a DSH session.
+- HP `standingKeyFor('hp-potion-master')`: PASS on the built rc.7 Web host with one standing mount, 68 total visible tools after host/plugin layering, and zero process-global service leaks.
+- `pnpm smoke:real`: two playable cards and four historical sessions loaded with no forbidden public fields, foreign/write/failed requests, console errors, image failures, or horizontal overflow.
+- Real 1440x960 and 390x844 browser checks render the HP art at its 1200x900 intrinsic size with no text clipping or horizontal overflow.
+- DSH native UI: `zombie-world` and `rp-runtime` render as separate expandable workspace groups; grouped sessions no longer fall into `未分组`.
 
-- Oxlint with `--deny-warnings` over application, package, script, and test sources.
-- Strict TypeScript checks for protocol, domain, Gateway, and Web.
-- 39 unit/component tests: protocol 2, domain 4, Gateway 20, Web 13.
-- Production builds for both TypeScript packages, Gateway, and Vite SPA.
-- 6 Playwright tests covering create, resume, send/stream, cancel, two rollbacks, fork, autoplay arm/disarm, card switching, mobile sheets, four target viewports, secret scanning, and accessibility.
-- Axe with no serious or critical findings and no horizontal overflow at 1440x960, 1024x768, 390x844, or 360x800.
+## Runtime Behavior
 
-`scripts/install.ps1 -SkipSnapshot` passed the frozen install and complete `pnpm check` path. `pnpm audit --prod --audit-level high --registry=https://registry.npmjs.org` reported no known vulnerabilities.
+- `/cards` exposes finalized playable cards only; the current inventory contains `zombie-world` and `hp-potion-master`, and excludes `rp-runtime`.
+- Every card resolves to its own `%DSH_HOME%/rp-workspaces/<card-id>` workspace.
+- DSH maps that workspace to `%DSH_HOME%/sessions/--<encoded-card-workspace>--/`; every Studio session then has its own `<session-id>/session.jsonl.zstd` history path.
+- A real `POST /sessions` attempt for `rp-runtime` returns `404 card-unavailable` and leaves the session count unchanged.
+- Historical schema v2 template snapshots replay through the schema v3 compatibility path.
+- Public state omits hidden/offscreen fields, reasoning, tool results, and backend `meta.rp` payloads.
+- DSH rollback restores canonical state and replaces the derived model surface; append-only backend audit events and visible historical text remain by design.
 
-## Runtime Checks
+## Recovery
 
-- `node 05-delivery/tests/smoke.mjs`: `SMOKE ALL PASS`, including 19 RP tools, seven prompt sections, projection replay, rollback surface replacement, world lookup, and status projection.
-- `node 05-delivery/tests/rp-checkpoints.test.mjs`: `RP CHECKPOINTS PASS`.
-- `node 05-delivery/tests/rp-controls.test.mjs`: `RP CONTROLS PASS`.
-- `node 05-delivery/tests/preset-tools-smoke.mjs`: `PRESET-TOOLS SMOKE ALL PASS`.
-- Installed `rp-runtime` mountcheck: PASS, 38 tools.
-- Installed `zombie-world` mountcheck: PASS, 43 tools.
-- Runtime residue scan: zero raw patch/update gameplay APIs; the renderer's intentional `{{char}}`/`{{user}}` macros remain.
+- Pre-cleanup: `E:/WorkSpace/.snapshots/2026-08-19-rp-runtime-template-cleanup-pre`
+- Prompt-profile removal: `E:/WorkSpace/.snapshots/2026-08-19-rp-runtime-template-cleanup-prompt-profile-pre`
+- Final: `E:/WorkSpace/.snapshots/2026-08-19-rp-runtime-template-cleanup-final`
+- HP pre-migration: `E:/WorkSpace/.snapshots/2026-08-19-hp-potion-master-dsh-migration-pre`
+- HP final: `E:/WorkSpace/.snapshots/2026-08-19-hp-potion-master-dsh-final`
 
-## Real DSH Smoke
-
-`pnpm smoke:real` made only read requests and sent no model prompt:
-
-- `/health`, `/cards`, `/sessions`, and one session detail returned valid protocol-version-1 envelopes;
-- both `rp-runtime` and `zombie-world` were available;
-- two RP sessions were visible and the selected detail matched its list/card identity;
-- public JSON and DOM contained no secret/offscreen fields, reasoning, tool results, or `meta.rp`;
-- all three rendered cover instances loaded at 1200px natural width;
-- document and body width exactly matched the 1440px viewport;
-- there were no foreign-origin requests, write requests, failed requests, or console errors.
-
-## Recovery Points
-
-- `.snapshots/2026-08-17-runtime-pre-install`
-- `.snapshots/2026-08-17-runtime-post-install`
-- Final Git release commit on `feat/rp-studio`
-
-Snapshot manifests contain SHA-256 hashes and omit all DSH session data. Future installer snapshots include `preset.yml`, `agent.cordis.yml`, `rp-card.json`, and both runtime plugins. No command in this acceptance edited `C:\Users\Owner\.dsh\sessions`.
-
-## Platform Boundary
-
-DSH remains append-only. Rollback restores canonical state and replaces the derived surface; raw backend audit events are retained by design. Live 20-30-turn model play was not run because this release's real-system acceptance is deliberately prompt-free; deterministic runtime and browser tests cover the changed mechanics.
+Snapshots omit DSH session data. Existing `.zstd` histories and historical snapshots are never rewritten by this cleanup.

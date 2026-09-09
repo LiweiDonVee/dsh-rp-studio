@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+  <title>DSH RP Studio Diagnostics</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #10131a; color: #e8edf5; }
+    main { max-width: 820px; margin: 4vh auto; padding: 2rem; border: 1px solid #303848; border-radius: 14px; background: #171c26; }
+    .path { display: grid; grid-template-columns: 12rem 1fr auto; gap: .7rem; align-items: center; margin: .65rem 0; }
+    .label { overflow: hidden; text-overflow: ellipsis; color: #b8c5d9; }
+    input { width: 8rem; padding: .55rem; background: #0e1117; color: inherit; border: 1px solid #46536a; border-radius: 6px; }
+    button { padding: .65rem .9rem; border: 0; border-radius: 6px; background: #4e7cff; color: white; cursor: pointer; }
+    pre { white-space: pre-wrap; min-height: 8rem; color: #b8c5d9; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Settings & diagnostics</h1>
+    <p id="status">Loading secure desktop status…</p>
+    <section id="paths">
+      <div class="path"><span>Node.js 24</span><span class="label" data-label="nodeExecutable">Not selected</span><button data-field="nodeExecutable">Choose file</button></div>
+      <div class="path"><span>DSH entry</span><span class="label" data-label="dshBin">Not selected</span><button data-field="dshBin">Choose file</button></div>
+      <div class="path"><span>Gateway entry</span><span class="label" data-label="gatewayEntry">Not selected</span><button data-field="gatewayEntry">Choose file</button></div>
+      <div class="path"><span>DSH home</span><span class="label" data-label="dshHome">Not selected</span><button data-field="dshHome">Choose directory</button></div>
+      <div class="path"><span>Runtime root</span><span class="label" data-label="runtimeRoot">Not selected</span><button data-field="runtimeRoot">Choose directory</button></div>
+    </section>
+    <p><label>DSH port <input id="dshPort" type="number" min="0" max="65535" value="0"></label> <label>Studio port <input id="studioPort" type="number" min="0" max="65535" value="0"></label></p>
+    <p><button id="save" type="button">Save settings</button> <button id="start" type="button" disabled>Save & start</button> <button id="doctor" type="button">Run diagnostics</button></p>
+    <pre id="diagnostics"></pre>
+  </main>
+  <script src="./renderer.js" type="module"></script>
+</body>
+</html>

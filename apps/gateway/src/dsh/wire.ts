@@ -24,6 +24,7 @@ export function assertLoopbackUrl(raw: string): URL {
   if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(host)) {
     throw new Error('DSH upstream must use an HTTP loopback URL')
   }
+  if (url.username || url.password) throw new Error('DSH upstream must not contain URL credentials')
   return url
 }
 
@@ -36,10 +37,17 @@ export class DshRpcError extends Error {
 }
 
 export function safeDshError(result: DshFailure): DshRpcError {
-  const code = typeof result.error.code === 'string' && /^[a-z0-9-]+$/u.test(result.error.code)
-    ? result.error.code
+  const aliases: Record<string, string> = {
+    'session/agent-busy': 'agent-busy', 'session/not-found': 'session-not-found',
+    'session/fork-unavailable': 'fork-unavailable', 'gateway/bad-request': 'bad-request',
+    'gateway/internal': 'internal', 'agent-preset/not-found': 'agent-preset-not-found',
+    'agent-preset/invalid': 'agent-preset-invalid', 'commands/command-error': 'command-error',
+  }
+  const rawCode = result.error?.code
+  const code = typeof rawCode === 'string' && /^[a-z0-9-]+(?:\/[a-z0-9-]+)?$/u.test(rawCode)
+    ? aliases[rawCode] ?? rawCode.replace('/', '-')
     : 'internal'
-  const message = typeof result.error.message === 'string' && result.error.message.trim()
+  const message = typeof result.error?.message === 'string' && result.error.message.trim()
     ? result.error.message
     : 'DSH rejected the request'
   return new DshRpcError(code, message)
@@ -50,6 +58,8 @@ export function mapDshError(error: unknown): ApiError {
   if (error instanceof DshRpcError) {
     const upstreamCode = error.code
     switch (upstreamCode) {
+      case 'authentication-required':
+        return { code: 'upstream-unavailable', message: 'DSH Web 认证已失效，请用启动 URL 中的 token 更新 Gateway 配置并重启。', upstreamCode }
       case 'agent-busy':
         return { code: 'agent-busy', message: '当前回合仍在运行，请等待它完成。', upstreamCode }
       case 'session-not-found':

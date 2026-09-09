@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   API_PROTOCOL_VERSION,
   apiEnvelopeSchema,
+  promptSessionSchema,
   publicGameStateSchema,
 } from './index.js'
 
@@ -25,5 +26,36 @@ describe('RP API protocol', () => {
     })
 
     expect(result.success).toBe(false)
+  })
+
+  it('accepts an empty optional prompt stack and rejects prompt content leakage', () => {
+    const prompt = {
+      available: true,
+      revision: 4,
+      coreProfileIds: ['rp-narrative-base', 'zombie-world'],
+      optionalProfiles: [{
+        id: 'dreamwhale-v3-agent',
+        name: '梦鲸思客 V3 · Agent 特调',
+        description: 'optional',
+        version: 1,
+        entries: [{
+          id: 'dreamwhale-agent-experimental-style',
+          name: '梦鲸·实验文风（Agent）',
+          slot: 'render-style',
+          selection: 'single',
+          tags: ['rp'],
+          enabledByDefault: false,
+          renderOnly: true,
+        }],
+      }],
+      enabledEntryIds: [],
+      appliesFromNextTurn: false,
+    }
+
+    expect(promptSessionSchema.parse(prompt).enabledEntryIds).toEqual([])
+    expect(promptSessionSchema.safeParse({
+      ...prompt,
+      optionalProfiles: [{ ...prompt.optionalProfiles[0]!, entries: [{ ...prompt.optionalProfiles[0]!.entries[0]!, content: 'SECRET PROMPT' }] }],
+    }).success).toBe(false)
   })
 })

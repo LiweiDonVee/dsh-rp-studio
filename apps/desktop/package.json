@@ -1,0 +1,53 @@
+{
+  "name": "@dsh-rp/desktop",
+  "version": "1.0.0",
+  "description": "Secure Windows desktop shell for DSH RP Studio",
+  "author": "DSH RP Studio contributors",
+  "private": true,
+  "type": "module",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
+    "test": "node node_modules/vitest/vitest.mjs run --config vitest.config.ts --configLoader runner",
+    "dev": "npm run build && node node_modules/electron/cli.js .",
+    "portable": "npm run build && node node_modules/electron-builder/out/cli/cli.js --win portable",
+    "package": "npm run build && node node_modules/electron-builder/out/cli/cli.js --win portable zip",
+    "smoke": "node tests/electron-smoke.mjs"
+  },
+  "dependencies": {
+    "@dsh-rp/supervisor": "workspace:*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "electron": "^39.8.10",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.11"
+  },
+  "build": {
+    "appId": "com.dsh.rpstudio",
+    "productName": "DSH RP Studio",
+    "asar": true,
+    "forceCodeSigning": false,
+    "electronDist": "node_modules/electron/dist",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "artifacts"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "zip"
+      ],
+      "signAndEditExecutable": false
+    }
+  }
+}

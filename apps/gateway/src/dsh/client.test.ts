@@ -19,8 +19,52 @@ describe('DSH HTTP adapter', () => {
     })
     await expect(client.listPresets()).resolves.toEqual([])
     const body = await request?.json() as Record<string, unknown>
-    expect(body).toMatchObject({ type: 'client-request', method: 'agentPreset.list', payload: {} })
+    expect(body).toMatchObject({ type: 'client-request', method: 'agentPresets/list', payload: { args: {} } })
     expect(typeof body.rpcId).toBe('string')
+  })
+
+  it('creates and renames DSH workspaces and adopts a preallocated session', async () => {
+    const requests: Array<Record<string, unknown>> = []
+    const client = createDshClient({
+      baseUrl: 'http://127.0.0.1:3080',
+      fetchImpl: async (input, init) => {
+        const request = new Request(input, init)
+        const body = await request.json() as Record<string, unknown>
+        requests.push(body)
+        if (body.method === 'workspace/create') {
+          return response({
+            workspace: {
+              workspaceId: 'workspace-rp-runtime', path: 'C:\\dsh\\rp-workspaces\\rp-runtime',
+              title: 'rp-runtime', sessionIds: [], createdAt: '2026-08-19T00:00:00.000Z', updatedAt: '2026-08-19T00:00:00.000Z',
+            },
+            created: true,
+          })
+        }
+        return response({
+          workspace: {
+            workspaceId: 'workspace-rp-runtime', path: 'C:\\dsh\\rp-workspaces\\rp-runtime',
+              title: 'RP Runtime 基础模板 [rp-runtime]', sessionIds: [], createdAt: '2026-08-19T00:00:00.000Z', updatedAt: '2026-08-19T00:00:00.000Z',
+          },
+        })
+      },
+    })
+
+    const created = await client.createWorkspace('C:\\dsh\\rp-workspaces\\rp-runtime')
+    await client.renameWorkspace(created.workspace.workspaceId, 'RP Runtime 基础模板 [rp-runtime]')
+    await client.createSession({
+      sessionId: 'session-rp-1',
+      agentPreset: 'rp-runtime',
+      workspaceId: created.workspace.workspaceId,
+    })
+
+    expect(requests.map(item => ({ method: item.method, payload: (item.payload as { args: { request: unknown } }).args.request }))).toEqual([
+      { method: 'workspace/create', payload: { path: 'C:\\dsh\\rp-workspaces\\rp-runtime' } },
+      { method: 'workspace/rename', payload: { workspaceId: 'workspace-rp-runtime', title: 'RP Runtime 基础模板 [rp-runtime]' } },
+      {
+        method: 'session/create',
+        payload: { sessionId: 'session-rp-1', agentPreset: 'rp-runtime', workspaceId: 'workspace-rp-runtime' },
+      },
+    ])
   })
 
   it('preserves stable DSH business error codes without exposing details', async () => {
@@ -66,48 +110,51 @@ describe('DSH HTTP adapter', () => {
     expect(() => assertLoopbackUrl('http://192.168.1.2:3080')).toThrow('loopback')
   })
 
-  it('reconnects a closed DSH stream with bounded backoff', async () => {
+  it.each([
+    ['session/agent-busy', 'agent-busy', 409],
+    ['session/not-found', 'not-found', 404],
+    ['agent-preset/invalid', 'card-unavailable', 409],
+    ['gateway/bad-request', 'bad-request', 400],
+  ])('maps RemoteError %s without exposing its details', async (code, publicCode, status) => {
+    const client = createDshClient({ fetchImpl: async () => new Response(JSON.stringify({
+      type: 'server-response', rpcId: 'r', result: { ok: false, error: { code, message: 'secret-canary', details: { token: 'secret-canary' } } },
+    })) })
+    let caught: unknown
+    try { await client.hostDescribe() } catch (error) { caught = error }
+    const mapped = mapDshError(caught)
+    expect(mapped.code).toBe(publicCode)
+    expect(statusForDshError(mapped)).toBe(status)
+    expect(JSON.stringify(mapped)).not.toContain('secret-canary')
+  })
+
+  it('reopens logical streams on a single reconnecting Remote mux and stops retries', async () => {
     vi.useFakeTimers()
     const sockets: Array<{
-      onopen: (() => void) | null
-      onmessage: ((event: MessageEvent) => void) | null
-      onclose: (() => void) | null
-      close: ReturnType<typeof vi.fn>
+      onopen: (() => void) | null; onclose: (() => void) | null
+      send: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn>
     }> = []
-    const client = createDshClient({
-      baseUrl: 'http://127.0.0.1:3080',
-      webSocketFactory: () => {
-        const socket = { onopen: null, onmessage: null, onclose: null, close: vi.fn() }
-        sockets.push(socket)
-        return socket as unknown as WebSocket
-      },
-    })
+    const client = createDshClient({ webSocketFactory: () => {
+      const socket = { onopen: null, onclose: null, send: vi.fn(), close: vi.fn() }
+      sockets.push(socket)
+      return socket as unknown as WebSocket
+    } })
     const onClose = vi.fn()
     const onOpen = vi.fn()
     const stop = client.connectStreams(vi.fn(), onClose, onOpen)
-    expect(sockets).toHaveLength(2)
-
+    await vi.advanceTimersByTimeAsync(0)
+    expect(sockets).toHaveLength(1)
     sockets[0]!.onopen?.()
-    sockets[1]!.onopen?.()
+    expect(sockets[0]!.send.mock.calls.map(call => JSON.parse(call[0]).endpoint)).toEqual(['session/control', '$events'])
     sockets[0]!.onclose?.()
     expect(onClose).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(250)
-    expect(sockets).toHaveLength(3)
-    sockets[2]!.onopen?.()
+    expect(sockets).toHaveLength(2)
+    sockets[1]!.onopen?.()
     expect(onOpen).toHaveBeenCalledTimes(1)
-
-    sockets[1]!.onclose?.()
-    sockets[2]!.onclose?.()
-    expect(onClose).toHaveBeenCalledTimes(2)
-    await vi.advanceTimersByTimeAsync(250)
-    expect(sockets).toHaveLength(5)
-    sockets[3]!.onopen?.()
-    expect(onOpen).toHaveBeenCalledTimes(1)
-    sockets[4]!.onopen?.()
-    expect(onOpen).toHaveBeenCalledTimes(2)
-
+    expect(sockets[1]!.send).toHaveBeenCalledTimes(2)
     stop()
-    expect(sockets[3]!.close).toHaveBeenCalledTimes(1)
-    expect(sockets[4]!.close).toHaveBeenCalledTimes(1)
+    sockets[1]!.onclose?.()
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(sockets).toHaveLength(2)
   })
 })

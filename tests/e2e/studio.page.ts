@@ -5,7 +5,7 @@ export class StudioPage {
 
   async open(): Promise<void> {
     await this.page.goto('/')
-    await expect(this.page.getByRole('heading', { name: '营地余烬' })).toBeVisible()
+    await expect(this.page.getByRole('heading', { name: 'D 区封锁线' })).toBeVisible()
   }
 
   async send(text: string): Promise<void> {

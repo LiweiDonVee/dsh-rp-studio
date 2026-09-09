@@ -6,6 +6,11 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 import { buildApp } from './app.js'
 import { createDshClient } from './dsh/client.js'
 import { SessionService } from './session-service.js'
+import { createPromptPresetsClient } from './prompt-presets-client.js'
+import { ProductService, type ProductDataStore } from './product-service.js'
+import { loadDefaultProductStore, type ProductStoreLoadResult } from './local-data-adapter.js'
+import { startPairingListener, type PairingListenerOptions } from './pairing-listener.js'
+import { loadPairingConfig, type PairingConfig } from './pairing-config.js'
 
 const MIME_TYPES: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
@@ -26,6 +31,14 @@ export interface ServerOptions {
   dshUrl?: string
   dshHome?: string
   publicDir?: string
+  promptPresetsUrl?: string
+  productStore?: ProductDataStore
+  pairingEnabled?: boolean
+  pairingWriteScopes?: import('@dsh-rp/protocol').PairingScope[]
+  dataRoot?: string
+  productStoreFactory?: (options: { dshHome?: string; dataRoot?: string }) => Promise<ProductStoreLoadResult>
+  pairingListener?: Omit<PairingListenerOptions, 'product'>
+  pairingConfig?: PairingConfig
 }
 
 function loopbackHostname(value: string): boolean {
@@ -85,11 +98,26 @@ export async function startServer(options: ServerOptions = {}): Promise<{
 
   const dsh = createDshClient({ baseUrl: options.dshUrl ?? process.env.DSH_BASE_URL ?? 'http://127.0.0.1:3080' })
   const dshHome = options.dshHome ?? process.env.DSH_HOME
+  const promptPresetsUrl = options.promptPresetsUrl ?? process.env.PROMPT_PRESETS_BASE_URL
   const service = new SessionService({
     dsh,
+    promptPresets: createPromptPresetsClient(promptPresetsUrl ? { baseUrl: promptPresetsUrl } : {}),
     ...(dshHome ? { dshHome } : {}),
   })
-  const app = buildApp({ api: service })
+  const runtimeConfig = options.pairingConfig ?? await loadPairingConfig(process.env.DSH_RP_RUNTIME_CONFIG)
+  const configuredPairing = runtimeConfig ? {
+    host: runtimeConfig.host,
+    port: runtimeConfig.port,
+    allowedOrigins: runtimeConfig.allowedOrigins,
+    cert: await readFile(runtimeConfig.certFile),
+    key: await readFile(runtimeConfig.keyFile),
+    ...(runtimeConfig.companionDir ? { companionDir: runtimeConfig.companionDir } : {}),
+  } : options.pairingListener
+  const loadedStore = options.productStore
+    ? { store: options.productStore }
+    : await (options.productStoreFactory ?? loadDefaultProductStore)({ ...(dshHome ? { dshHome } : {}), ...(options.dataRoot ? { dataRoot: options.dataRoot } : {}) })
+  const product = new ProductService({ sessions: service, ...(loadedStore.store ? { store: loadedStore.store } : {}), ...(loadedStore.doctor ? { doctor: loadedStore.doctor } : {}), pairingEnabled: runtimeConfig?.enabled ?? options.pairingEnabled ?? false, ...(runtimeConfig ? { pairingWriteScopes: runtimeConfig.writeScopes } : options.pairingWriteScopes ? { pairingWriteScopes: options.pairingWriteScopes } : {}), ...(configuredPairing ? { pairingListener: 'https-lan' as const } : {}) })
+  const app = buildApp({ api: service, product })
   app.addHook('onRequest', async (request, reply) => {
     const requestHost = request.headers.host
     let hostUrl: URL
@@ -116,10 +144,18 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   })
   const defaultPublicDir = fileURLToPath(new URL('../../web/dist/', import.meta.url))
   registerStaticApp(app, options.publicDir ?? process.env.DSH_RP_WEB_DIST ?? defaultPublicDir)
-  app.addHook('onClose', async () => service.stop())
+  let pairingApp: FastifyInstance | undefined
+  app.addHook('onClose', async () => { if (pairingApp) await pairingApp.close(); service.stop(); await product.close() })
 
   await service.start()
+  await product.start()
   await app.listen({ host, port })
+  try {
+    if (configuredPairing) pairingApp = (await startPairingListener({ ...configuredPairing, product })).app
+  } catch (error) {
+    await app.close()
+    throw error
+  }
   const displayHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host
   return { app, service, url: `http://${displayHost}:${port}` }
 }

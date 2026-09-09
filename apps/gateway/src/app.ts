@@ -4,16 +4,24 @@ import {
   cardSchema,
   failureEnvelope,
   healthStatusSchema,
+  promptPresetSelectionSchema,
+  promptSessionSchema,
   sessionDetailSchema,
   sessionSummarySchema,
   streamEventSchema,
   successEnvelope,
   type Card,
+  type PromptPresetSelection,
+  type PromptSession,
+  type PublicGameState,
+  type ProductScope,
   type SessionDetail,
   type SessionSummary,
   type StreamEvent,
 } from '@dsh-rp/protocol'
 import { GatewayError } from './errors.js'
+import type { ProductService } from './product-service.js'
+import { registerProductRoutes } from './product-routes.js'
 
 export interface SessionApi {
   health(): Promise<Record<string, unknown>>
@@ -26,8 +34,21 @@ export interface SessionApi {
   fork(sessionId: string, atSeq?: number): Promise<SessionDetail>
   rollback(sessionId: string): Promise<Record<string, unknown>>
   autoplay(sessionId: string, input: { off?: boolean; rounds?: number; objective?: string }): Promise<Record<string, unknown>>
+  promptSettings(sessionId: string): Promise<PromptSession>
+  applyPromptSettings(sessionId: string, input: PromptPresetSelection): Promise<PromptSession>
+  resetPromptSettings(sessionId: string, expectedRevision: number): Promise<PromptSession>
   subscribe(sessionId: string, listener: (event: StreamEvent) => void): () => void
+  subscribeProduct?(listener: (event: ProductSourceEvent) => void): () => void
+  getProductScope?(sessionId: string): Promise<ProductScope>
+  productSnapshots?(): Promise<Array<{ detail: SessionDetail; scope: ProductScope; sourceSeq: number }>>
 }
+
+export type ProductSourceEvent =
+  | { type: 'projection'; sessionId: string; branchId: string; sourceSeq: number; state: PublicGameState }
+  | { type: 'rebase'; sessionId: string; branchId: string; sourceSeq: number }
+  | { type: 'turn.completed'; sessionId: string; sourceSeq: number }
+  | { type: 'attention.required'; sessionId: string; sourceSeq: number }
+  | { type: 'autoplay.completed'; sessionId: string; sourceSeq: number }
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -45,7 +66,7 @@ function sessionId(params: unknown): string {
   return id
 }
 
-export function buildApp(options: { api: SessionApi }): FastifyInstance {
+export function buildApp(options: { api: SessionApi; product?: ProductService }): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 1_048_576 })
 
   app.addHook('onSend', async (_request, reply, payload) => {
@@ -62,10 +83,15 @@ export function buildApp(options: { api: SessionApi }): FastifyInstance {
       void reply.code(error.statusCode).send(failureEnvelope(error.apiError))
       return
     }
+    if (typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 413) {
+      void reply.code(413).send(failureEnvelope({ code: 'payload-too-large', message: '请求体超过允许大小。' }))
+      return
+    }
     void reply.code(500).send(failureEnvelope({ code: 'internal', message: 'RP Gateway 处理请求时发生错误。' }))
   })
 
   app.get('/api/v1/health', async () => successEnvelope(healthStatusSchema.parse(await options.api.health())))
+  if (options.product) registerProductRoutes(app, options.product)
   app.get('/api/v1/cards', async () => successEnvelope(cardSchema.array().parse(await options.api.cards())))
   app.get('/api/v1/sessions', async () => successEnvelope(sessionSummarySchema.array().parse(await options.api.sessions())))
   app.get('/api/v1/sessions/:id', async request => successEnvelope(sessionDetailSchema.parse(await options.api.session(sessionId(request.params)))))
@@ -90,6 +116,17 @@ export function buildApp(options: { api: SessionApi }): FastifyInstance {
     return successEnvelope(sessionDetailSchema.parse(await options.api.fork(sessionId(request.params), atSeq as number | undefined)))
   })
   app.post('/api/v1/sessions/:id/rollback', async request => successEnvelope(acceptedResponseSchema.parse(await options.api.rollback(sessionId(request.params)))))
+  app.get('/api/v1/sessions/:id/prompt-presets', async request => successEnvelope(promptSessionSchema.parse(await options.api.promptSettings(sessionId(request.params)))))
+  app.put('/api/v1/sessions/:id/prompt-presets', async (request) => {
+    const parsed = promptPresetSelectionSchema.safeParse(request.body)
+    if (!parsed.success) throw badRequest('提示词预设选择无效。')
+    return successEnvelope(promptSessionSchema.parse(await options.api.applyPromptSettings(sessionId(request.params), parsed.data)))
+  })
+  app.delete('/api/v1/sessions/:id/prompt-presets', async (request) => {
+    const expectedRevision = record(request.body)?.expectedRevision
+    if (!Number.isSafeInteger(expectedRevision) || (expectedRevision as number) < 0) throw badRequest('提示词预设版本无效。')
+    return successEnvelope(promptSessionSchema.parse(await options.api.resetPromptSettings(sessionId(request.params), expectedRevision as number)))
+  })
   const handleAutoplay = async (request: FastifyRequest) => {
     const body = record(request.body) ?? {}
     if (body.off === true) return successEnvelope(acceptedResponseSchema.parse(await options.api.autoplay(sessionId(request.params), { off: true })))

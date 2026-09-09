@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
-import type { Card, PublicGameState, SessionSummary, TranscriptMessage } from '@dsh-rp/protocol'
+import type { Card, PromptSession, PublicGameState, SessionSummary, TranscriptMessage } from '@dsh-rp/protocol'
 import {
   Activity,
+  Boxes,
+  AlertTriangle,
   Archive,
   Backpack,
   BookOpenText,
@@ -12,6 +14,7 @@ import {
   Clock3,
   GitFork,
   History,
+  LockKeyhole,
   MapPin,
   Menu,
   PanelRight,
@@ -20,18 +23,24 @@ import {
   Radio,
   RefreshCw,
   RotateCcw,
+  Save,
   ScrollText,
   Send,
   ShieldCheck,
+  Settings2,
   Square,
+  Sparkles,
+  SlidersHorizontal,
   Users,
   X,
   type LucideIcon,
 } from 'lucide-react'
 import { RenderedNarrative } from './renderer.js'
 import { useStudio } from './store.js'
+import { CompanionPage } from './CompanionPage.js'
+import { ProductPanel } from './ProductPanel.js'
 
-type InspectorTab = 'status' | 'relationships' | 'quests' | 'timeline'
+type InspectorTab = 'status' | 'relationships' | 'quests' | 'timeline' | 'methods'
 type UnknownRecord = Record<string, unknown>
 
 function primitive(value: unknown): string | undefined {
@@ -133,8 +142,10 @@ function useModalFocus(open: boolean, panelRef: RefObject<HTMLElement>, onClose:
 
 function CardArtwork({ card, compact = false }: { card: Card; compact?: boolean }) {
   return (
-    <div className={`card-artwork ${compact ? 'is-compact' : ''}`} data-accent={card.accent}>
-      <img src={`/cards/${card.art}.webp`} alt={`${card.title}世界档案`} />
+    <div className={`card-artwork ${compact ? 'is-compact' : ''} ${card.kind === 'template' ? 'is-template' : ''}`} data-accent={card.accent}>
+      {card.kind === 'template'
+        ? <Boxes aria-label="运行时基础模板" size={compact ? 26 : 42} strokeWidth={1.5} />
+        : <img src={`/cards/${card.art}.webp`} alt={`${card.title}世界档案`} />}
       <span aria-hidden="true" className="art-index">{card.id === 'zombie-world' ? 'ZW' : 'RP'}</span>
     </div>
   )
@@ -299,6 +310,7 @@ function Transcript(props: {
 
 function Composer(props: {
   running: boolean
+  promptBusy: boolean
   sessionId: string
   onSend(text: string): Promise<void>
   onCancel(): Promise<void>
@@ -309,7 +321,7 @@ function Composer(props: {
   const submit = (event?: FormEvent) => {
     event?.preventDefault()
     const text = draft.trim()
-    if (!text || props.running) return
+    if (!text || props.running || props.promptBusy) return
     setDraft('')
     void props.onSend(text)
   }
@@ -324,17 +336,17 @@ function Composer(props: {
     <form className="composer" onSubmit={submit}>
       <textarea
         aria-label="玩家行动"
-        disabled={props.running}
+        disabled={props.running || props.promptBusy}
         maxLength={20_000}
         onChange={event => setDraft(event.target.value)}
         onKeyDown={onKeyDown}
-        placeholder={props.running ? 'GM 正在推进本轮…' : '写下你的行动…'}
+        placeholder={props.running ? 'GM 正在推进本轮…' : props.promptBusy ? '正在应用叙事方法…' : '写下你的行动…'}
         rows={2}
         value={draft}
       />
       {props.running
         ? <IconButton className="composer-submit" icon={Square} label="停止当前回合" onClick={() => void props.onCancel()} tone="danger" />
-        : <IconButton className="composer-submit" disabled={!draft.trim()} icon={Send} label="发送行动" tone="accent" type="submit" />}
+        : <IconButton className="composer-submit" disabled={props.promptBusy || !draft.trim()} icon={Send} label="发送行动" tone="accent" type="submit" />}
     </form>
   )
 }
@@ -351,6 +363,7 @@ function StoryHeader(props: {
   onRollback(): void
   onFork(): void
   onAutoplay(): void
+  onProduct(): void
 }) {
   return (
     <header className="story-header" data-accent={props.card.accent}>
@@ -368,6 +381,7 @@ function StoryHeader(props: {
         </span>
         <IconButton disabled={props.running || !props.canRollback} icon={RotateCcw} label="回退上一轮" onClick={props.onRollback} />
         <IconButton disabled={props.running} icon={GitFork} label="从当前档案创建分支" onClick={props.onFork} />
+        <IconButton icon={Settings2} label="打开产品管理" onClick={props.onProduct} />
         <IconButton active={props.autoplay} disabled={props.running} icon={props.autoplay ? CircleStop : Play} label={props.autoplay ? '管理自动续跑' : '启动自动续跑'} onClick={props.onAutoplay} tone={props.autoplay ? 'danger' : 'accent'} />
       </div>
       <div className="mobile-header-button">
@@ -456,11 +470,102 @@ function MetricGrid({ values }: { values: UnknownRecord | undefined }) {
   )
 }
 
+function PromptMethodsPanel(props: {
+  prompt: PromptSession | undefined
+  draftEntryIds: string[]
+  busy: boolean
+  notice: string | null
+  onEntry(entryId: string, checked: boolean): void
+  onProfile(profileId: string, checked: boolean): void
+  onApply(): void
+  onReset(): void
+}) {
+  const selected = new Set(props.draftEntryIds)
+  const empty = selected.size === 0
+  const prompt = props.prompt
+  return (
+    <div className="prompt-methods">
+      <section className="inspector-section prompt-core-section">
+        <div className="section-title"><Sparkles aria-hidden="true" size={15} /><span>叙事方法</span></div>
+        <div className="prompt-core-row">
+          <span className="prompt-lock"><LockKeyhole aria-hidden="true" size={16} /></span>
+          <span><strong>Agent runtime core</strong><small>工具、状态、回滚与知识边界</small></span>
+          <span className="prompt-core-state">LOCKED</span>
+        </div>
+      </section>
+
+      {!prompt?.available ? (
+        <section className="inspector-section prompt-unavailable" role="status">
+          <AlertTriangle aria-hidden="true" size={16} />
+          <span>{prompt?.message ?? '叙事方法数据暂不可用；Agent runtime 核心仍保持启用。'}</span>
+        </section>
+      ) : (
+        <>
+          {empty ? (
+            <div className="prompt-empty-warning" role="alert">
+              <AlertTriangle aria-hidden="true" size={15} />
+              <span>当前没有启用任何叙事方法；仅使用 Agent runtime 核心与卡片底座。</span>
+            </div>
+          ) : null}
+          {props.notice ? <div className="prompt-notice" role="status">{props.notice}</div> : null}
+          {prompt.optionalProfiles.map(profile => {
+            const profileSelected = profile.entries.length > 0 && profile.entries.every(entry => selected.has(entry.id))
+            return (
+              <section className="prompt-profile" key={profile.id}>
+                <label className="prompt-profile-toggle">
+                  <input
+                    aria-label={`${profile.name}全部方法`}
+                    checked={profileSelected}
+                    disabled={props.busy}
+                    onChange={event => props.onProfile(profile.id, event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span><strong>{profile.name}</strong><small>v{profile.version} · {profile.entries.length} 项</small></span>
+                </label>
+                <div className="prompt-entry-list">
+                  {profile.entries.map(entry => (
+                    <label className="prompt-entry" key={entry.id}>
+                      <input
+                        aria-label={entry.name}
+                        checked={selected.has(entry.id)}
+                        disabled={props.busy}
+                        onChange={event => props.onEntry(entry.id, event.target.checked)}
+                        type="checkbox"
+                      />
+                      <span><strong>{entry.name}</strong><small>{entry.renderOnly ? 'RENDER' : entry.slot.toUpperCase()}</small></span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+            )
+          })}
+          {prompt.optionalProfiles.length === 0 ? <p className="inspector-empty">该卡片没有可选叙事方法</p> : null}
+          <div className="prompt-actions">
+            <button className="command-button" disabled={props.busy} onClick={props.onApply} type="button">
+              <Save aria-hidden="true" size={15} />{props.busy ? '保存中' : '应用到下一轮'}
+            </button>
+            <IconButton disabled={props.busy || empty} icon={RotateCcw} label="清空可选叙事方法" onClick={props.onReset} />
+          </div>
+          {prompt.appliesFromNextTurn ? <div className="prompt-next-turn">NEXT TURN · 下一轮生效</div> : null}
+        </>
+      )}
+    </div>
+  )
+}
+
 function InspectorPanel(props: {
   card: Card
   state: PublicGameState
+  prompt: PromptSession | undefined
+  promptDraftEntryIds: string[]
+  promptBusy: boolean
+  promptNotice: string | null
   tab: InspectorTab
   onTab(tab: InspectorTab): void
+  onPromptEntry(entryId: string, checked: boolean): void
+  onPromptProfile(profileId: string, checked: boolean): void
+  onPromptApply(): void
+  onPromptReset(): void
   mobile?: boolean
 }) {
   const protagonist = props.state.protagonist
@@ -475,6 +580,7 @@ function InspectorPanel(props: {
     { id: 'relationships', label: '关系', icon: Users },
     { id: 'quests', label: '任务', icon: ScrollText },
     { id: 'timeline', label: '时间线', icon: History },
+    { id: 'methods', label: '方法', icon: SlidersHorizontal },
   ]
   return (
     <aside className={`inspector ${props.mobile ? 'is-mobile' : ''}`} aria-label="公开状态">
@@ -562,6 +668,18 @@ function InspectorPanel(props: {
             </section>
           </>
         ) : null}
+        {props.tab === 'methods' ? (
+          <PromptMethodsPanel
+            busy={props.promptBusy}
+            draftEntryIds={props.promptDraftEntryIds}
+            notice={props.promptNotice}
+            onApply={props.onPromptApply}
+            onEntry={props.onPromptEntry}
+            onProfile={props.onPromptProfile}
+            onReset={props.onPromptReset}
+            prompt={props.prompt}
+          />
+        ) : null}
       </div>
       <footer className="checkpoint-footer">
         <Archive aria-hidden="true" size={14} />
@@ -597,6 +715,8 @@ function LoadingStage() {
 }
 
 export function App() {
+  if (window.location.pathname === '/product') return <ProductPanel />
+  if (window.location.pathname === '/companion') return <CompanionPage />
   const studio = useStudio()
   const [autoplayOpen, setAutoplayOpen] = useState(false)
   useEffect(() => { void studio.load() }, [studio.load])
@@ -632,12 +752,13 @@ export function App() {
             onCampaigns={() => studio.setSheet('campaigns')}
             onFork={() => void studio.fork()}
             onInspector={() => studio.setSheet('inspector')}
+            onProduct={() => { window.location.href = `/product?sessionId=${encodeURIComponent(current.session.id)}` }}
             onRollback={() => void studio.rollback()}
             running={current.session.running}
             title={current.session.title}
           />
           <Transcript blank={current.session.blank} card={current.card} messages={current.messages} streaming={studio.streaming} />
-          <Composer onCancel={studio.cancel} onSend={studio.send} running={current.session.running} sessionId={current.session.id} />
+          <Composer onCancel={studio.cancel} onSend={studio.send} promptBusy={studio.promptBusy} running={current.session.running} sessionId={current.session.id} />
           <AutoplayDialog
             armed={current.state.driver?.armed === true}
             onApply={input => studio.autoplay(input)}
@@ -650,7 +771,20 @@ export function App() {
 
       <div className="desktop-inspector">
         {current
-          ? <InspectorPanel card={current.card} onTab={studio.setInspectorTab} state={current.state} tab={studio.inspectorTab} />
+          ? <InspectorPanel
+              card={current.card}
+              onPromptApply={() => void studio.applyPromptSettings()}
+              onPromptEntry={studio.togglePromptEntry}
+              onPromptProfile={studio.togglePromptProfile}
+              onPromptReset={() => void studio.resetPromptSettings()}
+              onTab={studio.setInspectorTab}
+              prompt={current.prompt}
+              promptBusy={studio.promptBusy}
+              promptDraftEntryIds={studio.promptDraftEntryIds}
+              promptNotice={studio.promptNotice}
+              state={current.state}
+              tab={studio.inspectorTab}
+            />
           : <div className="inspector-placeholder"><PanelRight aria-hidden="true" size={23} /><span>未选择档案</span></div>}
       </div>
 
@@ -666,7 +800,21 @@ export function App() {
         />
       </MobileSheet>
       <MobileSheet label="公开状态" onClose={() => studio.setSheet(null)} open={studio.sheet === 'inspector'} side="right">
-        {current ? <InspectorPanel card={current.card} mobile onTab={studio.setInspectorTab} state={current.state} tab={studio.inspectorTab} /> : null}
+        {current ? <InspectorPanel
+          card={current.card}
+          mobile
+          onPromptApply={() => void studio.applyPromptSettings()}
+          onPromptEntry={studio.togglePromptEntry}
+          onPromptProfile={studio.togglePromptProfile}
+          onPromptReset={() => void studio.resetPromptSettings()}
+          onTab={studio.setInspectorTab}
+          prompt={current.prompt}
+          promptBusy={studio.promptBusy}
+          promptDraftEntryIds={studio.promptDraftEntryIds}
+          promptNotice={studio.promptNotice}
+          state={current.state}
+          tab={studio.inspectorTab}
+        /> : null}
       </MobileSheet>
 
       {studio.error ? (

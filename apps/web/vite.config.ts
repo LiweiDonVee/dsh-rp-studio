@@ -1,12 +1,12 @@
 import { fileURLToPath, URL } from 'node:url'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      'dsh-tavern-renderer-styles': fileURLToPath(new URL('../../../repos/deepseek-harness-tavern-renderer/src/client/plugin.css', import.meta.url)),
+      'dsh-tavern-renderer-styles': fileURLToPath(new URL('../../../deepseek-harness-tavern-renderer/src/client/plugin.css', import.meta.url)),
     },
   },
   server: {

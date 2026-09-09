@@ -6,4 +6,7 @@ test-results/
 .env
 *.log
 .DS_Store
-
+.snapshots/
+.probe-runs/
+.probe-sessions/
+apps/desktop/artifacts/

@@ -1,10 +1,12 @@
 import {
   apiEnvelopeSchema,
   cardSchema,
+  promptSessionSchema,
   sessionDetailSchema,
   sessionSummarySchema,
   streamEventSchema,
   type Card,
+  type PromptSession,
   type SessionDetail,
   type SessionSummary,
   type StreamEvent,
@@ -39,6 +41,13 @@ export const api = {
   rollback: (id: string) => request(`/api/v1/sessions/${encodeURIComponent(id)}/rollback`, acceptedSchema, { method: 'POST', body: '{}' }),
   fork: (id: string) => request(`/api/v1/sessions/${encodeURIComponent(id)}/fork`, sessionDetailSchema, { method: 'POST', body: '{}' }),
   autoplay: (id: string, input: { off?: boolean; rounds?: number; objective?: string }) => request(`/api/v1/sessions/${encodeURIComponent(id)}/autoplay`, acceptedSchema, { method: 'PUT', body: JSON.stringify(input) }),
+  promptSettings: (id: string): Promise<PromptSession> => request(`/api/v1/sessions/${encodeURIComponent(id)}/prompt-presets`, promptSessionSchema),
+  applyPromptSettings: (id: string, enabledEntryIds: string[], expectedRevision: number): Promise<PromptSession> => request(`/api/v1/sessions/${encodeURIComponent(id)}/prompt-presets`, promptSessionSchema, {
+    method: 'PUT', body: JSON.stringify({ enabledEntryIds, expectedRevision }),
+  }),
+  resetPromptSettings: (id: string, expectedRevision: number): Promise<PromptSession> => request(`/api/v1/sessions/${encodeURIComponent(id)}/prompt-presets`, promptSessionSchema, {
+    method: 'DELETE', body: JSON.stringify({ expectedRevision }),
+  }),
 }
 
 export function connectEvents(

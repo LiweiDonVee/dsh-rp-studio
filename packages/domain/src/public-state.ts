@@ -6,7 +6,7 @@ import {
 type UnknownRecord = Record<string, unknown>
 
 const OMITTED_KEY = /(?:secret|offscreen|reasoning|audit|toolresult|private|hidden)/iu
-const PUBLIC_EXTENSION_KEYS = ['economy', 'potionResearch'] as const
+const PUBLIC_EXTENSION_KEYS = ['economy'] as const
 
 function record(value: unknown): UnknownRecord | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -15,9 +15,10 @@ function record(value: unknown): UnknownRecord | undefined {
 }
 
 function isHidden(value: UnknownRecord): boolean {
+  if (value.hidden === true || value.private === true) return true
   const visibility = value.visibility
   const labels = Array.isArray(visibility) ? visibility : [visibility]
-  return labels.some(label => typeof label === 'string' && label.toLowerCase().includes('hidden'))
+  return labels.some(label => typeof label === 'string' && /(?:^|[-_:])(hidden|private|secret|gm-only|offscreen)(?:$|[-_:])/iu.test(label.trim()))
 }
 
 function sanitize(value: unknown): unknown {
@@ -47,6 +48,7 @@ function safeRecord(value: unknown): UnknownRecord | undefined {
 
 function records(value: unknown): UnknownRecord[] {
   const object = record(value)
+  if (object && isHidden(object)) return []
   const values = Array.isArray(value)
     ? value
     : object
@@ -77,7 +79,7 @@ function publicConditions(value: unknown): UnknownRecord[] {
 }
 
 function publicProtagonist(value: unknown, economy: unknown): UnknownRecord | undefined {
-  const input = record(value)
+  const input = safeRecord(value)
   if (!input || typeof input.name !== 'string') return undefined
   const output: UnknownRecord = {
     name: input.name,
@@ -105,7 +107,7 @@ function publicProtagonist(value: unknown, economy: unknown): UnknownRecord | un
 
 function publicBeat(value: unknown): UnknownRecord | null | undefined {
   if (value === null) return null
-  const input = record(value)
+  const input = safeRecord(value)
   if (!input) return undefined
   const output: UnknownRecord = {}
   for (const key of ['id', 'title', 'location', 'status'] as const) {
@@ -119,7 +121,7 @@ function publicBeat(value: unknown): UnknownRecord | null | undefined {
 }
 
 function publicScene(value: unknown): UnknownRecord | undefined {
-  const input = record(value)
+  const input = safeRecord(value)
   if (!input) return undefined
   const output: UnknownRecord = {}
   for (const key of ['location', 'region', 'weather'] as const) {
@@ -135,7 +137,7 @@ function publicScene(value: unknown): UnknownRecord | undefined {
 function publicMemories(value: unknown): UnknownRecord[] {
   if (Array.isArray(value)) return records(value)
   const input = record(value)
-  if (!input) return []
+  if (!input || isHidden(input)) return []
   return [...records(input.public), ...records(input.protagonist)]
 }
 
@@ -177,7 +179,8 @@ function checkpointSummary(metaValue: unknown): PublicGameState['checkpoints'] {
 
 export function projectPublicState(value: unknown): PublicGameState {
   const projection = record(value) ?? {}
-  const game = record(projection.game) ?? projection
+  const rawGame = record(projection.game) ?? projection
+  const game = isHidden(projection) || isHidden(rawGame) ? {} : rawGame
   const extensions: UnknownRecord = {}
   for (const key of PUBLIC_EXTENSION_KEYS) {
     const clean = sanitize(game[key])
@@ -205,7 +208,7 @@ export function projectPublicState(value: unknown): PublicGameState {
   if (scene) result.scene = scene
   const protagonist = publicProtagonist(game.protagonist, game.economy)
   if (protagonist) result.protagonist = protagonist
-  const driver = record(game.driver)
+  const driver = safeRecord(game.driver)
   if (driver) {
     result.driver = {
       armed: driver.armed === true,
