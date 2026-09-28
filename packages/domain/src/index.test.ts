@@ -20,7 +20,7 @@ describe('surface folding', () => {
       event(2, 'tool/result', { message: { id: 't1' } }, 'append'),
       event(3, 'user/message', { id: 'u2' }, 'append'),
       event(4, 'assistant/message', { message: { id: 'a2' } }, 'append'),
-      event(5, 'user/message', { id: 'notice' }, { op: 'replace', start: 1, end: 2 }),
+      event(5, 'user/message', { id: 'notice' }, { op: 'replace', startSeq: 1, endSeq: 2 }),
     ]
 
     expect(foldSurface(events).map(item => item.seq)).toEqual([0, 5, 3, 4])

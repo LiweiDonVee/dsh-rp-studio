@@ -17,7 +17,7 @@ export function createWebAuth(base: URL, request: typeof fetch, token?: string) 
           } catch {
             throw new DshRpcError('authentication-required', 'DSH Web token exchange failed')
           }
-          if (response.status !== 303 || response.headers.get('location') !== '/') {
+          if (response.status !== 303 || !['/', './'].includes(response.headers.get('location') ?? '')) {
             throw new DshRpcError('authentication-required', 'DSH Web token exchange rejected')
           }
           const cookies = response.headers.getSetCookie().map(value => value.split(';', 1)[0]!)

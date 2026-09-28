@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDshClient } from './client.js'
+import { RemoteMux } from './remote-mux.js'
 import { assertLoopbackUrl, DshRpcError, mapDshError, statusForDshError } from './wire.js'
 
 function response(value: unknown): Response {
@@ -21,6 +22,15 @@ describe('DSH HTTP adapter', () => {
     const body = await request?.json() as Record<string, unknown>
     expect(body).toMatchObject({ type: 'client-request', method: 'agentPresets/list', payload: { args: {} } })
     expect(typeof body.rpcId).toBe('string')
+  })
+
+  it('reports remote capabilities without inventing a host version', async () => {
+    const client = createDshClient({ fetchImpl: async () => response({ presets: [] }) })
+    await expect(client.hostDescribe()).resolves.toEqual({
+      version: 'unknown',
+      transport: 'remote',
+      capabilities: ['agentPresets/list', 'agentPresets/read', 'session/follow', 'session/page', 'session/control'],
+    })
   })
 
   it('creates and renames DSH workspaces and adopts a preallocated session', async () => {
@@ -156,5 +166,23 @@ describe('DSH HTTP adapter', () => {
     sockets[1]!.onclose?.()
     await vi.advanceTimersByTimeAsync(10_000)
     expect(sockets).toHaveLength(2)
+  })
+
+  it('uses bidirectional Remote frames for a logical stream', async () => {
+    const frames: Record<string, unknown>[] = []
+    const socket = {
+      onopen: null as null | (() => void), onmessage: null as null | ((event: { data: string }) => void),
+      onclose: null, onerror: null, close: vi.fn(),
+      send: (text: string) => frames.push(JSON.parse(text)),
+    }
+    const mux = new RemoteMux('ws://127.0.0.1:3080/api/remote.mux', () => { queueMicrotask(() => socket.onopen?.()); return socket as unknown as WebSocket }, async () => ({}), vi.fn(), vi.fn())
+    const stream = mux.open('session/command', { request: {} }, vi.fn(), vi.fn())
+    try {
+      await vi.waitFor(() => expect(frames).toContainEqual(expect.objectContaining({ type: 'open', endpoint: 'session/command' })))
+      stream.send({ accepted: true })
+      stream.end()
+      expect(frames).toContainEqual(expect.objectContaining({ type: 'item', streamId: expect.any(String), value: { accepted: true } }))
+      expect(frames).toContainEqual(expect.objectContaining({ type: 'end', streamId: expect.any(String) }))
+    } finally { stream.cancel(); mux.stop() }
   })
 })

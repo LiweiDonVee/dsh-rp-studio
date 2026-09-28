@@ -10,11 +10,17 @@ import {
 
 export interface DshPresetEntry {
   id: string
-  trust: 'system' | 'user'
-  isDefault?: boolean
+  isDefault: boolean
   name?: string
   description?: string
   broken?: string
+}
+
+export interface DshPresetDocument {
+  agentPreset: string
+  content: string
+  name?: string
+  description?: string
 }
 
 export interface DshSessionListItem {
@@ -64,6 +70,7 @@ export interface DshClientOptions {
 export interface DshClient {
   hostDescribe(signal?: AbortSignal): Promise<Record<string, unknown>>
   listPresets(signal?: AbortSignal): Promise<DshPresetEntry[]>
+  readPreset(agentPreset: string, signal?: AbortSignal): Promise<DshPresetDocument>
   listSessions(signal?: AbortSignal): Promise<DshSessionListItem[]>
   listWorkspaces(signal?: AbortSignal): Promise<DshWorkspaceList>
   createWorkspace(path: string, signal?: AbortSignal): Promise<{ workspace: DshWorkspace; created: boolean }>
@@ -79,6 +86,7 @@ export interface DshClient {
 
 export type DshStreamFrame =
   | { type: 'session/event'; sessionId: string; event: DshHistoryEntry['event'] }
+  | { type: 'session/assistant-delta'; sessionId: string; messageId: string; text: string }
   | { type: 'session/subscribed'; sessionId: string; lastSeq: number }
   | { type: 'session/projection'; sessionId: string; key: string; value: unknown; seq: number }
   | { type: 'host/session-status'; sessionId: string; running: boolean }
@@ -202,7 +210,7 @@ export function createDshClient(options: DshClientOptions = {}): DshClient {
       const done = () => lifetime.removeEventListener('abort', abort)
       const abort = () => { close(); followers.delete(sessionId); done(); reject(lifetime.reason) }
       const fail = (error: unknown) => { done(); if (!settled) { close(); followers.delete(sessionId); reject(error) }; onFrame({ type: 'stream/error', error }) }
-      const close = mux.open('session/follow', { request: { address: { kind: 'session', sessionId }, maxMessages: 500 } }, value => {
+      const close = mux.open('session/follow', { request: { address: { kind: 'session', sessionId }, maxMessages: 500, assistantStream: true } }, value => {
         try {
           const frame = record(value)
           if (frame?.type === 'snapshot') {
@@ -213,6 +221,12 @@ export function createDshClient(options: DshClientOptions = {}): DshClient {
             first = false
             publishProjections(sessionId, snapshot.projections)
             if (!settled) { settled = true; done(); resolve({ ...snapshot, ...page }) }
+          } else if (frame?.type === 'assistant-stream') {
+            const assistantFrame = record(frame.frame)
+            const chunk = record(assistantFrame?.chunk)
+            if (assistantFrame?.type === 'chunk' && typeof assistantFrame.turn === 'number' && typeof assistantFrame.step === 'number' && chunk?.type === 'text-delta' && typeof chunk.text === 'string') {
+              onFrame({ type: 'session/assistant-delta', sessionId, messageId: `stream-${assistantFrame.turn}-${assistantFrame.step}`, text: chunk.text })
+            }
           } else if (frame?.type === 'event') {
             const page = historyPage({ records: [frame], hasMore: false })
             onFrame({ type: 'session/event', sessionId, event: page.records[0]!.event })
@@ -243,10 +257,9 @@ export function createDshClient(options: DshClientOptions = {}): DshClient {
   }
 
   const client: DshClient = {
-    // host.describe was removed. Probe a real Remote capability; the host no
-    // longer exports a version here, so do not invent a runtime version.
-    hostDescribe: async signal => { await call('agentPresets/list', {}, signal); return { version: 'unknown', transport: 'remote', compatibility: '0.1.2-rc.1' } },
+    hostDescribe: async signal => { await call('agentPresets/list', {}, signal); return { version: 'unknown', transport: 'remote', capabilities: ['agentPresets/list', 'agentPresets/read', 'session/follow', 'session/page', 'session/control'] } },
     listPresets: async signal => (await call<{ presets: DshPresetEntry[] }>('agentPresets/list', {}, signal)).presets,
+    readPreset: async (agentPreset, signal) => call('agentPresets/read', { agentPreset }, signal),
     listSessions: async signal => {
       const items = (await call<{ items: DshSessionListItem[] }>('session/list', { _request: {} }, signal)).items
       const resolved: DshSessionListItem[] = []

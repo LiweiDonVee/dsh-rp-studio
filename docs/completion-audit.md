@@ -1,10 +1,10 @@
 # DSH RP Studio Completion Audit
 
-Date: 2026-08-17 (Asia/Shanghai)
+Date: 2026-09-28 (Asia/Shanghai)
 
-## 2026-09-07 compatibility revision
+## 2026-09-28 compatibility revision
 
-The original matrix below records the August deployment. Its old dual-stream/rc.7 runtime and real-smoke evidence is historical, not a September rc.1 certification. The Gateway now targets DSH **0.1.2-rc.1** Remote RPC and one authenticated `remote.mux` carrier, with `session/follow` snapshots, fixed-cursor `session/page` history, `session/control` projections, and `$events` lifecycle notifications. Current session ownership uses the `agentPreset` projection. See [the version and transport audit](dsh-compatibility.md) for exact wire contracts, token setup, SQLite export guidance, and the separate 0.1.3-alpha.1 Session-v2/SessionHandle boundary.
+The original matrix below records the August deployment. Its old dual-stream/rc.7 runtime and real-smoke evidence are historical, as is the former rc1 compatibility record. The current Gateway target is DSH **0.1.7-rc.2** Remote RPC with one authenticated `remote.mux` carrier, `session/follow` snapshots, fixed-cursor `session/page` history, `session/control` projections, and `$events` lifecycle notifications. Current session ownership uses the `agentPreset` projection. See [the version and transport audit](dsh-compatibility.md) for exact rc2 wire contracts, token setup, SQLite export guidance, and the separate 0.1.3-alpha.1 Session-v2/SessionHandle boundary.
 
 New regression evidence covers authenticated real loopback HTTP/WebSocket transport, named Remote arguments, prompt request identities, private packed-row exclusion, concurrent history loads, snapshot replacement, namespaced RemoteError mapping, agent/team-message exclusion, and refusal to rewrite modern log headers. No real user Session files were migrated or edited by this upgrade.
 
@@ -21,7 +21,7 @@ The DSH-backed frontend split is viable and implemented as a local production ap
 | Loopback-only boundary | Bind, upstream URL, Host header, and write Origin are validated | Gateway tests cover public bind, IPv6, DNS-rebinding Host, and cross-origin writes |
 | Versioned fail-closed protocol | Strict Zod DTOs and `{ ok, protocolVersion, data/error }` envelopes | protocol tests; Gateway non-public DTO rejection test |
 | Stable public errors | DSH business codes map to short messages and safe `upstreamCode` values | DSH adapter and rollback-unavailable tests |
-| Card discovery | User manifests are intersected with the live DSH preset roster; paths are never returned; templates remain read-compatible but cannot create new sessions | card discovery tests; real `/cards` returns `zombie-world` and `hp-potion-master`, while historical `rp-runtime` sessions remain readable |
+| Card discovery | User manifests are intersected with the live DSH preset roster; paths are never returned; templates remain read-compatible but cannot create new sessions | card discovery tests; default real smoke validates only a safe card array and health, while private bundle assertions are opt-in |
 | Player-safe state | Top-level allowlist, recursive hidden/private filtering, public checkpoint lineage depth | domain projection tests with secret canaries |
 | Player-safe transcript | Folded DSH surface keeps only human user text and assistant text blocks | domain transcript and surface replacement tests |
 | Safe SSE | Seven event families are schema-validated and bound to the subscribed session id | Gateway SSE whitelist, cross-session, and malicious payload tests |
@@ -37,17 +37,9 @@ The DSH-backed frontend split is viable and implemented as a local production ap
 
 ## Runtime Compatibility
 
-The installed `rp-runtime` and `zombie-world` presets retain the DV Fork ownership model:
+The current compatibility target is DSH `0.1.7-rc.2` Remote RPC with authenticated transport, public card discovery, session snapshots, fixed-cursor history, projections, and lifecycle notifications. Private RP plugin bundles are optional test fixtures and are not part of the default product or compatibility claim.
 
-- canonical state is replayed from `tool/result.data.meta.rp`;
-- rollback restores a turn-start snapshot and emits a DSH surface replacement;
-- the seven GM prompt modules remain ordered runtime sections;
-- mutating tools publish post-mutation state through `rp-state`;
-- 38 and 43 tools respectively pass the real loader mountcheck.
-
-The installed `hp-potion-master` card adds a schema-v3 two-pass runtime without changing those template guarantees. Its source and installed domain suites pass 8/8, including canonical quest-id updates; a deterministic 30-turn in-memory playtest exercises the domain and context ledgers without creating session data. `standingKeyFor` succeeds in the built rc.7 Web host, and the standing mount leaks no service into the process-global realm. The 68-tool visible catalog reported by that check includes host and installed plugin layers as well as the card's runtime tools.
-
-The residue scan found no universal `update_state`, `patch_state`, or JSON Patch gameplay surface. The only ST-style tokens are intentional `{{char}}` and `{{user}}` Tavern display macros supported by the selected renderer. Existing source plans use the established `world-data/<card>/runtime-plan-dsh.json` name; they are runtime source documentation, not part of the Studio's public contract.
+The former rc1 and rc.7 runtime evidence is historical. The residue scan found no universal `update_state`, `patch_state`, or JSON Patch gameplay surface. The only ST-style tokens are intentional `{{char}}` and `{{user}}` Tavern display macros supported by the selected renderer. Existing source plans use the established `world-data/<card>/runtime-plan-dsh.json` name; they are runtime source documentation, not part of the Studio's public contract.
 
 ## Security And Data Boundary
 

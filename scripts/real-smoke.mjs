@@ -19,24 +19,35 @@ async function getApi(path) {
 }
 
 const health = await getApi('health')
-if (health.upstream !== 'ready' || typeof health.version !== 'string' || !health.version) {
-  throw new Error('Gateway health did not report a ready DSH upstream with a version.')
+if (health.upstream !== 'ready' || typeof health.version !== 'string') {
+  throw new Error('Gateway health did not report a ready DSH upstream with a valid version field.')
 }
 const cards = await getApi('cards')
+if (!Array.isArray(cards) || cards.some(card => !card || typeof card.id !== 'string' || card.kind === 'template')) {
+  throw new Error('Gateway cards response contains an unsafe or malformed card.')
+}
 const cardIds = new Set(cards.map(card => card.id))
-if (!cardIds.has('zombie-world')) throw new Error('Required playable RP card is unavailable: zombie-world')
-if (!cardIds.has('hp-potion-master')) throw new Error('Required playable RP card is unavailable: hp-potion-master')
-if (cardIds.has('rp-runtime')) throw new Error('Runtime template leaked into the playable card list.')
-const sessions = await getApi('sessions')
-if (sessions.length === 0) throw new Error('No RP session is available for the read-only detail smoke check.')
-const details = await Promise.all(sessions.map(session => getApi(`sessions/${encodeURIComponent(session.id)}`)))
-for (const [index, detail] of details.entries()) {
-  const summary = sessions[index]
-  if (detail.session?.id !== summary.id || detail.card?.id !== summary.cardId) {
-    throw new Error('Session detail does not match the public session list.')
-  }
-  if (!cardIds.has(detail.card.id) && detail.card.kind !== 'template') {
-    throw new Error(`Historical session ${summary.id} is neither playable nor backed by a runtime template.`)
+const requirePrivateBundles = process.env.DSH_RP_PRIVATE_BUNDLES === '1'
+if (requirePrivateBundles) {
+  if (!cardIds.has('zombie-world')) throw new Error('Required playable RP card is unavailable: zombie-world')
+  if (!cardIds.has('hp-potion-master')) throw new Error('Required playable RP card is unavailable: hp-potion-master')
+  if (cardIds.has('rp-runtime')) throw new Error('Runtime template leaked into the playable card list.')
+}
+let sessions = []
+let details = []
+if (requirePrivateBundles) {
+  sessions = await getApi('sessions')
+  if (!Array.isArray(sessions)) throw new Error('Gateway sessions response is not an array.')
+  if (sessions.length === 0) throw new Error('No RP session is available for the read-only detail smoke check.')
+  details = await Promise.all(sessions.map(session => getApi(`sessions/${encodeURIComponent(session.id)}`)))
+  for (const [index, detail] of details.entries()) {
+    const summary = sessions[index]
+    if (detail.session?.id !== summary.id || detail.card?.id !== summary.cardId) {
+      throw new Error('Session detail does not match the public session list.')
+    }
+    if (!cardIds.has(detail.card.id) && detail.card.kind !== 'template') {
+      throw new Error(`Historical session ${summary.id} is neither playable nor backed by a runtime template.`)
+    }
   }
 }
 

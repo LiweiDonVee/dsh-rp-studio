@@ -19,8 +19,8 @@ function record(value: unknown): Record<string, unknown> | undefined {
 function surfaceOperation(value: unknown): SurfaceOperation | undefined {
   if (value === 'append') return 'append'
   const item = record(value)
-  return item?.op === 'replace' && typeof item.start === 'number' && typeof item.end === 'number'
-    ? { op: 'replace', start: item.start, end: item.end }
+  return item?.op === 'replace' && typeof item.startSeq === 'number' && typeof item.endSeq === 'number'
+    ? { op: 'replace', startSeq: item.startSeq, endSeq: item.endSeq }
     : undefined
 }
 
@@ -99,7 +99,7 @@ export class SessionService implements SessionApi {
       const description = await this.options.dsh.hostDescribe()
       return {
         upstream: 'ready', version: description.version ?? 'unknown',
-        ...(description.transport === 'remote' ? { transport: 'remote', compatibility: '0.1.2-rc.1' } : {}),
+        ...(description.transport === 'remote' ? { transport: 'remote' } : {}),
       }
     } catch (error) {
       throw upstreamError(error)
@@ -377,7 +377,7 @@ export class SessionService implements SessionApi {
 
   private async refreshCards(): Promise<void> {
     try {
-      const cards = await discoverCards(this.options.dsh, this.options.dshHome ? { dshHome: this.options.dshHome } : undefined)
+      const cards = await discoverCards(this.options.dsh)
       this.cardsById = new Map(cards.map(card => [card.id, card]))
     } catch (error) {
       throw upstreamError(error)

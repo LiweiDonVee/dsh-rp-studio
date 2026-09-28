@@ -3,6 +3,13 @@ import { safeDshError } from './wire.js'
 
 export type SocketFactory = (url: string, headers?: Record<string, string>) => WebSocket
 
+export interface RemoteStreamHandle {
+  (): void
+  send(value: unknown): void
+  end(): void
+  cancel(): void
+}
+
 /** One authenticated carrier, with cancellable logical streams and bounded reconnects. */
 export class RemoteMux {
   private socket: WebSocket | undefined
@@ -24,15 +31,26 @@ export class RemoteMux {
     private readonly onOpen: () => void,
   ) {}
 
-  open(endpoint: string, args: Record<string, unknown>, item: (value: unknown) => void, error: (error: unknown) => void): () => void {
+  open(endpoint: string, args: Record<string, unknown>, item: (value: unknown) => void, error: (error: unknown) => void): RemoteStreamHandle {
     const id = randomUUID()
     this.streams.set(id, { endpoint, args, item, error })
     if (this.connected) this.sendOpen(id)
     else void this.connect()
-    return () => {
+    const cancel = () => {
       this.streams.delete(id)
       if (this.connected) this.socket?.send(JSON.stringify({ type: 'cancel', streamId: id }))
     }
+    const handle = (() => cancel()) as RemoteStreamHandle
+    handle.send = value => {
+      if (!this.connected || !this.streams.has(id)) throw new Error('DSH stream is not open')
+      this.socket?.send(JSON.stringify({ type: 'item', streamId: id, value }))
+    }
+    handle.end = () => {
+      if (!this.connected || !this.streams.has(id)) return
+      this.socket?.send(JSON.stringify({ type: 'end', streamId: id }))
+    }
+    handle.cancel = cancel
+    return handle
   }
 
   stop(): void {

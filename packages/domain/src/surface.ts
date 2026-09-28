@@ -1,7 +1,7 @@
 export type SurfaceOperation = 'append' | {
   op: 'replace'
-  start: number
-  end: number
+  startSeq: number
+  endSeq: number
 }
 
 export interface RawSessionEvent {
@@ -24,8 +24,8 @@ export function foldSurface(events: readonly RawSessionEvent[]): RawSessionEvent
       continue
     }
     if (event.surfaceOp?.op !== 'replace') continue
-    const start = nodes.indexOf(event.surfaceOp.start)
-    const end = nodes.indexOf(event.surfaceOp.end)
+    const start = nodes.indexOf(event.surfaceOp.startSeq)
+    const end = nodes.indexOf(event.surfaceOp.endSeq)
     if (start < 0 || end < start) continue
     nodes.splice(start, end - start + 1, event.seq)
   }

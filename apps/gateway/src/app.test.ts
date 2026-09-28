@@ -58,9 +58,9 @@ afterEach(async () => {
 })
 
 describe('RP Gateway v1', () => {
-  it('serves the actual rc.1 Remote health metadata through the strict public schema', async () => {
+  it('serves the actual rc2 Remote health metadata through the strict public schema', async () => {
     const api = fakeApi()
-    api.health = async () => ({ upstream: 'ready', version: 'unknown', transport: 'remote', compatibility: '0.1.2-rc.1' })
+    api.health = async () => ({ upstream: 'ready', version: 'unknown', transport: 'remote' })
     const app = buildApp({ api })
     apps.push(app)
     const response = await app.inject({ method: 'GET', url: '/api/v1/health' })

@@ -115,7 +115,7 @@ export const productRestoreCommitSchema = z.object({ restoreToken: z.string().mi
 
 export const productStatusSchema = z.object({
   apiVersion: z.literal(PRODUCT_API_VERSION),
-  dshCompatibility: z.literal('0.1.2-rc.1'),
+  dshCompatibility: z.literal('0.1.7-rc.2'),
   storage: z.enum(['ready', 'unavailable']),
   schemaVersion: z.number().int().positive().nullable(),
   projection: z.enum(['current', 'rebuilding', 'unavailable']),

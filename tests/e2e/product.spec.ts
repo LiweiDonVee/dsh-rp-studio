@@ -19,7 +19,7 @@ async function installProductMocks(page: Page) {
     const remote = request.headers().authorization
     if (remote === 'Bearer expired-token-' + 'b'.repeat(40)) return json(route, 401, fail('unauthorized', '配对已过期。'))
     if (remote === `Bearer ${token}` && revoked) return json(route, 401, fail('unauthorized', '移动端认证已撤销。'))
-    if (path === '/api/v1/product/status') return json(route, 200, ok({ apiVersion: 1, dshCompatibility: '0.1.2-rc.1', storage: 'ready', schemaVersion: 1, projection: 'current', pairing: { enabled: true, listener: 'https-lan' } }))
+    if (path === '/api/v1/product/status') return json(route, 200, ok({ apiVersion: 1, dshCompatibility: '0.1.7-rc.2', storage: 'ready', schemaVersion: 1, projection: 'current', pairing: { enabled: true, listener: 'https-lan' } }))
     if (path === '/api/v1/product/pairing') return json(route, 200, ok({ enabled: true, listener: 'https-lan' }))
     if (path === '/api/v1/product/pairing/clients') return json(route, 200, ok([{ clientId: 'client-1', clientName: '测试手机', scopes: ['product:read'], sessionIds: ['session-1'], createdAt: now, expiresAt: '2099-09-08T12:00:00.000Z', revoked: false }]))
     if (path === '/api/v1/product/pairing/codes') {

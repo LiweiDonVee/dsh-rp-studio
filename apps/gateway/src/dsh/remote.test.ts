@@ -5,7 +5,7 @@ function response(value: unknown): Response {
   return new Response(JSON.stringify({ type: 'server-response', rpcId: 'r', result: { ok: true, value } }))
 }
 
-describe('DSH 0.1.2 Remote contract', () => {
+describe('DSH 0.1.7 Remote contract', () => {
   it('uses named Remote arguments and a durable prompt request identity', async () => {
     const requests: Record<string, unknown>[] = []
     const client = createDshClient({ fetchImpl: async (_url, init) => {
@@ -91,7 +91,7 @@ describe('DSH 0.1.2 Remote contract', () => {
     const stop = client.connectStreams(vi.fn())
     try {
       expect((await client.historyAll('s1')).map(entry => entry.event.seq)).toEqual([0, 10, 20])
-      expect(opens).toContainEqual(expect.objectContaining({ endpoint: 'session/follow', payload: { args: { request: { address: { kind: 'session', sessionId: 's1' }, maxMessages: 500 } } } }))
+      expect(opens).toContainEqual(expect.objectContaining({ endpoint: 'session/follow', payload: { args: { request: { address: { kind: 'session', sessionId: 's1' }, maxMessages: 500, assistantStream: true } } } }))
       expect(pages).toEqual([expect.objectContaining({ method: 'session/page', payload: { args: { request: { address: { kind: 'session', sessionId: 's1' }, throughSeq: 20, beforeSeq: 10, maxMessages: 500 } } } })])
     } finally { stop() }
   })

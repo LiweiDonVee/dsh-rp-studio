@@ -196,7 +196,7 @@ export const healthStatusSchema = z.object({
   upstream: z.string().min(1),
   version: z.string().min(1),
   transport: z.literal('remote').optional(),
-  compatibility: z.literal('0.1.2-rc.1').optional(),
+  compatibility: z.literal('0.1.7-rc.2').optional(),
 }).strict()
 
 export const acceptedResponseSchema = z.object({ accepted: z.literal(true) }).strict()

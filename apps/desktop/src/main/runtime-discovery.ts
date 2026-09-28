@@ -102,8 +102,11 @@ export async function validateRuntimeSettings(settings: DesktopSettings, validat
   }
   if (settings.dshHome && !invalid.includes('dshHome')) {
     try {
-      const presets = await readdir(join(settings.dshHome, '.agent-presets'), { withFileTypes: true })
-      if (!presets.some(preset => preset.isDirectory())) invalid.push('dshHome')
+      const profiles = await readdir(join(settings.dshHome, 'profiles'), { withFileTypes: true })
+      const bundles = await Promise.all(profiles.filter(profile => profile.isDirectory()).map(async profile => {
+        try { await access(join(settings.dshHome, 'profiles', profile.name, 'package.json')); return true } catch { return false }
+      }))
+      if (!bundles.some(Boolean)) invalid.push('dshHome')
     } catch { invalid.push('dshHome') }
   }
   if (settings.gatewayEntry && !invalid.includes('gatewayEntry') && !await exists(resolve(settings.gatewayEntry, '..', '..', '..', 'web', 'dist', 'index.html'))) invalid.push('webDist')

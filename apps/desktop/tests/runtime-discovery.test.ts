@@ -39,6 +39,15 @@ describe('runtime discovery', () => {
     expect(result.dshHome).toBe('')
   })
 
+  it('accepts an rc2 profile bundle home without a legacy agent-presets directory', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'desktop-dsh-home-'))
+    directories.push(home)
+    await mkdir(join(home, 'profiles', 'web'), { recursive: true })
+    await writeFile(join(home, 'profiles', 'web', 'package.json'), JSON.stringify({ dsh: { profile: { bundles: ['@deepseek-ai/dsh-base'] } } }))
+    const settings = { ...defaultSettings(), nodeExecutable: 'C:/Node24/node.exe', dshBin: 'C:/runtime/dsh.js', gatewayEntry: 'C:/runtime/gateway.js', dshHome: home, runtimeRoot: 'C:/runtime' }
+    await expect(validateRuntimeSettings(settings, async () => true)).resolves.not.toContain('dshHome')
+  })
+
   it('resolves the CLI from the installed package manifest and honors DSH_ROOT', async () => {
     const repos = await mkdtemp(join(tmpdir(), 'desktop-discovery-'))
     directories.push(repos)

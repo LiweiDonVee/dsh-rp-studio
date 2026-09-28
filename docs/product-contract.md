@@ -1,6 +1,8 @@
 # DSH RP Studio Product API Contract
 
-Status: Gateway contract v1, DSH compatibility pinned to `0.1.2-rc.1`.
+Status: Gateway contract v1, current DSH compatibility target is `0.1.7-rc.2`.
+
+Former rc1 compatibility records are historical and are not active targets. The current target uses authenticated rc2 Remote RPC behavior and does not require private RP card bundles.
 
 The product API is served under `/api/v1/product`. The desktop React client and a paired mobile client use the same DTOs. The main Gateway remains loopback-only. A LAN listener is a separate HTTPS listener, is disabled by default, and exposes only the product API after bearer-token authentication.
 

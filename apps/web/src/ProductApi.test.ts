@@ -4,7 +4,7 @@ import { ProductApi, ProductApiError } from './ProductApi.js'
 const scope = 'session-1'
 const status = {
   apiVersion: 1 as const,
-  dshCompatibility: '0.1.2-rc.1' as const,
+  dshCompatibility: '0.1.7-rc.2' as const,
   storage: 'ready' as const,
   schemaVersion: 1,
   projection: 'current' as const,

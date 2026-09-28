@@ -140,7 +140,7 @@ export class ProductService {
       storage = { storage: 'unavailable', schemaVersion: null, projection: 'unavailable' }
       this.doctor = { code: 'local-data-status-failed', message: '本地数据服务状态检查失败。' }
     }
-    return productStatusSchema.parse({ apiVersion: 1, dshCompatibility: '0.1.2-rc.1', ...storage, pairing: this.pairing.status(), ...(this.doctor ? { doctor: this.doctor } : {}) })
+    return productStatusSchema.parse({ apiVersion: 1, dshCompatibility: '0.1.7-rc.2', ...storage, pairing: this.pairing.status(), ...(this.doctor ? { doctor: this.doctor } : {}) })
   }
 
   async assets(query: ProductPageQuery): Promise<ProductPage<ProductAsset>> {

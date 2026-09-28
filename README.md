@@ -18,11 +18,11 @@ Gateway 只展示同时满足以下条件的可玩预设：用户预设、DSH ro
 
 ## 安装与启动
 
-2026-09 适配后可运行 `pnpm start:stack`：使用旁边 `deepseek-harness-local` 的 DSH 0.1.2-rc.1，启动 3080 Web 与 4317 Studio，并在进程内自动交换认证 token。Prompt Presets 共用 3080 宿主；无需另开 3091。终端会显示私有 DSH 登录链接；关闭启动进程同时停止两个服务。运行前先执行 `pnpm build`。已有服务占用端口时启动器会报错，不会关闭其他进程。`DSH_HOME` 可指定测试目录，`DSH_PORT` / `DSH_RP_PORT` 可调整端口。
+2026-09 适配后可运行 `pnpm start:stack`：使用配置的 DSH 0.1.7-rc.2 Web profile，启动 DSH Web 与 Studio，并在进程内自动交换认证 token。终端会显示私有 DSH 登录链接；关闭启动进程同时停止两个服务。运行前先执行 `pnpm build`。已有服务占用端口时启动器会报错，不会关闭其他进程。`DSH_BIN` 可指定 DSH CLI，`DSH_HOME` 可指定测试目录，`DSH_PORT` / `DSH_RP_PORT` 可调整端口。
 
 环境要求：Node.js 24、pnpm 11，以及运行在 `127.0.0.1:3080` 的 DSH。叙事方法管理还需要带 `dsh-prompt-presets` bundle 的 DSH Web profile 运行在 `127.0.0.1:3091`；该服务不可用时，Studio 仍保留 Agent runtime 与卡片底座，只禁用可选叙事方法面板。
 
-当前适配目标为 **DSH 0.1.2-rc.1**。Gateway 使用 Remote RPC、`remote.mux`、`session/follow` 和 `session/page`；旧版 `ApiProxy` 的点号 RPC 已不再支持。详细接口与版本边界见 [DSH 兼容说明](docs/dsh-compatibility.md)。
+当前适配目标为 **DSH 0.1.7-rc.2**。Gateway 使用 Remote RPC、`remote.mux`、`session/follow` 和 `session/page`；旧版 `ApiProxy` 的点号 RPC 已不再支持。详细接口与版本边界见 [DSH 兼容说明](docs/dsh-compatibility.md)。
 
 DSH Web 的 HTTP API 和 WebSocket 在 loopback 上也需要认证。先启动相应 DSH Web profile，将其启动 URL 中 `token` 的值设为 Gateway 进程环境变量（下面为占位示例）：
 

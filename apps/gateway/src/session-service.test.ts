@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, realpath, writeFile } from 'node:fs/promises'
+import { mkdtemp, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -39,32 +39,13 @@ async function fixture(
   reconnect(): void
 }> {
   const home = await mkdtemp(join(tmpdir(), 'dsh-rp-session-'))
-  const preset = join(home, '.agent-presets', 'zombie-world')
-  await mkdir(preset, { recursive: true })
-  await writeFile(join(preset, 'rp-card.json'), JSON.stringify({
-    schemaVersion: 1,
-    runtime: 'dsh-rp',
-    id: 'zombie-world',
-    title: '世界模拟器',
-    world: '2005 · 洛杉矶末日第七天',
-    protagonist: '伊莱亚斯·诺伦',
-    art: 'zombie-world',
-    accent: 'crimson',
-  }))
-  await writeFile(join(preset, 'prompt-manifest.json'), JSON.stringify({
-    schemaVersion: 1,
-    cardId: 'zombie-world',
-    baseProfiles: ['rp-narrative-base'],
-    cardProfiles: ['zombie-world'],
-    optionalProfiles: ['dreamwhale-v3-agent'],
-  }))
-
   let emit = (_frame: DshStreamFrame): void => {}
   let disconnect = (): void => {}
   let reconnect = (): void => {}
   const dsh: DshClient = {
     hostDescribe: async () => ({ version: 'test' }),
-    listPresets: async () => [{ id: 'zombie-world', trust: 'user' }],
+    listPresets: async () => [{ id: 'zombie-world', isDefault: false, name: '测试 RP', description: 'synthetic fixture' }],
+    readPreset: async agentPreset => ({ agentPreset, content: JSON.stringify({ schemaVersion: 1, runtime: 'dsh-rp', id: agentPreset, title: '测试 RP', world: '测试世界', protagonist: '玩家', art: agentPreset, accent: 'jade', prompt: { coreProfileIds: ['rp-narrative-base', 'zombie-world'], optionalProfileIds: ['dreamwhale-v3-agent'] } }) }),
     listSessions: async () => [{
       sessionId: 'session-1',
       updatedAt: 1,
@@ -162,23 +143,14 @@ describe('SessionService transcript recovery', () => {
     expect(JSON.stringify(detail)).not.toContain('secret-canary')
   })
   it('hides a runtime template from creation while preserving its existing sessions', async () => {
-    const harness = await fixture(async () => [], undefined, undefined, async (dsh, home) => {
-      await mkdir(join(home, '.agent-presets', 'rp-runtime'), { recursive: true })
-      await writeFile(join(home, '.agent-presets', 'rp-runtime', 'rp-card.json'), JSON.stringify({
-        schemaVersion: 1,
-        runtime: 'dsh-rp',
-        id: 'rp-runtime',
-        kind: 'template',
-        title: 'RP Runtime 基础模板',
-        world: null,
-        protagonist: null,
-        art: 'runtime-template',
-        accent: 'graphite',
-      }))
+    const harness = await fixture(async () => [], undefined, undefined, async (dsh) => {
       dsh.listPresets = async () => [
-        { id: 'zombie-world', trust: 'user' },
-        { id: 'rp-runtime', trust: 'user' },
+        { id: 'zombie-world', isDefault: false, name: '测试 RP', description: 'synthetic fixture' },
+        { id: 'rp-runtime', isDefault: false, name: 'RP Runtime 基础模板', description: 'synthetic template' },
       ]
+      dsh.readPreset = async agentPreset => ({ agentPreset, content: JSON.stringify(agentPreset === 'rp-runtime' ? {
+        schemaVersion: 1, runtime: 'dsh-rp', id: agentPreset, kind: 'template', title: 'RP Runtime 基础模板', world: null, protagonist: null, art: 'runtime-template', accent: 'graphite',
+      } : { schemaVersion: 1, runtime: 'dsh-rp', id: agentPreset, title: '测试 RP', world: '测试世界', protagonist: '玩家', art: agentPreset, accent: 'jade' }) })
       dsh.listSessions = async () => [{
         sessionId: 'session-1', updatedAt: 1, running: false, blank: false, agentPreset: 'rp-runtime',
         projections: {
@@ -258,7 +230,7 @@ describe('SessionService transcript recovery', () => {
 
     const cardPath = await realpath(join(harness.home, 'rp-workspaces', 'zombie-world'))
     expect(createWorkspace).toHaveBeenCalledWith(cardPath)
-    expect(renameWorkspace).toHaveBeenCalledWith('workspace-zombie-world', '世界模拟器 [zombie-world]')
+    expect(renameWorkspace).toHaveBeenCalledWith('workspace-zombie-world', '测试 RP [zombie-world]')
     expect(createSession).toHaveBeenCalledWith({ agentPreset: 'zombie-world', workspaceId: 'workspace-zombie-world' })
   })
 

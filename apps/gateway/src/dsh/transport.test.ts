@@ -6,6 +6,28 @@ import { createDshClient, type DshStreamFrame } from './client.js'
 import { mapDshError } from './wire.js'
 
 describe('authenticated HTTP and WebSocket transport', () => {
+  it('accepts the rc2 same-root relative redirect during Web authentication', async () => {
+    const server = createServer((request, response) => {
+      if (request.url === '/?token=rc2-token') {
+        response.writeHead(303, { location: './', 'set-cookie': 'dsh_session=rc2-cookie; Path=/; HttpOnly' }).end()
+        return
+      }
+      if (request.headers.cookie !== 'dsh_session=rc2-cookie') { response.writeHead(401).end(); return }
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify({ type: 'server-response', rpcId: 'rc2', result: { ok: true, value: { presets: [] } } }))
+    })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('test server address unavailable')
+    const client = createDshClient({ baseUrl: `http://127.0.0.1:${address.port}/?token=rc2-token` })
+    try {
+      await expect(client.listPresets()).resolves.toEqual([])
+    } finally {
+      await new Promise<void>(resolve => server.close(() => resolve()))
+    }
+  })
+
   it('exchanges a server-only cookie, reads workspace baselines, and follows live messages', async () => {
     const requests: Array<{ path: string; cookie?: string }> = []
     const server = createServer((request, response) => {
