@@ -146,7 +146,7 @@ function CardArtwork({ card, compact = false }: { card: Card; compact?: boolean 
       {card.kind === 'template'
         ? <Boxes aria-label="运行时基础模板" size={compact ? 26 : 42} strokeWidth={1.5} />
         : <img src={`/cards/${card.art}.webp`} alt={`${card.title}世界档案`} />}
-      <span aria-hidden="true" className="art-index">{card.id === 'zombie-world' ? 'ZW' : 'RP'}</span>
+      <span aria-hidden="true" className="art-index">{card.id === 'sample-world' ? 'ZW' : 'RP'}</span>
     </div>
   )
 }

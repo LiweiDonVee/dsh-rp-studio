@@ -14,6 +14,7 @@ export type SupervisorPhase = 'stopped' | 'starting' | 'running' | 'stopping'
 export interface SupervisorConfig {
     nodeExecutable: string; dshBin: string; gatewayEntry: string; dshHome: string;
     dshPort: number; studioPort: number; cwd: string;
+    runtimeRoot?: string;
     startupTimeoutMs?: number; logLimitCharacters?: number;
 }
 export interface StartResult { studioUrl: string; dshUrl: string; launchUrl: string }
@@ -63,6 +64,11 @@ export class SupervisorError extends Error {
 }
 const HOST = '127.0.0.1';
 const LOCK_NAME = '.dsh-rp-supervisor.lock';
+const REQUIRED_DSH_VERSION = '0.2.0-rc.2';
+function dshProcess(config: SupervisorConfig, args: string[]): { executable: string; args: string[] } {
+    if (/\.(?:cmd|bat|exe)$/iu.test(config.dshBin)) return { executable: config.dshBin, args };
+    return { executable: config.nodeExecutable, args: [config.dshBin, ...args] };
+}
 function errorText(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
@@ -157,13 +163,20 @@ export class Supervisor {
         this.config = config;
         this.dependencies = {
             reservePort,
-            spawn: (spec: ServiceSpec) => spawn(spec.executable, spec.args, {
-                cwd: spec.cwd,
-                env: spec.env,
-                windowsHide: true,
-                detached: process.platform !== 'win32',
-                stdio: ['ignore', 'pipe', 'pipe'],
-            }),
+            spawn: (spec: ServiceSpec) => {
+                const batch = process.platform === 'win32' && /\.(?:cmd|bat)$/iu.test(spec.executable);
+                const command = batch
+                    ? `""${spec.executable}" ${spec.args.join(' ')}"`
+                    : spec.executable;
+                return spawn(batch ? process.env.ComSpec || 'cmd.exe' : command, batch ? ['/d', '/s', '/c', command] : spec.args, {
+                    cwd: spec.cwd,
+                    env: spec.env,
+                    windowsVerbatimArguments: batch,
+                    windowsHide: true,
+                    detached: process.platform !== 'win32',
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                });
+            },
             fetch: (input: string, init?: RequestInit) => fetch(input, init),
             killTree: killOwnedTree,
             ...dependencies,
@@ -295,6 +308,9 @@ export class Supervisor {
     async startInternal(generation: number): Promise<StartResult> {
         this.validateConfig();
         await this.validatePaths();
+        const dshVersion = await this.readDshVersion();
+        if (dshVersion && dshVersion !== REQUIRED_DSH_VERSION)
+            throw new SupervisorError('invalid-config', `DSH ${REQUIRED_DSH_VERSION} is required; found ${dshVersion}.`);
         this.assertCurrent(generation);
         await this.acquireLock();
         this.assertCurrent(generation);
@@ -315,7 +331,6 @@ export class Supervisor {
         }
         this.assertCurrent(generation);
         const dsh = this.spawnOwned('dsh', [
-            this.config.dshBin,
             '--profile', 'web',
             '--host', HOST,
             '--port', String(dshPort),
@@ -426,10 +441,13 @@ export class Supervisor {
     spawnOwned(kind: 'dsh' | 'studio', args: string[], env: NodeJS.ProcessEnv, generation: number): ManagedChildProcess {
         let child: ManagedChildProcess;
         try {
+            const command = kind === 'dsh'
+                ? dshProcess(this.config, args)
+                : { executable: this.config.nodeExecutable, args };
             child = this.dependencies.spawn({
                 service: kind,
-                executable: this.config.nodeExecutable,
-                args,
+                executable: command.executable,
+                args: command.args,
                 cwd: this.config.cwd,
                 env,
                 port: Number(kind === 'dsh' ? args[args.indexOf('--port') + 1] : env.DSH_RP_PORT),
@@ -638,6 +656,10 @@ export class Supervisor {
     }
     async readDshVersion(): Promise<string | undefined> {
         try {
+            if (this.config.runtimeRoot) {
+                const runtime = JSON.parse(await readFile(join(this.config.runtimeRoot, 'primary-runtime', 'runtime.json'), 'utf8')) as { desktopVersion?: unknown };
+                if (typeof runtime.desktopVersion === 'string') return runtime.desktopVersion;
+            }
             const manifestPath = join(dirname(dirname(this.config.dshBin)), 'package.json');
             const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
             return manifest.name === '@deepseek-ai/dsh' && typeof manifest.version === 'string'

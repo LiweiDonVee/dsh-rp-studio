@@ -129,9 +129,10 @@ describe('Supervisor lifecycle', () => {
 
     expect(started.launchUrl).toBe('http://127.0.0.1:41000/?token=fake-memory-token')
     expect(specs).toHaveLength(2)
-    expect(specs[0]).toMatchObject({ service: 'dsh', port: 41_000 })
+    expect(specs[0]).toMatchObject({ service: 'dsh', executable: process.execPath, args: [dshBin, '--profile', 'web', '--host', '127.0.0.1', '--port', '41000', '--no-open'], port: 41_000 })
     expect(specs[1]).toMatchObject({
       service: 'studio',
+      executable: process.execPath,
       port: 41_001,
       env: {
         DSH_BASE_URL: 'http://127.0.0.1:41000',

@@ -109,7 +109,7 @@ Add a card fixture with `prompt-manifest.json` containing:
   "schemaVersion": 1,
   "cardId": "rp-runtime",
   "baseProfiles": ["rp-narrative-base"],
-  "cardProfiles": ["hp-potion-master"],
+  "cardProfiles": ["sample-potions"],
   "optionalProfiles": ["dreamwhale-v3-agent"]
 }
 ```
@@ -156,9 +156,9 @@ Use a fake prompt client and a card fixture whose optional profile contains entr
 
 ```ts
 expect(detail.prompt.enabledEntryIds).toEqual([])
-expect(detail.prompt.coreProfileIds).toEqual(['rp-narrative-base', 'hp-potion-master'])
+expect(detail.prompt.coreProfileIds).toEqual(['rp-narrative-base', 'sample-potions'])
 await service.applyPromptSelection('session-1', { enabledEntryIds: ['style-a'], expectedRevision: 4 })
-expect(prompt.setOverlay).toHaveBeenCalledWith('session-1', ['rp-narrative-base', 'hp-potion-master', 'dreamwhale-v3-agent'], ['style-a'], 4)
+expect(prompt.setOverlay).toHaveBeenCalledWith('session-1', ['rp-narrative-base', 'sample-potions', 'dreamwhale-v3-agent'], ['style-a'], 4)
 await service.resetPromptSelection('session-1', 5)
 expect(prompt.resetOverlay).toHaveBeenCalledWith('session-1', 5)
 ```

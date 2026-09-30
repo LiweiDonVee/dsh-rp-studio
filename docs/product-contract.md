@@ -1,6 +1,6 @@
 # DSH RP Studio Product API Contract
 
-Status: Gateway contract v1, current DSH compatibility target is `0.1.7-rc.2`.
+Status: Gateway contract v1, current DSH compatibility target is `0.2.0-rc.2`.
 
 Former rc1 compatibility records are historical and are not active targets. The current target uses authenticated rc2 Remote RPC behavior and does not require private RP card bundles.
 

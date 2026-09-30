@@ -19,7 +19,7 @@ async function installProductMocks(page: Page) {
     const remote = request.headers().authorization
     if (remote === 'Bearer expired-token-' + 'b'.repeat(40)) return json(route, 401, fail('unauthorized', '配对已过期。'))
     if (remote === `Bearer ${token}` && revoked) return json(route, 401, fail('unauthorized', '移动端认证已撤销。'))
-    if (path === '/api/v1/product/status') return json(route, 200, ok({ apiVersion: 1, dshCompatibility: '0.1.7-rc.2', storage: 'ready', schemaVersion: 1, projection: 'current', pairing: { enabled: true, listener: 'https-lan' } }))
+    if (path === '/api/v1/product/status') return json(route, 200, ok({ apiVersion: 1, dshCompatibility: '0.2.0-rc.2', storage: 'ready', schemaVersion: 1, projection: 'current', pairing: { enabled: true, listener: 'https-lan' } }))
     if (path === '/api/v1/product/pairing') return json(route, 200, ok({ enabled: true, listener: 'https-lan' }))
     if (path === '/api/v1/product/pairing/clients') return json(route, 200, ok([{ clientId: 'client-1', clientName: '测试手机', scopes: ['product:read'], sessionIds: ['session-1'], createdAt: now, expiresAt: '2099-09-08T12:00:00.000Z', revoked: false }]))
     if (path === '/api/v1/product/pairing/codes') {
@@ -33,7 +33,7 @@ async function installProductMocks(page: Page) {
     }
     if (path === '/api/v1/product/bootstrap') {
       if (remote !== `Bearer ${token}`) return json(route, 401, fail('unauthorized', '需要移动端认证。'))
-      return json(route, 200, ok({ clientId: 'client-1', clientName: '测试手机', scopes: ['product:read'], expiresAt: '2099-09-08T12:00:00.000Z', sessions: [{ sessionId: 'session-1', cardId: 'zombie-world', title: 'D 区封锁线' }] }))
+      return json(route, 200, ok({ clientId: 'client-1', clientName: '测试手机', scopes: ['product:read'], expiresAt: '2099-09-08T12:00:00.000Z', sessions: [{ sessionId: 'session-1', cardId: 'sample-world', title: 'D 区封锁线' }] }))
     }
     if (path.endsWith('/notifications/stream')) {
       if (remote !== `Bearer ${token}`) return json(route, 401, fail('unauthorized', '需要移动端认证。'))
@@ -56,10 +56,10 @@ async function installProductMocks(page: Page) {
     if (path === '/api/v1/product/ledger') return json(route, 200, ok({ items: [{ id: 'ledger-1', commandId: 'command-1', amountMinor: -1250, currency: 'USD', description: '旅店住宿', occurredAt: now, createdAt: now }], nextCursor: null }))
     if (path === '/api/v1/product/knowledge') return json(route, 200, ok({ items: [{ id: 'user-1', text: '玩家确认的安全屋', source: 'user', createdAt: now, updatedAt: now }, { id: 'rp-1', text: '走廊里有脚印', source: 'rp-projection', provenance: { branchId: 'branch-1', sourceSeq: 4 }, createdAt: now, updatedAt: now }], nextCursor: null }))
     if (path === '/api/v1/product/memory') return json(route, 200, ok({ items: [{ id: 'memory-1', sessionId: 'session-1', branchId: 'branch-1', sourceSeq: 4, text: '在 D 区发现陌生脚印', emotion: '警觉' }], nextCursor: null }))
-    if (path === '/api/v1/product/relationships') return json(route, 200, ok({ items: [{ id: 'relation-1', sessionId: 'session-1', branchId: 'branch-1', sourceSeq: 4, subject: '伊莱亚斯', object: '守卫', relation: '互相戒备' }], nextCursor: null }))
-    if (path === '/api/v1/product/locations') return json(route, 200, ok({ items: [{ id: 'location-1', sessionId: 'session-1', branchId: 'branch-1', sourceSeq: 4, world: '末日洛杉矶', region: 'MDC D 区', scene: '封锁走廊' }], nextCursor: null }))
+    if (path === '/api/v1/product/relationships') return json(route, 200, ok({ items: [{ id: 'relation-1', sessionId: 'session-1', branchId: 'branch-1', sourceSeq: 4, subject: '测试玩家', object: '守卫', relation: '互相戒备' }], nextCursor: null }))
+    if (path === '/api/v1/product/locations') return json(route, 200, ok({ items: [{ id: 'location-1', sessionId: 'session-1', branchId: 'branch-1', sourceSeq: 4, world: '演示世界', region: '演示区域', scene: '走廊' }], nextCursor: null }))
     if (path === '/api/v1/product/notifications') return json(route, 200, ok({ items: [], cursor: 'n0', resetRequired: false }))
-    if (path === '/api/v1/product/backups' && request.method() === 'GET') return json(route, 200, ok({ items: [{ id: 'backup-1', schemaVersion: 1, scope: { workspaceId: 'workspace-1', sessionId: 'session-1', cardId: 'zombie-world', branchId: 'branch-1' }, createdAt: now, state: 'ready', manifestHash: hash, includes: { authoritativeAppData: true, rpProjections: true, dshSessions: false } }], nextCursor: null }))
+    if (path === '/api/v1/product/backups' && request.method() === 'GET') return json(route, 200, ok({ items: [{ id: 'backup-1', schemaVersion: 1, scope: { workspaceId: 'workspace-1', sessionId: 'session-1', cardId: 'sample-world', branchId: 'branch-1' }, createdAt: now, state: 'ready', manifestHash: hash, includes: { authoritativeAppData: true, rpProjections: true, dshSessions: false } }], nextCursor: null }))
     if (path.endsWith('/stage-restore')) { staged.add('backup-1'); return json(route, 200, ok({ backupId: 'backup-1', restoreToken: 'restore-token-long-enough', expiresAt: '2099-09-08T12:05:00.000Z', manifestHash: hash })) }
     if (path.endsWith('/commit-restore')) { if (!staged.has('backup-1')) return json(route, 409, fail('conflict', '必须先验证备份。')); return json(route, 200, ok({ restored: true, rollbackBackupId: 'rollback-1' })) }
     return json(route, 404, fail('not-found', 'mock route missing'))

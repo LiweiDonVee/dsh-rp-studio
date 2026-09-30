@@ -45,7 +45,7 @@
 - [ ] Replace positional rollback history with lineage checkpoints while retaining legacy history migration.
 - [ ] Add scoped `/rp-rollback` and `/rp-autoplay` commands. Each command uses `agent.runMaintenance`, appends a control user message plus assistant tool call, calls `ctx.tools.execute`, appends the paired result with `meta`, and closes the synthetic step/turn in `finally` blocks.
 - [ ] Run reducer, mount, projection, resume, and control transaction tests; expect all pass.
-- [ ] Mirror the tested runtime into installed `rp-runtime` and `zombie-world`, then run the real loader mountcheck.
+- [ ] Mirror the tested runtime into installed `rp-runtime` and `sample-world`, then run the real loader mountcheck.
 - [ ] Commit source artifacts when a Git owner exists; otherwise record hashes in the Studio install manifest.
 
 ### Task 3: Player-Safe Domain Layer

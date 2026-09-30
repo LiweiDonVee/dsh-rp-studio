@@ -12,7 +12,7 @@
     "test": "node node_modules/vitest/vitest.mjs run --config vitest.config.ts --configLoader runner",
     "dev": "npm run build && node node_modules/electron/cli.js .",
     "portable": "npm run build && node node_modules/electron-builder/out/cli/cli.js --win portable",
-    "package": "npm run build && node node_modules/electron-builder/out/cli/cli.js --win portable zip",
+    "package": "pnpm --filter @dsh-rp/web build && npm run build && node node_modules/electron-builder/out/cli/cli.js --win portable zip && node scripts/verify-package.mjs",
     "smoke": "node tests/electron-smoke.mjs"
   },
   "dependencies": {
@@ -41,6 +41,10 @@
     "files": [
       "dist/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      { "from": "dist/gateway", "to": "studio/gateway" },
+      { "from": "../web/dist", "to": "studio/web/dist" }
     ],
     "win": {
       "target": [

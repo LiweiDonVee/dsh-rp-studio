@@ -13,6 +13,7 @@ async function run(script, args) {
 await run(join(root, 'node_modules', 'typescript', 'bin', 'tsc'), ['-p', 'tsconfig.json', '--noEmit'])
 await run(join(root, 'node_modules', 'esbuild', 'bin', 'esbuild'), ['src/main/main.ts', '--bundle', '--platform=node', '--format=esm', '--external:electron', '--external:@dsh-rp/supervisor', '--external:zod', '--outfile=dist/main/main.js'])
 await run(join(root, 'node_modules', 'esbuild', 'bin', 'esbuild'), ['src/preload/preload.ts', '--bundle', '--platform=node', '--format=cjs', '--external:electron', '--outfile=dist/preload/preload.cjs'])
+await run(join(root, 'node_modules', 'esbuild', 'bin', 'esbuild'), ['../gateway/src/server.ts', '--bundle', '--platform=node', '--format=esm', '--target=node24', '--conditions=dsh-rp-production', '--banner:js=import { createRequire } from "node:module"; const require = createRequire(import.meta.url);', '--outfile=dist/gateway/dist/server.js'])
 await mkdir(join(root, 'dist', 'renderer'), { recursive: true })
 await mkdir(join(root, 'dist', 'assets'), { recursive: true })
 await Promise.all(['index.html', 'renderer.js'].map(file => copyFile(join(root, 'src', 'renderer', file), join(root, 'dist', 'renderer', file))))

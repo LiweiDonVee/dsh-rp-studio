@@ -4,7 +4,7 @@ Date: 2026-09-28 (Asia/Shanghai)
 
 ## 2026-09-28 compatibility revision
 
-The original matrix below records the August deployment. Its old dual-stream/rc.7 runtime and real-smoke evidence are historical, as is the former rc1 compatibility record. The current Gateway target is DSH **0.1.7-rc.2** Remote RPC with one authenticated `remote.mux` carrier, `session/follow` snapshots, fixed-cursor `session/page` history, `session/control` projections, and `$events` lifecycle notifications. Current session ownership uses the `agentPreset` projection. See [the version and transport audit](dsh-compatibility.md) for exact rc2 wire contracts, token setup, SQLite export guidance, and the separate 0.1.3-alpha.1 Session-v2/SessionHandle boundary.
+The original matrix below records the August deployment. Its old dual-stream/rc.7 runtime and real-smoke evidence are historical, as is the former rc1 compatibility record. The current Gateway target is DSH **0.2.0-rc.2** Remote RPC with one authenticated `remote.mux` carrier, `session/follow` snapshots, fixed-cursor `session/page` history, `session/control` projections, and `$events` lifecycle notifications. Current session ownership uses the `agentPreset` projection. See [the version and transport audit](dsh-compatibility.md) for exact rc2 wire contracts, token setup, SQLite export guidance, and the separate 0.1.3-alpha.1 Session-v2/SessionHandle boundary.
 
 New regression evidence covers authenticated real loopback HTTP/WebSocket transport, named Remote arguments, prompt request identities, private packed-row exclusion, concurrent history loads, snapshot replacement, namespaced RemoteError mapping, agent/team-message exclusion, and refusal to rewrite modern log headers. No real user Session files were migrated or edited by this upgrade.
 
@@ -37,7 +37,7 @@ The DSH-backed frontend split is viable and implemented as a local production ap
 
 ## Runtime Compatibility
 
-The current compatibility target is DSH `0.1.7-rc.2` Remote RPC with authenticated transport, public card discovery, session snapshots, fixed-cursor history, projections, and lifecycle notifications. Private RP plugin bundles are optional test fixtures and are not part of the default product or compatibility claim.
+The current compatibility target is DSH `0.2.0-rc.2` Remote RPC with authenticated transport, public card discovery, session snapshots, fixed-cursor history, projections, and lifecycle notifications. Private RP plugin bundles are optional test fixtures and are not part of the default product or compatibility claim.
 
 The former rc1 and rc.7 runtime evidence is historical. The residue scan found no universal `update_state`, `patch_state`, or JSON Patch gameplay surface. The only ST-style tokens are intentional `{{char}}` and `{{user}}` Tavern display macros supported by the selected renderer. Existing source plans use the established `world-data/<card>/runtime-plan-dsh.json` name; they are runtime source documentation, not part of the Studio's public contract.
 

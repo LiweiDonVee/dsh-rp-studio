@@ -44,14 +44,14 @@ async function fixture(
   let reconnect = (): void => {}
   const dsh: DshClient = {
     hostDescribe: async () => ({ version: 'test' }),
-    listPresets: async () => [{ id: 'zombie-world', isDefault: false, name: '测试 RP', description: 'synthetic fixture' }],
-    readPreset: async agentPreset => ({ agentPreset, content: JSON.stringify({ schemaVersion: 1, runtime: 'dsh-rp', id: agentPreset, title: '测试 RP', world: '测试世界', protagonist: '玩家', art: agentPreset, accent: 'jade', prompt: { coreProfileIds: ['rp-narrative-base', 'zombie-world'], optionalProfileIds: ['dreamwhale-v3-agent'] } }) }),
+    listPresets: async () => [{ id: 'sample-world', isDefault: false, name: '测试 RP', description: 'synthetic fixture' }],
+    readPreset: async agentPreset => ({ agentPreset, content: JSON.stringify({ schemaVersion: 1, runtime: 'dsh-rp', id: agentPreset, title: '测试 RP', world: '测试世界', protagonist: '玩家', art: agentPreset, accent: 'jade', prompt: { coreProfileIds: ['rp-narrative-base', 'sample-world'], optionalProfileIds: ['dreamwhale-v3-agent'] } }) }),
     listSessions: async () => [{
       sessionId: 'session-1',
       updatedAt: 1,
       running: false,
       blank: false,
-      agentPreset: 'zombie-world',
+      agentPreset: 'sample-world',
       projections: {
         asOfSeq: 1,
         values: { 'rp-state': { game: { started: true, statusLines: [] }, meta: { checkpoints: [] } } },
@@ -60,14 +60,14 @@ async function fixture(
     listWorkspaces: async () => ({ items: [], archivedSessionIds: [] }),
     createWorkspace: async path => ({
       workspace: {
-        workspaceId: 'workspace-zombie-world', path, title: 'zombie-world', sessionIds: [],
+        workspaceId: 'workspace-sample-world', path, title: 'sample-world', sessionIds: [],
         createdAt: '2026-08-19T00:00:00.000Z', updatedAt: '2026-08-19T00:00:00.000Z',
       },
       created: true,
     }),
     renameWorkspace: async (workspaceId, title) => ({
       workspace: {
-        workspaceId, path: join(home, 'rp-workspaces', 'zombie-world'), title, sessionIds: [],
+        workspaceId, path: join(home, 'rp-workspaces', 'sample-world'), title, sessionIds: [],
         createdAt: '2026-08-19T00:00:00.000Z', updatedAt: '2026-08-19T00:00:00.000Z',
       },
     }),
@@ -145,7 +145,7 @@ describe('SessionService transcript recovery', () => {
   it('hides a runtime template from creation while preserving its existing sessions', async () => {
     const harness = await fixture(async () => [], undefined, undefined, async (dsh) => {
       dsh.listPresets = async () => [
-        { id: 'zombie-world', isDefault: false, name: '测试 RP', description: 'synthetic fixture' },
+        { id: 'sample-world', isDefault: false, name: '测试 RP', description: 'synthetic fixture' },
         { id: 'rp-runtime', isDefault: false, name: 'RP Runtime 基础模板', description: 'synthetic template' },
       ]
       dsh.readPreset = async agentPreset => ({ agentPreset, content: JSON.stringify(agentPreset === 'rp-runtime' ? {
@@ -161,7 +161,7 @@ describe('SessionService transcript recovery', () => {
     })
     services.push(harness.service)
 
-    expect(await harness.service.cards()).toMatchObject([{ id: 'zombie-world' }])
+    expect(await harness.service.cards()).toMatchObject([{ id: 'sample-world' }])
     expect(await harness.service.sessions()).toMatchObject([{
       id: 'session-1',
       cardId: 'rp-runtime',
@@ -176,17 +176,17 @@ describe('SessionService transcript recovery', () => {
   it('adopts migrated card sessions into their native DSH workspace on startup', async () => {
     const createSession = vi.fn<DshClient['createSession']>(async payload => ({ sessionId: payload.sessionId ?? 'new' }))
     const harness = await fixture(async () => [], undefined, undefined, (dsh, home) => {
-      const cardPath = join(home, 'rp-workspaces', 'zombie-world')
+      const cardPath = join(home, 'rp-workspaces', 'sample-world')
       dsh.listSessions = async () => [{
         sessionId: 'session-migrated', updatedAt: 1, running: false, blank: false,
-        cwd: cardPath, agentPreset: 'zombie-world',
+        cwd: cardPath, agentPreset: 'sample-world',
       }]
       dsh.createSession = createSession
     })
     services.push(harness.service)
 
     expect(createSession).toHaveBeenCalledWith({
-      sessionId: 'session-migrated', agentPreset: 'zombie-world', workspaceId: 'workspace-zombie-world',
+      sessionId: 'session-migrated', agentPreset: 'sample-world', workspaceId: 'workspace-sample-world',
     })
   })
 
@@ -195,7 +195,7 @@ describe('SessionService transcript recovery', () => {
     const harness = await fixture(async () => [], undefined, undefined, (dsh) => {
       dsh.listSessions = async () => [{
         sessionId: 'session-legacy', updatedAt: 1, running: false, blank: false,
-        cwd: 'E:\\WorkSpace\\legacy-rp', agentPreset: 'zombie-world',
+        cwd: 'E:\\WorkSpace\\legacy-rp', agentPreset: 'sample-world',
       }]
       dsh.createSession = createSession
     })
@@ -207,7 +207,7 @@ describe('SessionService transcript recovery', () => {
   it('creates sessions inside the card-specific native DSH workspace', async () => {
     const createWorkspace = vi.fn<DshClient['createWorkspace']>(async path => ({
       workspace: {
-        workspaceId: 'workspace-zombie-world', path, title: 'zombie-world', sessionIds: [],
+        workspaceId: 'workspace-sample-world', path, title: 'sample-world', sessionIds: [],
         createdAt: '2026-08-19T00:00:00.000Z', updatedAt: '2026-08-19T00:00:00.000Z',
       },
       created: true,
@@ -226,12 +226,12 @@ describe('SessionService transcript recovery', () => {
     })
     services.push(harness.service)
 
-    await harness.service.create('zombie-world')
+    await harness.service.create('sample-world')
 
-    const cardPath = await realpath(join(harness.home, 'rp-workspaces', 'zombie-world'))
+    const cardPath = await realpath(join(harness.home, 'rp-workspaces', 'sample-world'))
     expect(createWorkspace).toHaveBeenCalledWith(cardPath)
-    expect(renameWorkspace).toHaveBeenCalledWith('workspace-zombie-world', '测试 RP [zombie-world]')
-    expect(createSession).toHaveBeenCalledWith({ agentPreset: 'zombie-world', workspaceId: 'workspace-zombie-world' })
+    expect(renameWorkspace).toHaveBeenCalledWith('workspace-sample-world', '测试 RP [sample-world]')
+    expect(createSession).toHaveBeenCalledWith({ agentPreset: 'sample-world', workspaceId: 'workspace-sample-world' })
   })
 
   it('excludes globally archived DSH sessions from Studio listings', async () => {
@@ -239,11 +239,11 @@ describe('SessionService transcript recovery', () => {
       dsh.listSessions = async () => [
         {
           sessionId: 'session-active', updatedAt: 2, running: false, blank: false,
-          agentPreset: 'zombie-world',
+          agentPreset: 'sample-world',
         },
         {
           sessionId: 'session-archived', updatedAt: 1, running: false, blank: true,
-          agentPreset: 'zombie-world',
+          agentPreset: 'sample-world',
         },
       ]
       dsh.listWorkspaces = async () => ({ items: [], archivedSessionIds: ['session-archived'] })
@@ -314,7 +314,7 @@ describe('SessionService transcript recovery', () => {
     let includeProjection = true
     const harness = await fixture(async () => [], undefined, undefined, (dsh) => {
       dsh.listSessions = async () => [{
-        sessionId: 'session-1', updatedAt: 1, running: false, blank: true, agentPreset: 'zombie-world',
+        sessionId: 'session-1', updatedAt: 1, running: false, blank: true, agentPreset: 'sample-world',
         projections: {
           asOfSeq: includeProjection ? 1 : 2,
           values: includeProjection
@@ -322,7 +322,7 @@ describe('SessionService transcript recovery', () => {
                 'rp-state': {
                   game: {
                     started: false,
-                    protagonist: { name: '伊莱亚斯·诺伦', attributes: {} },
+                    protagonist: { name: '测试玩家', attributes: {} },
                     statusLines: ['陈旧世界状态'],
                   },
                   meta: { checkpoints: [] },
@@ -335,7 +335,7 @@ describe('SessionService transcript recovery', () => {
     services.push(harness.service)
 
     expect((await harness.service.session('session-1')).state).toMatchObject({
-      protagonist: { name: '伊莱亚斯·诺伦' },
+      protagonist: { name: '测试玩家' },
       statusLines: ['陈旧世界状态'],
     })
 
@@ -388,7 +388,7 @@ describe('SessionService product projection source', () => {
       dsh.listWorkspaces = async () => ({ items: [{ workspaceId: 'workspace-real', path: 'E:\\rp', title: 'RP', sessionIds: ['session-1'], createdAt: '2026-09-08T00:00:00.000Z', updatedAt: '2026-09-08T00:00:00.000Z' }], archivedSessionIds: [] })
     })
     services.push(harness.service)
-    expect(await harness.service.getProductScope('session-1')).toEqual({ workspaceId: 'workspace-real', cardId: 'zombie-world', sessionId: 'session-1', branchId: 'session-1' })
+    expect(await harness.service.getProductScope('session-1')).toEqual({ workspaceId: 'workspace-real', cardId: 'sample-world', sessionId: 'session-1', branchId: 'session-1' })
     expect((await harness.service.productSnapshots())[0]?.sourceSeq).toBe(1)
     const events: import('./app.js').ProductSourceEvent[] = []
     harness.service.subscribeProduct(event => events.push(event))
@@ -447,7 +447,7 @@ describe('SessionService prompt settings', () => {
     expect(settings).toMatchObject({
       available: true,
       revision: 4,
-      coreProfileIds: ['rp-narrative-base', 'zombie-world'],
+      coreProfileIds: ['rp-narrative-base', 'sample-world'],
       enabledEntryIds: [],
       appliesFromNextTurn: false,
     })
@@ -456,7 +456,7 @@ describe('SessionService prompt settings', () => {
     const applied = await harness.service.applyPromptSettings('session-1', { enabledEntryIds: ['style-a', 'slow'], expectedRevision: 4 })
     expect(prompts.setOverlay).toHaveBeenCalledWith(
       'session-1',
-      ['rp-narrative-base', 'zombie-world', 'dreamwhale-v3-agent'],
+      ['rp-narrative-base', 'sample-world', 'dreamwhale-v3-agent'],
       ['style-a', 'slow'],
       4,
     )

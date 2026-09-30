@@ -25,6 +25,7 @@ describe('Supervisor adapter', () => {
       dshPort: 0,
       studioPort: 0,
       cwd: 'C:/运行时',
+      runtimeRoot: 'C:/运行时',
       startupTimeoutMs: 30_000,
     })
   })
@@ -43,7 +44,7 @@ describe('Supervisor adapter', () => {
     }
     const adapter = createSupervisorAdapter(supervisor)
 
-    await expect(adapter.start()).resolves.toEqual({ studioUrl: 'http://127.0.0.1:4567' })
+    await expect(adapter.start()).resolves.toEqual({ studioUrl: 'http://127.0.0.1:4567', dshUrl: 'http://127.0.0.1:4568' })
     await expect(adapter.status()).resolves.toEqual({ state: 'running', studioUrl: 'http://127.0.0.1:4567', processes: { dsh: 42 } })
     await expect(adapter.doctor()).resolves.toEqual({ ok: true, diagnostics: [] })
     await adapter.stop()

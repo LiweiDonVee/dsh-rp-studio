@@ -17,8 +17,7 @@ export interface LocalDataLoadOptions {
 }
 
 async function importLocalData(): Promise<LocalDataModule> {
-  const packageName = '@dsh-rp/local-data'
-  return import(packageName) as Promise<LocalDataModule>
+  return import('@dsh-rp/local-data') as Promise<LocalDataModule>
 }
 
 export async function loadDefaultProductStore(options: LocalDataLoadOptions): Promise<ProductStoreLoadResult> {

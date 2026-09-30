@@ -7,7 +7,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawn } from 'node:child_process'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const dshHome = resolve(process.env.DSH_HOME ?? join(process.env.USERPROFILE ?? root, '.dsh-rp'))
+const officialRuntimeRoot = resolve(process.env.DSH_RUNTIME_ROOT ?? join(process.env.LOCALAPPDATA ?? root, 'Programs', 'DeepSeek Harness', 'resources', 'runtime'))
+const dshHome = resolve(process.env.DSH_HOME ?? join(root, '.runtime', 'dsh-home'))
 const statePath = join(dshHome, '.dsh-rp-control.json')
 const socketName = `dsh-rp-studio-${createHash('sha256').update(dshHome).digest('hex').slice(0, 24)}`
 const socketPath = process.platform === 'win32' ? ['\\\\', '.', '\\pipe\\', socketName].join('') : join(dshHome, '.dsh-rp-control.sock')
@@ -27,17 +28,19 @@ function parsePort(value, fallback) {
 }
 
 function supervisorConfig() {
-  const dshBin = process.env.DSH_BIN ?? fileURLToPath(new URL('../../deepseek-harness-local/node_modules/@deepseek-ai/dsh/lib/bin.js', import.meta.url))
+  const dshBin = process.env.DSH_BIN ?? join(officialRuntimeRoot, 'cli', 'bin', process.platform === 'win32' ? 'dsh.cmd' : 'dsh')
+  const nodeExecutable = process.env.DSH_NODE_EXECUTABLE ?? join(officialRuntimeRoot, 'primary-runtime', 'dependencies', 'node', 'bin', process.platform === 'win32' ? 'node.exe' : 'node')
   const gatewayEntry = process.env.DSH_RP_GATEWAY_ENTRY ?? join(root, 'apps', 'gateway', 'dist', 'server.js')
-  if (!existsSync(dshBin) || !existsSync(gatewayEntry)) throw new Error('Required DSH or Gateway runtime path is missing; run pnpm build and configure DSH_BIN when needed')
+  if (!existsSync(dshBin) || !existsSync(nodeExecutable) || !existsSync(gatewayEntry)) throw new Error('Required official DSH 0.2.0-rc.2 runtime or Gateway path is missing; run pnpm build and configure DSH_RUNTIME_ROOT when needed')
   return {
-    nodeExecutable: process.execPath,
+    nodeExecutable,
     dshBin,
     gatewayEntry,
     dshHome,
     dshPort: parsePort(process.env.DSH_PORT, 3080),
     studioPort: parsePort(process.env.DSH_RP_PORT, 4317),
     cwd: root,
+    runtimeRoot: officialRuntimeRoot,
     startupTimeoutMs: parsePort(process.env.DSH_RP_STARTUP_TIMEOUT_MS, 30_000),
   }
 }

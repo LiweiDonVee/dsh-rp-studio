@@ -4,8 +4,8 @@ import { toProductProjection } from './product-projection.js'
 import { projectPublicState } from '@dsh-rp/domain'
 
 const detail = {
-  session: { id: 'session-7', cardId: 'zombie-world', title: '档案', updatedAt: 1, running: false, blank: false },
-  card: { id: 'zombie-world', title: '世界', description: '', world: '虚构世界', protagonist: '玩家', art: 'zombie-world', accent: 'crimson' },
+  session: { id: 'session-7', cardId: 'sample-world', title: '档案', updatedAt: 1, running: false, blank: false },
+  card: { id: 'sample-world', title: '世界', description: '', world: '虚构世界', protagonist: '玩家', art: 'sample-world', accent: 'crimson' },
   messages: [],
   state: {
     started: true,
@@ -32,18 +32,18 @@ describe('public product projection', () => {
   })
 
   it('maps the two card public-state relationship shapes without inventing hidden facts', () => {
-    const zombie = { ...detail, state: projectPublicState({ game: { started: true, scene: { location: '封锁走廊' }, relationships: [{ id: 'r1', name: '阿莫斯', status: '谨慎信任' }], memories: [{ id: 'm1', title: '抵达', summary: '黄昏前抵达当前区域。' }], statusLines: [] } }) }
+    const sample = { ...detail, state: projectPublicState({ game: { started: true, scene: { location: '封锁走廊' }, relationships: [{ id: 'r1', name: '阿莫斯', status: '谨慎信任' }], memories: [{ id: 'm1', title: '抵达', summary: '黄昏前抵达当前区域。' }], statusLines: [] } }) }
     const potion = {
       ...detail,
-      session: { ...detail.session, id: 'session-potion', cardId: 'hp-potion-master' },
-      card: { ...detail.card, id: 'hp-potion-master', title: '魔药宗师', world: '1994 · 魁地奇世界杯营地', protagonist: '加斯帕·拉尚斯', art: 'potion-master', accent: 'jade' as const },
-      state: projectPublicState({ game: { started: true, scene: { region: '营地', location: '魔药帐篷' }, relationships: [{ id: 'mentor', name: '导师', trust: 72, visibility: 'protagonist-known' }], memories: [{ id: 'recipe', title: '配方', summary: '已掌握公开配方。', visibility: 'public' }], statusLines: [] } }),
+      session: { ...detail.session, id: 'session-potion', cardId: 'sample-potions' },
+      card: { ...detail.card, id: 'sample-potions', title: '演示档案', world: '示例世界', protagonist: '测试玩家', art: 'sample-potions', accent: 'jade' as const },
+      state: projectPublicState({ game: { started: true, scene: { region: '营地', location: '工作室' }, relationships: [{ id: 'mentor', name: '导师', trust: 72, visibility: 'protagonist-known' }], memories: [{ id: 'recipe', title: '记录', summary: '已掌握公开记录。', visibility: 'public' }], statusLines: [] } }),
     }
-    const zombieProjection = toProductProjection(zombie, 'session-7', 50)
+    const sampleProjection = toProductProjection(sample, 'session-7', 50)
     const potionProjection = toProductProjection(potion, 'session-potion', 51)
-    expect(zombieProjection.relationships[0]).toMatchObject({ subject: '玩家', object: '阿莫斯', relation: '谨慎信任' })
-    expect(zombieProjection.memories[0]?.text).toBe('黄昏前抵达当前区域。')
-    expect(potionProjection.relationships[0]).toMatchObject({ subject: '加斯帕·拉尚斯', object: '导师', relation: 'trust', status: '72' })
-    expect(potionProjection.locations[0]).toMatchObject({ region: '营地', scene: '魔药帐篷' })
+    expect(sampleProjection.relationships[0]).toMatchObject({ subject: '玩家', object: '阿莫斯', relation: '谨慎信任' })
+    expect(sampleProjection.memories[0]?.text).toBe('黄昏前抵达当前区域。')
+    expect(potionProjection.relationships[0]).toMatchObject({ subject: '测试玩家', object: '导师', relation: 'trust', status: '72' })
+    expect(potionProjection.locations[0]).toMatchObject({ region: '营地', scene: '工作室' })
   })
 })

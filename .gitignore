@@ -10,3 +10,4 @@ test-results/
 .probe-runs/
 .probe-sessions/
 apps/desktop/artifacts/
+.runtime/

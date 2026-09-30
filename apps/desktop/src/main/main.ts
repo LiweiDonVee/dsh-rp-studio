@@ -54,6 +54,19 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   console.log(`DSH_DESKTOP_SMOKE_RESULT:${JSON.stringify({ ...result, healthStatus: health.status, sandboxed: window.webContents.getOSProcessId() > 0 })}`)
 }
 
+async function runRealStackSmoke(): Promise<void> {
+  const started = await supervisor.start()
+  const read = async (path: string): Promise<unknown> => {
+    const response = await fetch(`${started.studioUrl}/api/v1/${path}`, { signal: AbortSignal.timeout(10_000) })
+    if (!response.ok) throw new Error(`Desktop real-stack smoke ${path} returned HTTP ${response.status}`)
+    return response.json()
+  }
+  const [health, cards, sessions] = await Promise.all([read('health'), read('cards'), read('sessions')])
+  const result = { dshUrl: started.dshUrl, studioUrl: started.studioUrl, health, cards, sessions, modelRequests: 0 }
+  if (process.env.DSH_DESKTOP_REAL_STACK_RESULT_FILE) await writeFile(process.env.DSH_DESKTOP_REAL_STACK_RESULT_FILE, JSON.stringify(result))
+  console.log(`DSH_DESKTOP_REAL_STACK_RESULT:${JSON.stringify(result)}`)
+}
+
 async function createWindow(): Promise<BrowserWindow> {
   const window = new BrowserWindow({
     width: 1280, height: 860, show: false,
@@ -122,6 +135,10 @@ async function boot(): Promise<void> {
     { label: 'Quit', click: () => app.quit() },
   ]))
   setInterval(() => { if (mainWindow) void pollSupervisor(mainWindow) }, 1_000).unref()
+  if (process.env.DSH_DESKTOP_REAL_STACK_SMOKE === '1') {
+    try { await runRealStackSmoke() } catch (error) { console.error(error); process.exitCode = 1 } finally { await shutdown.shutdown(); app.exit(process.exitCode ? 1 : 0) }
+    return
+  }
   if (process.env.DSH_DESKTOP_SMOKE === '1') {
     try { await runSmoke(mainWindow) } catch (error) { console.error(error); process.exitCode = 1 } finally { app.quit() }
   } else {

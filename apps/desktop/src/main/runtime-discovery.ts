@@ -4,6 +4,7 @@ import { isAbsolute, join, relative, resolve, win32 } from 'node:path'
 import { validateNodeExecutable } from './runtime-doctor.js'
 import type { DesktopSettings } from './settings.js'
 
+export const REQUIRED_DSH_VERSION = '0.2.0-rc.2'
 type NodeValidator = (path: string) => Promise<boolean>
 type NodeLocator = () => Promise<string[]>
 
@@ -43,6 +44,24 @@ export async function resolveIndependentNode(
   return ''
 }
 
+async function readJson(path: string): Promise<Record<string, unknown> | undefined> {
+  try {
+    const value: unknown = JSON.parse(await readFile(path, 'utf8'))
+    return value && typeof value === 'object' ? value as Record<string, unknown> : undefined
+  } catch { return undefined }
+}
+
+async function runtimeVersion(dshRoot: string): Promise<string | undefined> {
+  const runtime = await readJson(join(dshRoot, 'primary-runtime', 'runtime.json'))
+  if (typeof runtime?.desktopVersion === 'string') return runtime.desktopVersion
+  const manifest = await readJson(join(dshRoot, 'node_modules', '@deepseek-ai', 'dsh', 'package.json'))
+  return typeof manifest?.version === 'string' ? manifest.version : undefined
+}
+
+async function supportedRuntime(dshRoot: string): Promise<boolean> {
+  return Boolean(dshRoot && await exists(dshRoot) && await runtimeVersion(dshRoot) === REQUIRED_DSH_VERSION)
+}
+
 async function resolveDshCli(dshRoot: string): Promise<string> {
   if (!dshRoot) return ''
   const packageRoot = join(dshRoot, 'node_modules', '@deepseek-ai', 'dsh')
@@ -59,8 +78,19 @@ async function resolveDshCli(dshRoot: string): Promise<string> {
     const candidate = resolve(packageRoot, entry)
     const local = relative(packageRoot, candidate)
     if (!local || local.startsWith('..') || isAbsolute(local)) return ''
-    return await exists(candidate) ? candidate : ''
-  } catch { return '' }
+    if (await exists(candidate)) return candidate
+  } catch { /* try the official desktop launcher layout below */ }
+  const official = join(dshRoot, 'cli', 'bin', process.platform === 'win32' ? 'dsh.cmd' : 'dsh')
+  return await exists(official) ? official : ''
+}
+
+function officialRuntimeRoot(env: NodeJS.ProcessEnv): string {
+  const localAppData = env.LOCALAPPDATA?.trim()
+  return localAppData ? join(localAppData, 'Programs', 'DeepSeek Harness', 'resources', 'runtime') : ''
+}
+
+function bundledNode(dshRoot: string): string {
+  return join(dshRoot, 'primary-runtime', 'dependencies', 'node', 'bin', process.platform === 'win32' ? 'node.exe' : 'node')
 }
 
 export async function discoverRuntimeSettings(
@@ -71,21 +101,34 @@ export async function discoverRuntimeSettings(
   validate: NodeValidator = async path => (await validateNodeExecutable(path)).length === 0,
   development = true,
 ): Promise<DesktopSettings> {
-  const studioRoot = development ? resolve(desktopPath, '..', '..') : env.DSH_STUDIO_ROOT?.trim() || ''
-  const defaultDshRoot = development ? resolve(studioRoot, '..', 'deepseek-harness-local') : ''
-  const explicitDshRoot = env.DSH_ROOT?.trim() || ''
-  const dshRoot = explicitDshRoot || current.runtimeRoot || defaultDshRoot
-  const configuredDshBin = env.DSH_BIN?.trim() || (!explicitDshRoot ? current.dshBin : '')
-  const dshBin = configuredDshBin || await resolveDshCli(dshRoot)
+  const packaged = desktopPath.toLowerCase().endsWith('.asar')
+  const studioRoot = !packaged && development ? resolve(desktopPath, '..', '..') : env.DSH_STUDIO_ROOT?.trim() || ''
+  const siblingDshRoot = studioRoot ? resolve(studioRoot, '..', 'deepseek-harness-local') : ''
+  const explicitDshRoot = env.DSH_RUNTIME_ROOT?.trim() || env.DSH_ROOT?.trim() || ''
+  const candidateRoots = [officialRuntimeRoot(env), current.runtimeRoot, siblingDshRoot].filter(Boolean)
+  let dshRoot = explicitDshRoot
+  if (!explicitDshRoot) {
+    for (const candidate of candidateRoots) {
+      if (await supportedRuntime(candidate)) { dshRoot = candidate; break }
+    }
+    dshRoot ||= candidateRoots[0] || ''
+  }
+  const dshSupported = await supportedRuntime(dshRoot)
+  const configuredDshBin = env.DSH_BIN?.trim() || ''
+  const dshBin = dshSupported
+    ? configuredDshBin || await resolveDshCli(dshRoot) || (current.dshBin && await exists(current.dshBin) ? current.dshBin : '')
+    : ''
   const configuredGateway = env.DSH_GATEWAY_ENTRY?.trim() || current.gatewayEntry
-  const gatewayCandidate = configuredGateway || (studioRoot ? join(studioRoot, 'apps', 'gateway', 'dist', 'server.js') : '')
-  const nodeEnvironment = { ...env, DSH_NODE_EXECUTABLE: env.DSH_NODE_EXECUTABLE?.trim() || current.nodeExecutable }
+  const gatewayCandidate = configuredGateway || (packaged
+    ? join(resolve(desktopPath, '..'), 'studio', 'gateway', 'dist', 'server.js')
+    : studioRoot ? join(studioRoot, 'apps', 'gateway', 'dist', 'server.js') : '')
+  const nodeEnvironment = { ...env, DSH_NODE_EXECUTABLE: env.DSH_NODE_EXECUTABLE?.trim() || current.nodeExecutable || bundledNode(dshRoot) }
   return {
     ...current,
     nodeExecutable: await resolveIndependentNode(nodeEnvironment, validate),
-    dshBin: await exists(dshBin) ? dshBin : current.dshBin,
+    dshBin: await exists(dshBin) ? dshBin : '',
     gatewayEntry: await exists(gatewayCandidate) ? gatewayCandidate : current.gatewayEntry,
-    dshHome: env.DSH_HOME?.trim() || current.dshHome || (env.DSH_DESKTOP_BOOTSTRAP_HOME === '1' ? defaultDshHome : ''),
+    dshHome: env.DSH_HOME?.trim() || current.dshHome || defaultDshHome,
     runtimeRoot: dshRoot,
   }
 }

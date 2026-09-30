@@ -6,8 +6,8 @@ import { registerProductRoutes } from './product-routes.js'
 import Fastify from 'fastify'
 
 const detail = {
-  session: { id: '会话-7', cardId: 'zombie-world', title: '档案', updatedAt: 1, running: false, blank: false },
-  card: { id: 'zombie-world', title: '世界', description: '', world: '虚构区域', protagonist: '玩家', art: 'zombie-world', accent: 'crimson' },
+  session: { id: '会话-7', cardId: 'sample-world', title: '档案', updatedAt: 1, running: false, blank: false },
+  card: { id: 'sample-world', title: '世界', description: '', world: '虚构区域', protagonist: '玩家', art: 'sample-world', accent: 'crimson' },
   messages: [],
   state: { started: true, relationships: [], faction: [], inventory: [], memories: [], quests: [], eventLog: [], statusLines: [], extensions: {}, checkpoints: { count: 0, canRollback: false, activeTurn: null } },
 } satisfies SessionDetail
@@ -22,7 +22,7 @@ function sessionApi(): SessionApi {
     resetPromptSettings: async () => ({ available: true, revision: 0, coreProfileIds: [], optionalProfiles: [], enabledEntryIds: [], appliesFromNextTurn: false }),
     subscribe: () => () => {},
     getProductScope: async id => id === detail.session.id
-      ? { workspaceId: 'workspace-zombie', cardId: detail.card.id, sessionId: id, branchId: id }
+      ? { workspaceId: 'workspace-sample', cardId: detail.card.id, sessionId: id, branchId: id }
       : Promise.reject(new Error('not owned')),
   }
 }
@@ -142,7 +142,7 @@ describe('product routes', () => {
       relationships: [],
       locations: [],
     })
-    expect(replace).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-zombie', sessionId: detail.session.id }), expect.objectContaining({ branchId: detail.session.id, fromSeq: 4, memories: expect.any(Array) }))
+    expect(replace).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-sample', sessionId: detail.session.id }), expect.objectContaining({ branchId: detail.session.id, fromSeq: 4, memories: expect.any(Array) }))
   })
 
   it('keeps forked session app data in an independent real session scope', async () => {
@@ -150,7 +150,7 @@ describe('product routes', () => {
     const list = vi.spyOn(data, 'listLedger')
     const api = sessionApi()
     api.session = async id => ({ ...detail, session: { ...detail.session, id } })
-    api.getProductScope = async id => ({ workspaceId: 'workspace-zombie', cardId: detail.card.id, sessionId: id, branchId: id })
+    api.getProductScope = async id => ({ workspaceId: 'workspace-sample', cardId: detail.card.id, sessionId: id, branchId: id })
     const service = new ProductService({ sessions: api, store: data })
     await service.ledger({ sessionId: 'parent-session', limit: 20 })
     await service.ledger({ sessionId: 'fork-session', limit: 20 })

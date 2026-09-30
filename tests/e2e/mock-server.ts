@@ -9,21 +9,21 @@ const INTERNAL_CANARY = 'MOCK_DSH_CANARY_SECRET'
 
 const cards: Card[] = [
   {
-    id: 'zombie-world', title: '世界模拟器', description: '洛杉矶末日档案', world: '2005 · 洛杉矶末日第七天',
-    protagonist: '伊莱亚斯·诺伦', art: 'zombie-world', accent: 'crimson',
-    prompt: { coreProfileIds: ['rp-narrative-base', 'zombie-world'], optionalProfileIds: ['dreamwhale-v3-agent'] },
+    id: 'sample-world', title: '世界模拟器', description: '演示世界档案', world: '示例世界 · 第七天',
+    protagonist: '测试玩家', art: 'sample-world', accent: 'crimson',
+    prompt: { coreProfileIds: ['rp-narrative-base', 'sample-world'], optionalProfileIds: ['dreamwhale-v3-agent'] },
   },
 ]
 
-function initialState(cardId = 'zombie-world'): PublicGameState {
-  if (cardId !== 'zombie-world') throw new Error('测试卡片不可用。')
+function initialState(cardId = 'sample-world'): PublicGameState {
+  if (cardId !== 'sample-world') throw new Error('测试卡片不可用。')
   return {
     started: true,
     currentDate: '2005-09-17',
     currentTime: '21:40',
     scene: { location: 'MDC D 区', weather: '低云' },
     protagonist: {
-      name: '伊莱亚斯·诺伦',
+      name: '测试玩家',
       conditions: [{ id: 'alert', label: '警觉' }],
       attributes: { 意志: 8, 感知: 7 },
       resources: { 体力: 76, 饮水: 2 },
@@ -44,12 +44,12 @@ function clone<T>(value: T): T {
   return structuredClone(value)
 }
 
-function initialPrompt(cardId = 'zombie-world'): PromptSession {
-  if (cardId !== 'zombie-world') throw new Error('测试卡片不可用。')
+function initialPrompt(cardId = 'sample-world'): PromptSession {
+  if (cardId !== 'sample-world') throw new Error('测试卡片不可用。')
   return {
     available: true,
     revision: 4,
-    coreProfileIds: ['rp-narrative-base', 'zombie-world'],
+    coreProfileIds: ['rp-narrative-base', 'sample-world'],
     optionalProfiles: [{
       id: 'dreamwhale-v3-agent',
       name: '梦鲸思客 V3 · Agent 特调',
@@ -147,9 +147,9 @@ class MockSessionApi implements SessionApi {
     this.publish(tenant, { type: 'session.status', sessionId, running: true })
 
     const messageId = `m${tenant.nextMessage++}`
-    this.schedule(tenant, sessionId, 20, () => this.publish(tenant, { type: 'message.delta', sessionId, messageId: `stream-${messageId}`, text: '脚印在灰土里' }))
-    this.schedule(tenant, sessionId, 45, () => this.publish(tenant, { type: 'message.delta', sessionId, messageId: `stream-${messageId}`, text: '突然转向。' }))
-    this.schedule(tenant, sessionId, 70, () => {
+    this.schedule(tenant, sessionId, 150, () => this.publish(tenant, { type: 'message.delta', sessionId, messageId: `stream-${messageId}`, text: '脚印在灰土里' }))
+    this.schedule(tenant, sessionId, 300, () => this.publish(tenant, { type: 'message.delta', sessionId, messageId: `stream-${messageId}`, text: '突然转向。' }))
+    this.schedule(tenant, sessionId, 450, () => {
       const message: TranscriptMessage = {
         id: messageId, seq: tenant.nextMessage, role: 'gm', text: '脚印在灰土里突然转向，没入两排牢门之间的暗处。', createdAt: Date.now(), status: 'complete',
       }

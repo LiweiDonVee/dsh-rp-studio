@@ -107,7 +107,7 @@ The edition deliberately excludes DreamWhale’s assistant identity, “unrestri
 
 The implementation is accepted only when all of the following are true:
 
-- Prompt compiler tests prove `renderOnly` and `narrativeContractMode: inherit` behavior, including preservation of the HP and Zombie contracts.
+- Prompt compiler tests prove `renderOnly` and `narrativeContractMode: inherit` behavior, including preservation of the private-card and Sample contracts.
 - Prompt preset tests prove the DreamWhale Agent profile has no ST executable macros, no XML output contract, no ordinary chat `Main Prompt`, and all entries disabled by default; the original profile hash remains unchanged.
 - Gateway tests prove profile metadata sanitization, default-empty state, CAS update, reset-to-card-default, invalid-entry rejection, and no prompt content leakage.
 - RP Studio tests prove the drawer, locked core, entry toggles, single-choice groups, empty warning, next-turn label, error handling, and mobile access.

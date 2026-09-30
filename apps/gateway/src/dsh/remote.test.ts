@@ -5,7 +5,7 @@ function response(value: unknown): Response {
   return new Response(JSON.stringify({ type: 'server-response', rpcId: 'r', result: { ok: true, value } }))
 }
 
-describe('DSH 0.1.7 Remote contract', () => {
+describe('DSH 0.2.0-rc.2 Remote contract', () => {
   it('uses named Remote arguments and a durable prompt request identity', async () => {
     const requests: Record<string, unknown>[] = []
     const client = createDshClient({ fetchImpl: async (_url, init) => {
@@ -20,9 +20,9 @@ describe('DSH 0.1.7 Remote contract', () => {
 
   it('takes session ownership from the durable preset projection', async () => {
     const client = createDshClient({ fetchImpl: async () => response({ items: [
-      { sessionId: 's1', projections: { asOfSeq: 8, values: { agentPreset: 'zombie-world' } } },
+      { sessionId: 's1', projections: { asOfSeq: 8, values: { agentPreset: 'sample-world' } } },
     ] }) })
-    expect(await client.listSessions()).toMatchObject([{ agentPreset: 'zombie-world' }])
+    expect(await client.listSessions()).toMatchObject([{ agentPreset: 'sample-world' }])
   })
 
   it('completes unknown session ownership from the follow snapshot header and closes the probe', async () => {
@@ -40,12 +40,12 @@ describe('DSH 0.1.7 Remote contract', () => {
         const original = socket
         const send = (text: string) => {
           const message = JSON.parse(text)
-          if (message.type === 'open' && message.endpoint === 'session/follow') queueMicrotask(() => original.onmessage?.({ data: JSON.stringify({ type: 'item', streamId: message.streamId, value: { type: 'snapshot', header: { id: 'cold-rp', agentPreset: 'zombie-world' }, cursor: -1, records: [], hasMore: false, projections: { asOfSeq: -1, values: {} } } }) }))
+          if (message.type === 'open' && message.endpoint === 'session/follow') queueMicrotask(() => original.onmessage?.({ data: JSON.stringify({ type: 'item', streamId: message.streamId, value: { type: 'snapshot', header: { id: 'cold-rp', agentPreset: 'sample-world' }, cursor: -1, records: [], hasMore: false, projections: { asOfSeq: -1, values: {} } } }) }))
         }
         return Object.assign(socket, { send }) as unknown as WebSocket
       },
     })
-    expect(await client.listSessions()).toMatchObject([{ sessionId: 'cold-rp', agentPreset: 'zombie-world' }])
+    expect(await client.listSessions()).toMatchObject([{ sessionId: 'cold-rp', agentPreset: 'sample-world' }])
     const stop = client.connectStreams(vi.fn())
     stop()
     expect(sockets[0]?.close).toHaveBeenCalled()

@@ -3,26 +3,26 @@
 本地优先的 DeepSeek Harness 角色扮演前端。
 
 ```text
-React SPA -> RP Gateway / BFF -> DSH 127.0.0.1:3080
-                            \-> Prompt Presets 127.0.0.1:3091
+Electron / React SPA -> RP Gateway / BFF -> official DSH Web (loopback)
 ```
 
 DSH 继续负责模型、agent preset、工具、session、projection 与持久化。Studio 只提供玩家界面；浏览器不会访问 3080，也不会接收 raw DSH event、reasoning、tool result、`meta.rp`、`secrets` 或 `offscreen`。
 
-## 当前档案
+## 档案
 
-- `rp-runtime`：卡片无关的 RP Runtime 基础模板；不出现在新建列表，仅用于恢复已存历史会话和派生新卡
-- `zombie-world`：可直接新建的世界模拟器档案
+Studio 不附带私有角色卡。新安装的隔离 DSH home 可以没有可玩卡和会话；测试中的 `sample-world` 只是合成 fixture。`rp-runtime` 基础模板不出现在新建列表，仅用于恢复已存历史会话和派生新卡。
 
 Gateway 只展示同时满足以下条件的可玩预设：用户预设、DSH roster 可用、存在合法且目录 id 一致的 `rp-card.json`，且 `kind` 不是 `template`。基础模板仍保留在内部索引中，因此旧会话可继续打开。
 
 ## 安装与启动
 
-2026-09 适配后可运行 `pnpm start:stack`：使用配置的 DSH 0.1.7-rc.2 Web profile，启动 DSH Web 与 Studio，并在进程内自动交换认证 token。终端会显示私有 DSH 登录链接；关闭启动进程同时停止两个服务。运行前先执行 `pnpm build`。已有服务占用端口时启动器会报错，不会关闭其他进程。`DSH_BIN` 可指定 DSH CLI，`DSH_HOME` 可指定测试目录，`DSH_PORT` / `DSH_RP_PORT` 可调整端口。
+Windows Desktop portable 位于 `apps/desktop/artifacts/DSH RP Studio-1.0.0-x64.exe`，桌面快捷方式为 `DSH RP Studio.lnk`。它内置 Gateway/Web 构建资源，依赖本机安装的官方 DeepSeek Harness `0.2.0-rc.2`，自动发现其 `resources/runtime/cli/bin/dsh.cmd` 和独立 Node 24，并将新用户数据保存在 Electron `userData`。不会在 portable 内捆绑或替代官方 DSH，也不会读取私有卡库。ZIP 是同一 Windows Desktop 的解压版。
 
-环境要求：Node.js 24、pnpm 11，以及运行在 `127.0.0.1:3080` 的 DSH。叙事方法管理还需要带 `dsh-prompt-presets` bundle 的 DSH Web profile 运行在 `127.0.0.1:3091`；该服务不可用时，Studio 仍保留 Agent runtime 与卡片底座，只禁用可选叙事方法面板。
+开发环境可运行 `pnpm start:stack`：使用官方 DSH 0.2.0-rc.2 Web profile，启动 DSH Web 与 Studio，并在进程内自动交换认证 token。先运行 `pnpm build`。默认 DSH home 位于项目忽略的 `.runtime/dsh-home`，`DSH_RUNTIME_ROOT` 可覆盖官方安装目录，`DSH_HOME` 可指定隔离测试目录，`DSH_PORT` / `DSH_RP_PORT` 可调整端口。已有服务占用端口时不会关闭其他进程。
 
-当前适配目标为 **DSH 0.1.7-rc.2**。Gateway 使用 Remote RPC、`remote.mux`、`session/follow` 和 `session/page`；旧版 `ApiProxy` 的点号 RPC 已不再支持。详细接口与版本边界见 [DSH 兼容说明](docs/dsh-compatibility.md)。
+开发构建要求 Node.js 24 和 pnpm 11；portable 运行使用官方 DSH 自带的独立 Node，不要求单独启动 3080/3091 服务。Supervisor 在 loopback 上为 DSH/Gateway 分配端口。可选叙事方法由配置的 DSH Web profile 提供，缺失时仅禁用方法面板。
+
+当前适配目标为 **DSH 0.2.0-rc.2**。Gateway 使用 Remote RPC、`remote.mux`、`session/follow` 和 `session/page`；旧版 `ApiProxy` 的点号 RPC 已不再支持。详细接口与版本边界见 [DSH 兼容说明](docs/dsh-compatibility.md)。
 
 DSH Web 的 HTTP API 和 WebSocket 在 loopback 上也需要认证。先启动相应 DSH Web profile，将其启动 URL 中 `token` 的值设为 Gateway 进程环境变量（下面为占位示例）：
 
@@ -43,7 +43,7 @@ Set-Location E:\WorkSpace\repos\dsh-rp-studio
 
 可用 `-DshPort`、`-PromptPresetsPort` 和 `-Port` 分别覆盖三个 loopback 端口。所有会话的可选叙事方法默认关闭；空白配置会在“方法”页提示，修改从下一轮生效。
 
-安装脚本在检查前把已安装的两套 RP runtime 关键文件复制到 `.snapshots/<timestamp>-before-install`。它不会读取、复制或修改 `C:\Users\Owner\.dsh\sessions`。
+项目默认使用隔离的 DSH home，不会读取、复制或修改 `C:\Users\Owner\.dsh\sessions`。私有预设和卡片仍由其所有者单独安装。
 
 ## 验证
 

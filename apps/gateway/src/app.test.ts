@@ -5,7 +5,7 @@ import { GatewayError } from './errors.js'
 
 const SECRET = 'GATEWAY_CANARY_SECRET'
 const card: Card = {
-  id: 'zombie-world', title: '世界模拟器', description: 'desc', world: '2005 · 洛杉矶末日第七天', protagonist: '伊莱亚斯·诺伦', art: 'zombie-world', accent: 'crimson',
+  id: 'sample-world', title: '世界模拟器', description: 'desc', world: '演示世界', protagonist: '测试玩家', art: 'sample-world', accent: 'crimson',
 }
 const state: PublicGameState = {
   started: true,
@@ -24,7 +24,7 @@ const detail: SessionDetail = {
 const promptSettings: PromptSession = {
   available: true,
   revision: 4,
-  coreProfileIds: ['rp-narrative-base', 'zombie-world'],
+  coreProfileIds: ['rp-narrative-base', 'sample-world'],
   optionalProfiles: [{
     id: 'dreamwhale-v3-agent', name: '梦鲸 Agent', description: 'optional', version: 1,
     entries: [{ id: 'dream-style', name: '实验文风', slot: 'render-style', selection: 'single', tags: ['rp'], enabledByDefault: false, renderOnly: true }],

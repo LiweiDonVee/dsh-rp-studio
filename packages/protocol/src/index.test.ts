@@ -32,7 +32,7 @@ describe('RP API protocol', () => {
     const prompt = {
       available: true,
       revision: 4,
-      coreProfileIds: ['rp-narrative-base', 'zombie-world'],
+      coreProfileIds: ['rp-narrative-base', 'sample-world'],
       optionalProfiles: [{
         id: 'dreamwhale-v3-agent',
         name: '梦鲸思客 V3 · Agent 特调',

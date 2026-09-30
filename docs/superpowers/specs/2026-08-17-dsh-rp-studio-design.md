@@ -4,7 +4,7 @@
 
 `DSH RP Studio` is a local-first roleplay client for DeepSeek Harness. DSH remains the model, agent, tool, session, projection, and persistence runtime. The Studio owns only the player-facing product surface and exposes no general DSH administration APIs.
 
-The initial release supports every installed preset that publishes an `rp-card.json` manifest. The current acceptance set is `rp-runtime` and `zombie-world`.
+The initial release supports every installed preset that publishes an `rp-card.json` manifest. The current acceptance set is `rp-runtime` and `sample-world`.
 
 ## Architecture
 
@@ -44,10 +44,10 @@ Each RP preset may publish `rp-card.json` with schema version 1:
   "schemaVersion": 1,
   "runtime": "dsh-rp",
   "id": "rp-runtime",
-  "title": "魔药宗师",
-  "world": "1994 · 魁地奇世界杯营地",
-  "protagonist": "加斯帕·拉尚斯",
-  "art": "potion-master",
+  "title": "演示档案",
+  "world": "示例世界",
+  "protagonist": "测试玩家",
+  "art": "sample-potions",
   "accent": "jade"
 }
 ```

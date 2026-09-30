@@ -1,6 +1,6 @@
-# DSH 0.1.7-rc.2 compatibility
+# DSH 0.2.0-rc.2 compatibility
 
-Checked 2026-09-28 against the read-only candidate `@deepseek-ai/dsh` 0.1.7-rc.2 packages in `E:\WorkSpace\audit\dsh-upgrade-20260928\candidate\node_modules`, especially the compiled Remote definitions, Gateway stream protocol, preset registry, Web authentication, and Session controller types.
+Checked 2026-09-30 against the installed official DeepSeek Harness runtime at `C:\Users\Owner\AppData\Local\Programs\DeepSeek Harness\resources\runtime`, whose `runtime.json` reports desktop version `0.2.0-rc.2`. The validation covers the compiled Remote definitions, Gateway stream protocol, preset registry, Web authentication, and Session controller types.
 
 ## Version boundary
 
@@ -13,7 +13,7 @@ Studio has no in-process DSH SDK dependency. It never accesses `Session.events`,
 All unary calls POST a Connection envelope to `/api/<namespace>/<method>`:
 
 ```json
-{"type":"client-request","rpcId":"uuid","method":"session/create","payload":{"args":{"request":{"agentPreset":"zombie-world","workspaceId":"workspace-id"}}}}
+{"type":"client-request","rpcId":"uuid","method":"session/create","payload":{"args":{"request":{"agentPreset":"sample-world","workspaceId":"workspace-id"}}}}
 ```
 
 Named arguments are significant: `session/list` uses `args._request`, most Session/Workspace commands use `args.request`, and `agentPresets/list` has empty `args`. Prompt requests carry a separately minted `requestId` for durable inbox correlation. No mutations are automatically retried.

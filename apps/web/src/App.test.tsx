@@ -15,13 +15,13 @@ vi.mock('./api.js', () => ({
 }))
 
 const card: Card = {
-  id: 'zombie-world', title: '世界模拟器', description: '档案', world: '2005 · 洛杉矶末日第七天', protagonist: '伊莱亚斯·诺伦', art: 'zombie-world', accent: 'crimson',
+  id: 'sample-world', title: '世界模拟器', description: '档案', world: '示例世界', protagonist: '测试玩家', art: 'sample-world', accent: 'crimson',
 }
 const state: PublicGameState = {
   started: true,
   currentDate: '2005-09-17',
   scene: { location: 'MDC D 区' },
-  protagonist: { name: '伊莱亚斯·诺伦', conditions: [], resources: { 体力: 76, 饮水: 2 } },
+  protagonist: { name: '测试玩家', conditions: [], resources: { 体力: 76, 饮水: 2 } },
   relationships: [], faction: [], inventory: [], memories: [], quests: [], eventLog: [],
   statusLines: ['D 区走廊仍然安静。'], extensions: {}, checkpoints: { count: 2, canRollback: true, activeTurn: 2 },
 }
@@ -31,7 +31,7 @@ const summary: SessionSummary = {
 const promptSettings: PromptSession = {
   available: true,
   revision: 4,
-  coreProfileIds: ['rp-narrative-base', 'zombie-world'],
+  coreProfileIds: ['rp-narrative-base', 'sample-world'],
   optionalProfiles: [{
     id: 'dreamwhale-v3-agent',
     name: '梦鲸思客 V3 · Agent 特调',
@@ -256,7 +256,7 @@ describe('DSH RP Studio', () => {
     render(<App />)
     expect(await screen.findByRole('heading', { name: '选择世界档案' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '新建档案' }))
-    await waitFor(() => expect(api.create).toHaveBeenCalledWith('zombie-world'))
+    await waitFor(() => expect(api.create).toHaveBeenCalledWith('sample-world'))
   })
 
   it('prefers a started campaign over an external maintenance session', async () => {

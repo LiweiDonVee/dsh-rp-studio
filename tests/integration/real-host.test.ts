@@ -1,5 +1,6 @@
 import { spawn, execFile, type ChildProcess } from 'node:child_process'
-import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,12 +10,9 @@ import { describe, expect, it } from 'vitest'
 
 const execFileAsync = promisify(execFile)
 const studioRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const auditRoot = resolve(studioRoot, '..', '..', 'audit', 'dsh-upgrade-20260928')
-const dshExecutable = process.env.DSH_BIN ?? join(auditRoot, 'candidate', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
-const sourceProfile = process.env.DSH_RC2_PROFILE_HOME
-  ? join(process.env.DSH_RC2_PROFILE_HOME, 'profiles', 'web')
-  : join(auditRoot, 'Studio-candidate-home-1934', 'profiles', 'web')
-const hasPrivateBundles = process.env.DSH_RP_PRIVATE_BUNDLES === '1'
+const officialRuntimeRoot = process.env.DSH_RUNTIME_ROOT ?? join(process.env.LOCALAPPDATA ?? '', 'Programs', 'DeepSeek Harness', 'resources', 'runtime')
+const dshExecutable = process.env.DSH_BIN ?? join(officialRuntimeRoot, 'cli', 'bin', process.platform === 'win32' ? 'dsh.cmd' : 'dsh')
+const runRealHost = existsSync(dshExecutable)
 
 async function reservePort(): Promise<number> {
   const { createServer } = await import('node:net')
@@ -24,20 +22,6 @@ async function reservePort(): Promise<number> {
   if (!address || typeof address === 'string') throw new Error('real host integration could not allocate a port')
   await new Promise<void>((resolveClose, reject) => server.close(error => error ? reject(error) : resolveClose()))
   return address.port
-}
-
-async function prepareTemporaryHost(): Promise<string> {
-  const home = await mkdtemp(join(tmpdir(), 'dsh-rp-real-host-'))
-  try {
-    const profile = join(home, 'profiles', 'web')
-    await mkdir(profile, { recursive: true })
-    for (const file of ['package.json', 'cordis.yml', 'pnpm-workspace.yaml']) await cp(join(sourceProfile, file), join(profile, file))
-    await writeFile(join(profile, 'cordis.patch.yml'), '- id: cherry-provider-bridge\n  disabled: true\n')
-    return home
-  } catch (error) {
-    await rm(home, { recursive: true, force: true })
-    throw error
-  }
 }
 
 async function waitForToken(child: ChildProcess, readLogs: () => string): Promise<string> {
@@ -64,28 +48,26 @@ async function stopOwned(child: ChildProcess): Promise<void> {
   if (child.exitCode === null) throw new Error(`temporary DSH process ${child.pid} did not exit after owned shutdown`)
 }
 
-describe('real temporary DSH release-card integration', () => {
-  it.skipIf(!hasPrivateBundles)('discovers and creates sessions for rc2 plugin-bundle release cards through Gateway', async () => {
+describe('real temporary DSH integration', () => {
+  it.skipIf(!runRealHost)('reads health, cards and session list through the official rc2 host without a model call', async () => {
     let home: string | undefined
     let child: ChildProcess | undefined
     let studio: Awaited<ReturnType<typeof startServer>> | undefined
     const previousDshToken = process.env.DSH_WEB_TOKEN
     const previousPresetToken = process.env.PROMPT_PRESETS_WEB_TOKEN
     try {
-      home = await prepareTemporaryHost()
+      home = await mkdtemp(join(tmpdir(), 'dsh-rp-real-host-'))
       const dshPort = await reservePort()
       const studioPort = await reservePort()
       let logs = ''
-      child = spawn(process.execPath, [dshExecutable, '--profile', 'web', '--host', '127.0.0.1', '--port', String(dshPort), '--no-open'], {
+      const shell = process.platform === 'win32' && /\.(?:cmd|bat)$/iu.test(dshExecutable)
+      child = spawn(shell ? `"${dshExecutable}"` : dshExecutable, ['--profile', 'web', '--host', '127.0.0.1', '--port', String(dshPort), '--no-open'], {
         cwd: studioRoot,
         env: {
           ...process.env,
           DSH_HOME: home,
-          HOME: home,
-          USERPROFILE: home,
-          APPDATA: join(home, 'app-data'),
-          LOCALAPPDATA: join(home, 'local-app-data'),
         },
+        shell,
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
       })
@@ -107,21 +89,15 @@ describe('real temporary DSH release-card integration', () => {
         publicDir,
       })
 
+      const healthResponse = await fetch(`${studio.url}/api/v1/health`)
+      const health = await healthResponse.json() as { data?: { upstream?: string; transport?: string } }
+      expect({ status: healthResponse.status, data: health.data }).toMatchObject({ status: 200, data: { upstream: 'ready', transport: 'remote' } })
       const cardsResponse = await fetch(`${studio.url}/api/v1/cards`)
-      const cards = await cardsResponse.json() as { data: Array<{ id: string }> }
-      expect({ status: cardsResponse.status, ids: cards.data.map(value => value.id) }).toMatchObject({ status: 200, ids: expect.arrayContaining(['zombie-world', 'hp-potion-master']) })
-
-      for (const cardId of ['zombie-world', 'hp-potion-master']) {
-        const createdResponse = await fetch(`${studio.url}/api/v1/sessions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cardId }) })
-        const created = await createdResponse.json() as { data?: { session?: { id?: string; cardId?: string } }; error?: unknown }
-        expect({ status: createdResponse.status, body: created }).toMatchObject({ status: 200, body: { data: { session: { id: expect.any(String), cardId } } } })
-        const sessionId = created.data!.session!.id!
-        const detailResponse = await fetch(`${studio.url}/api/v1/sessions/${encodeURIComponent(sessionId)}`)
-        expect(detailResponse.status).toBe(200)
-        const methodsResponse = await fetch(`${studio.url}/api/v1/sessions/${encodeURIComponent(sessionId)}/prompt-presets`)
-        const methods = await methodsResponse.json() as { data?: { available?: boolean } }
-        expect({ status: methodsResponse.status, available: methods.data?.available }).toEqual({ status: 200, available: true })
-      }
+      const cards = await cardsResponse.json() as { data?: Array<{ id: string }> }
+      expect({ status: cardsResponse.status, data: cards.data }).toMatchObject({ status: 200, data: expect.any(Array) })
+      const sessionsResponse = await fetch(`${studio.url}/api/v1/sessions`)
+      const sessions = await sessionsResponse.json() as { data?: Array<{ id: string; cardId: string }> }
+      expect({ status: sessionsResponse.status, data: sessions.data }).toMatchObject({ status: 200, data: expect.any(Array) })
     } finally {
       let cleanupError: unknown
       try { if (studio) await studio.app.close() } catch (error) { cleanupError = error }

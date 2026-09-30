@@ -12,6 +12,7 @@ export interface SupervisorConfig {
   dshPort: number
   studioPort: number
   cwd: string
+  runtimeRoot?: string
   startupTimeoutMs?: number
 }
 
@@ -44,7 +45,7 @@ export function supervisorCreatorFromModule(module: { Supervisor?: SupervisorCon
 }
 
 export interface DesktopSupervisor {
-  start(): Promise<{ studioUrl: string }>
+  start(): Promise<{ studioUrl: string; dshUrl: string }>
   status(): Promise<DesktopStatus>
   doctor(): Promise<DesktopDoctor>
   stop(): Promise<void>
@@ -60,6 +61,7 @@ export function createSupervisorConfig(settings: DesktopSettings): SupervisorCon
     dshPort: settings.dshPort,
     studioPort: settings.studioPort,
     cwd: settings.runtimeRoot || dirname(settings.gatewayEntry),
+    runtimeRoot: settings.runtimeRoot,
     startupTimeoutMs: 30_000,
   }
 }
@@ -83,7 +85,7 @@ export function createSupervisorAdapter(supervisor?: SupervisorInstance): Deskto
     async start() {
       if (!supervisor) throw new Error('Supervisor integration unavailable')
       const result = await supervisor.start()
-      return { studioUrl: result.studioUrl }
+      return { studioUrl: result.studioUrl, dshUrl: result.dshUrl }
     },
     async status() { return supervisor ? projectSupervisorStatus(supervisor.status()) : { state: 'unavailable', processes: {} } },
     async doctor() {

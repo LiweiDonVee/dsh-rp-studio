@@ -18,7 +18,7 @@ vi.mock('./ProductApi.js', async importOriginal => {
 })
 
 const page = { items: [], nextCursor: null }
-const status = { apiVersion: 1 as const, dshCompatibility: '0.1.7-rc.2' as const, storage: 'ready' as const, schemaVersion: 1, projection: 'current' as const, pairing: { enabled: true, listener: 'https-lan' as const } }
+const status = { apiVersion: 1 as const, dshCompatibility: '0.2.0-rc.2' as const, storage: 'ready' as const, schemaVersion: 1, projection: 'current' as const, pairing: { enabled: true, listener: 'https-lan' as const } }
 
 afterEach(cleanup)
 

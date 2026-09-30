@@ -27,15 +27,14 @@ if (!Array.isArray(cards) || cards.some(card => !card || typeof card.id !== 'str
   throw new Error('Gateway cards response contains an unsafe or malformed card.')
 }
 const cardIds = new Set(cards.map(card => card.id))
-const requirePrivateBundles = process.env.DSH_RP_PRIVATE_BUNDLES === '1'
-if (requirePrivateBundles) {
-  if (!cardIds.has('zombie-world')) throw new Error('Required playable RP card is unavailable: zombie-world')
-  if (!cardIds.has('hp-potion-master')) throw new Error('Required playable RP card is unavailable: hp-potion-master')
-  if (cardIds.has('rp-runtime')) throw new Error('Runtime template leaked into the playable card list.')
+const requireCards = process.env.DSH_RP_REQUIRE_CARDS === '1'
+if (requireCards) {
+  if (cards.length === 0) throw new Error('No playable RP card is available for the read-only smoke check.')
+  if (cards.some(card => card.id === 'rp-runtime' || card.kind === 'template')) throw new Error('Runtime template leaked into the playable card list.')
 }
 let sessions = []
 let details = []
-if (requirePrivateBundles) {
+if (requireCards) {
   sessions = await getApi('sessions')
   if (!Array.isArray(sessions)) throw new Error('Gateway sessions response is not an array.')
   if (sessions.length === 0) throw new Error('No RP session is available for the read-only detail smoke check.')
@@ -67,7 +66,7 @@ page.on('request', request => browserRequests.push({ method: request.method(), u
 
 try {
   await page.goto(baseUrl, { waitUntil: 'networkidle' })
-  await page.locator('.story-header h1').waitFor()
+  await page.locator('.story-header h1, .empty-stage h1').waitFor()
   const body = await page.locator('body').innerText()
   const forbidden = forbiddenPatterns
     .filter(pattern => body.includes(pattern))

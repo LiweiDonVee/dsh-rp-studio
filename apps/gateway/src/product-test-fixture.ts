@@ -2,8 +2,8 @@ import type { ProductDataStore } from './product-service.js'
 import type { SessionDetail } from '@dsh-rp/protocol'
 
 export const productDetail = {
-  session: { id: 'session-1', cardId: 'zombie-world', title: '档案', updatedAt: 1, running: false, blank: false },
-  card: { id: 'zombie-world', title: '世界', description: '', world: '虚构世界', protagonist: '玩家', art: 'zombie-world', accent: 'crimson' },
+  session: { id: 'session-1', cardId: 'sample-world', title: '档案', updatedAt: 1, running: false, blank: false },
+  card: { id: 'sample-world', title: '世界', description: '', world: '虚构世界', protagonist: '玩家', art: 'sample-world', accent: 'crimson' },
   messages: [],
   state: { started: true, relationships: [], faction: [], inventory: [], memories: [{ id: 'm-1', text: '公开记忆' }], quests: [], eventLog: [], statusLines: [], extensions: {}, checkpoints: { count: 0, canRollback: false, activeTurn: null } },
 } satisfies SessionDetail
