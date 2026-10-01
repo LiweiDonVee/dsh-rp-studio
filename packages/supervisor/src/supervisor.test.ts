@@ -329,13 +329,12 @@ describe('Supervisor lifecycle', () => {
 
   it('uses the configured DSH profile and defaults to desktop', async () => {
     const specs: ServiceSpec[] = []
-    const supervisor = new Supervisor(await config({ dshProfile: 'desktop' }), {
-      spawn: spec => { specs.push(spec); const child = new FakeChild(40_000 + specs.length); if (spec.service === 'dsh') queueMicrotask(() => child.stdout.write('http://127.0.0.1:41000/?token=fake-memory-token\n')); return child },
-      reservePort: async requested => requested || (specs.length ? 41001 : 41000),
-      fetch: async input => new Response(input.includes('41000') ? '<html>DeepSeek Harness</html>' : JSON.stringify({ ok: true, protocolVersion: 1, data: { upstream: 'ready' } }), { status: input.includes('41000') ? 303 : 200, headers: input.includes('41000') ? { location: input, 'set-cookie': 'x=y' } : { 'content-type': 'application/json' } }),
+    const supervisor = new Supervisor(await config({ startupTimeoutMs: 250 }), {
+      spawn: spec => { specs.push(spec); return new FakeChild(40_000 + specs.length) },
+      reservePort: async requested => requested || 41_000 + specs.length,
     })
     supervisors.push(supervisor)
-    await supervisor.start()
+    await expect(supervisor.start()).rejects.toMatchObject({ code: 'startup-timeout' })
     expect(specs[0]?.args).toContain('desktop')
   })
 
