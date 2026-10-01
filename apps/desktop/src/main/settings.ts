@@ -12,6 +12,7 @@ const settingsSchema = z.object({
   dshPort: z.number().int().min(0).max(65_535),
   studioPort: z.number().int().min(0).max(65_535),
   runtimeRoot: z.string().max(4096),
+  dshProfile: z.string().trim().min(1).max(100).default('desktop'),
 }).strict()
 
 const envelopeSchema = z.discriminatedUnion('encrypted', [
@@ -39,7 +40,7 @@ export interface PathSelectionVault {
 }
 
 export function defaultSettings(): DesktopSettings {
-  return { nodeExecutable: '', dshBin: '', gatewayEntry: '', dshHome: '', dshPort: 0, studioPort: 0, runtimeRoot: '' }
+  return { nodeExecutable: '', dshBin: '', gatewayEntry: '', dshHome: '', dshPort: 0, studioPort: 0, runtimeRoot: '', dshProfile: 'desktop' }
 }
 
 export function parseDesktopSettings(value: unknown): DesktopSettings {

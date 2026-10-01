@@ -12,6 +12,7 @@ export interface SupervisorConfig {
   dshPort: number
   studioPort: number
   cwd: string
+  dshProfile?: string
   runtimeRoot?: string
   startupTimeoutMs?: number
 }
@@ -61,6 +62,7 @@ export function createSupervisorConfig(settings: DesktopSettings): SupervisorCon
     dshPort: settings.dshPort,
     studioPort: settings.studioPort,
     cwd: settings.runtimeRoot || dirname(settings.gatewayEntry),
+    dshProfile: settings.dshProfile,
     runtimeRoot: settings.runtimeRoot,
     startupTimeoutMs: 30_000,
   }

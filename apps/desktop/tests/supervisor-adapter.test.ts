@@ -16,7 +16,7 @@ describe('Supervisor adapter', () => {
       dshHome: 'C:/档案',
       dshPort: 0,
       studioPort: 0,
-      runtimeRoot: 'C:/运行时',
+      runtimeRoot: 'C:/运行时', dshProfile: 'desktop',
     })).toEqual({
       nodeExecutable: 'C:/运行时/node.exe',
       dshBin: 'C:/运行时/dsh.js',
@@ -25,7 +25,7 @@ describe('Supervisor adapter', () => {
       dshPort: 0,
       studioPort: 0,
       cwd: 'C:/运行时',
-      runtimeRoot: 'C:/运行时',
+      runtimeRoot: 'C:/运行时', dshProfile: 'desktop',
       startupTimeoutMs: 30_000,
     })
   })

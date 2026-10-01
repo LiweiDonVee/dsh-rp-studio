@@ -32,4 +32,12 @@ describe('card discovery', () => {
     ])
     expect(diagnostics).toEqual([])
   })
+
+  it('discovers local RP presets even when Desktop reports them as defaults', async () => {
+    const cards = await discoverCards({
+      listPresets: async () => [{ id: 'desktop-card', isDefault: true, name: 'Desktop card' }],
+      readPreset: async id => ({ agentPreset: id, content: JSON.stringify({ schemaVersion: 1, runtime: 'dsh-rp', id, title: 'Desktop card', world: 'Fixture world', protagonist: 'Fixture player', art: id, accent: 'jade' }) }),
+    })
+    expect(cards).toMatchObject([{ id: 'desktop-card', title: 'Desktop card' }])
+  })
 })

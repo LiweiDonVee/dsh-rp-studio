@@ -14,6 +14,7 @@ export type SupervisorPhase = 'stopped' | 'starting' | 'running' | 'stopping'
 export interface SupervisorConfig {
     nodeExecutable: string; dshBin: string; gatewayEntry: string; dshHome: string;
     dshPort: number; studioPort: number; cwd: string;
+    dshProfile?: string;
     runtimeRoot?: string;
     startupTimeoutMs?: number; logLimitCharacters?: number;
 }
@@ -331,7 +332,7 @@ export class Supervisor {
         }
         this.assertCurrent(generation);
         const dsh = this.spawnOwned('dsh', [
-            '--profile', 'web',
+            '--profile', this.config.dshProfile ?? 'desktop',
             '--host', HOST,
             '--port', String(dshPort),
             '--no-open',

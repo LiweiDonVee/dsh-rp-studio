@@ -10,7 +10,7 @@ afterEach(async () => Promise.all(directories.splice(0).map(path => rm(path, { r
 function settings(): DesktopSettings {
   return {
     nodeExecutable: 'C:/运行时/node.exe', dshBin: 'C:/运行时/dsh.js', gatewayEntry: 'C:/运行时/gateway.js',
-    dshHome: 'C:/用户/档案', dshPort: 0, studioPort: 0, runtimeRoot: 'C:/运行时',
+    dshHome: 'C:/用户/档案', dshPort: 0, studioPort: 0, runtimeRoot: 'C:/运行时', dshProfile: 'desktop',
   }
 }
 

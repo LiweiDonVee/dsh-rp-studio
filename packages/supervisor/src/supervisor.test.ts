@@ -129,7 +129,7 @@ describe('Supervisor lifecycle', () => {
 
     expect(started.launchUrl).toBe('http://127.0.0.1:41000/?token=fake-memory-token')
     expect(specs).toHaveLength(2)
-    expect(specs[0]).toMatchObject({ service: 'dsh', executable: process.execPath, args: [dshBin, '--profile', 'web', '--host', '127.0.0.1', '--port', '41000', '--no-open'], port: 41_000 })
+    expect(specs[0]).toMatchObject({ service: 'dsh', executable: process.execPath, args: [dshBin, '--profile', 'desktop', '--host', '127.0.0.1', '--port', '41000', '--no-open'], port: 41_000 })
     expect(specs[1]).toMatchObject({
       service: 'studio',
       executable: process.execPath,
@@ -325,6 +325,18 @@ describe('Supervisor lifecycle', () => {
     supervisors.push(supervisor)
 
     await expect(supervisor.start()).rejects.toMatchObject({ code: 'child-exited' })
+  })
+
+  it('uses the configured DSH profile and defaults to desktop', async () => {
+    const specs: ServiceSpec[] = []
+    const supervisor = new Supervisor(await config({ dshProfile: 'desktop' }), {
+      spawn: spec => { specs.push(spec); const child = new FakeChild(40_000 + specs.length); if (spec.service === 'dsh') queueMicrotask(() => child.stdout.write('http://127.0.0.1:41000/?token=fake-memory-token\n')); return child },
+      reservePort: async requested => requested || (specs.length ? 41001 : 41000),
+      fetch: async input => new Response(input.includes('41000') ? '<html>DeepSeek Harness</html>' : JSON.stringify({ ok: true, protocolVersion: 1, data: { upstream: 'ready' } }), { status: input.includes('41000') ? 303 : 200, headers: input.includes('41000') ? { location: input, 'set-cookie': 'x=y' } : { 'content-type': 'application/json' } }),
+    })
+    supervisors.push(supervisor)
+    await supervisor.start()
+    expect(specs[0]?.args).toContain('desktop')
   })
 
   it('coalesces concurrent starts and serializes restart with stop', async () => {
