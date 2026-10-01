@@ -129,7 +129,7 @@ describe('Supervisor lifecycle', () => {
 
     expect(started.launchUrl).toBe('http://127.0.0.1:41000/?token=fake-memory-token')
     expect(specs).toHaveLength(2)
-    expect(specs[0]).toMatchObject({ service: 'dsh', executable: process.execPath, args: [dshBin, '--profile', 'desktop', '--host', '127.0.0.1', '--port', '41000', '--no-open'], port: 41_000 })
+    expect(specs[0]).toMatchObject({ service: 'dsh', executable: process.execPath, args: [dshBin, '--profile', 'web', '--host', '127.0.0.1', '--port', '41000', '--no-open'], port: 41_000 })
     expect(specs[1]).toMatchObject({
       service: 'studio',
       executable: process.execPath,
@@ -327,7 +327,7 @@ describe('Supervisor lifecycle', () => {
     await expect(supervisor.start()).rejects.toMatchObject({ code: 'child-exited' })
   })
 
-  it('uses the configured DSH profile and defaults to desktop', async () => {
+  it('uses a configured DSH profile while preserving the web default', async () => {
     const specs: ServiceSpec[] = []
     const supervisor = new Supervisor(await config({ startupTimeoutMs: 250 }), {
       spawn: spec => { specs.push(spec); return new FakeChild(40_000 + specs.length) },
@@ -335,7 +335,7 @@ describe('Supervisor lifecycle', () => {
     })
     supervisors.push(supervisor)
     await expect(supervisor.start()).rejects.toMatchObject({ code: 'startup-timeout' })
-    expect(specs[0]?.args).toContain('desktop')
+    expect(specs[0]?.args).toContain('web')
   })
 
   it('coalesces concurrent starts and serializes restart with stop', async () => {

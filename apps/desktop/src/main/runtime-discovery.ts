@@ -130,6 +130,7 @@ export async function discoverRuntimeSettings(
     gatewayEntry: await exists(gatewayCandidate) ? gatewayCandidate : current.gatewayEntry,
     dshHome: env.DSH_HOME?.trim() || current.dshHome || defaultDshHome,
     runtimeRoot: dshRoot,
+    dshProfile: current.dshProfile || 'desktop',
   }
 }
 

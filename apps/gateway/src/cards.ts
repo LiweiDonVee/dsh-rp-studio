@@ -60,7 +60,6 @@ export async function discoverCards(
   const cards: Card[] = []
   for (const preset of presets) {
     if (preset.broken || !SAFE_PRESET_ID.test(preset.id)) continue
-    if (preset.isDefault && preset.id !== 'standard' && !preset.id.includes('card') && preset.id !== 'rp-runtime') continue
     if (preset.isDefault && preset.id === 'standard') continue
     try {
       const document = await roster.readPreset(preset.id)

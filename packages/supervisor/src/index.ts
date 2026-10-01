@@ -332,7 +332,7 @@ export class Supervisor {
         }
         this.assertCurrent(generation);
         const dsh = this.spawnOwned('dsh', [
-            '--profile', this.config.dshProfile ?? 'desktop',
+            '--profile', this.config.dshProfile ?? 'web',
             '--host', HOST,
             '--port', String(dshPort),
             '--no-open',
