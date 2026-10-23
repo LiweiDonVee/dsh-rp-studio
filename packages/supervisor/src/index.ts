@@ -65,7 +65,8 @@ export class SupervisorError extends Error {
 }
 const HOST = '127.0.0.1';
 const LOCK_NAME = '.dsh-rp-supervisor.lock';
-const REQUIRED_DSH_VERSION = '0.2.0-rc.2';
+const REQUIRED_DSH_VERSION = '0.2.1-rc.2';
+const SUPPORTED_DSH_VERSIONS = new Set(['0.2.0-rc.2', REQUIRED_DSH_VERSION]);
 function dshProcess(config: SupervisorConfig, args: string[]): { executable: string; args: string[] } {
     if (/\.(?:cmd|bat|exe)$/iu.test(config.dshBin)) return { executable: config.dshBin, args };
     return { executable: config.nodeExecutable, args: [config.dshBin, ...args] };
@@ -310,8 +311,8 @@ export class Supervisor {
         this.validateConfig();
         await this.validatePaths();
         const dshVersion = await this.readDshVersion();
-        if (dshVersion && dshVersion !== REQUIRED_DSH_VERSION)
-            throw new SupervisorError('invalid-config', `DSH ${REQUIRED_DSH_VERSION} is required; found ${dshVersion}.`);
+        if (dshVersion && !SUPPORTED_DSH_VERSIONS.has(dshVersion))
+            throw new SupervisorError('invalid-config', `DSH ${REQUIRED_DSH_VERSION} (or 0.2.0-rc.2) is required; found ${dshVersion}.`);
         this.assertCurrent(generation);
         await this.acquireLock();
         this.assertCurrent(generation);

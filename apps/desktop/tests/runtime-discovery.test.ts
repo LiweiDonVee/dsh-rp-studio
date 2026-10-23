@@ -73,7 +73,7 @@ describe('runtime discovery', () => {
     expect(result.runtimeRoot).toBe(dshRoot)
   })
 
-  it('discovers the installed official rc2 runtime and its launcher/node pair', async () => {
+  it.each(['0.2.0-rc.2', '0.2.1-rc.2'])('discovers official %s and its launcher/node pair', async version => {
     const install = await mkdtemp(join(tmpdir(), 'official-dsh-'))
     directories.push(install)
     const root = join(install, 'Programs', 'DeepSeek Harness', 'resources', 'runtime')
@@ -84,7 +84,7 @@ describe('runtime discovery', () => {
     await mkdir(join(dshBin, '..'), { recursive: true })
     await mkdir(join(node, '..'), { recursive: true })
     await mkdir(join(gatewayEntry, '..'), { recursive: true })
-    await writeFile(join(root, 'primary-runtime', 'runtime.json'), JSON.stringify({ desktopVersion: '0.2.0-rc.2' }))
+    await writeFile(join(root, 'primary-runtime', 'runtime.json'), JSON.stringify({ desktopVersion: version }))
     await writeFile(dshBin, '@echo off')
     await writeFile(node, '')
     await writeFile(gatewayEntry, '')

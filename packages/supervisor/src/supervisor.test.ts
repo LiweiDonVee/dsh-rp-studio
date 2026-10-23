@@ -224,11 +224,12 @@ describe('Supervisor lifecycle', () => {
   })
 
   it('reports a startup child exit immediately with its exit diagnostics', async () => {
+    let startedAt = 0
     const supervisor = new Supervisor(await config({ startupTimeoutMs: 2_000 }), {
       reservePort: async requested => requested || 42_000,
       spawn: spec => {
         const child = new FakeChild(20_000)
-        if (spec.service === 'dsh') queueMicrotask(() => child.exit(23))
+        if (spec.service === 'dsh') { startedAt = Date.now(); queueMicrotask(() => child.exit(23)) }
         return child
       },
       fetch: async () => new Promise<Response>(() => undefined),
@@ -236,8 +237,9 @@ describe('Supervisor lifecycle', () => {
     })
     supervisors.push(supervisor)
 
-    const startedAt = Date.now()
     await expect(supervisor.start()).rejects.toMatchObject({ code: 'child-exited' })
+    // Measure exit handling, excluding Windows CIM process-identity startup.
+    expect(startedAt).toBeGreaterThan(0)
     expect(Date.now() - startedAt).toBeLessThan(500)
     expect(supervisor.status().lastError?.message).toContain('23')
   })

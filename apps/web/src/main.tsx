@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import 'dsh-tavern-renderer-styles'
+import './tavern-renderer.css'
 import './styles.css'
 import { App } from './App.js'
 

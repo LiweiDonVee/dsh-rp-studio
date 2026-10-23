@@ -31,7 +31,7 @@ function supervisorConfig() {
   const dshBin = process.env.DSH_BIN ?? join(officialRuntimeRoot, 'cli', 'bin', process.platform === 'win32' ? 'dsh.cmd' : 'dsh')
   const nodeExecutable = process.env.DSH_NODE_EXECUTABLE ?? join(officialRuntimeRoot, 'primary-runtime', 'dependencies', 'node', 'bin', process.platform === 'win32' ? 'node.exe' : 'node')
   const gatewayEntry = process.env.DSH_RP_GATEWAY_ENTRY ?? join(root, 'apps', 'gateway', 'dist', 'server.js')
-  if (!existsSync(dshBin) || !existsSync(nodeExecutable) || !existsSync(gatewayEntry)) throw new Error('Required official DSH 0.2.0-rc.2 runtime or Gateway path is missing; run pnpm build and configure DSH_RUNTIME_ROOT when needed')
+  if (!existsSync(dshBin) || !existsSync(nodeExecutable) || !existsSync(gatewayEntry)) throw new Error('Required official DSH 0.2.1-rc.2 runtime or Gateway path is missing; run pnpm build and configure DSH_RUNTIME_ROOT when needed')
   return {
     nodeExecutable,
     dshBin,

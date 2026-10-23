@@ -60,7 +60,14 @@ export interface DshHistoryEntry {
   view?: unknown
 }
 
+export interface DshClientTransport {
+  call<T>(method: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<T>
+  open: RemoteMux['open']
+  stop(): void
+}
+
 export interface DshClientOptions {
+  transport?: DshClientTransport
   baseUrl?: string
   fetchImpl?: typeof fetch
   webSocketFactory?: SocketFactory
@@ -159,9 +166,17 @@ export function createDshClient(options: DshClientOptions = {}): DshClient {
   let onClose: () => void = () => {}
   let onOpen: () => void = () => {}
   const followers = new Map<string, () => void>()
-  const mux = new RemoteMux(new URL('/api/remote.mux', base).href.replace(/^http/, 'ws'), socketFactory, () => auth.headers(), () => onClose(), () => onOpen())
+  const mux = options.transport ?? new RemoteMux(new URL('/api/remote.mux', base).href.replace(/^http/, 'ws'), socketFactory, () => auth.headers(), () => onClose(), () => onOpen())
 
   async function call<T>(method: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+    if (options.transport) {
+      try { return await options.transport.call<T>(method, args, signal) }
+      catch (error) {
+        const failure = record(error)
+        if (error instanceof DshRpcError || typeof failure?.code !== 'string') throw error
+        throw safeDshError({ ok: false, error: { code: failure.code, ...(error instanceof Error ? { message: error.message } : {}) } })
+      }
+    }
     const rpcId = randomUUID()
     const headers = await auth.headers()
     let response: Response

@@ -11,3 +11,4 @@ test-results/
 .probe-sessions/
 apps/desktop/artifacts/
 .runtime/
+packages/plugin/artifacts/

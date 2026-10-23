@@ -1,0 +1,7 @@
+# Native RP workspace for DSH 0.2.1-rc.2
+
+Approved direction: embed RP Studio into the current DSH session, with a header entry, a native dockable sidebar tab and DSH fullscreen presentation. Closing returns to the original conversation. Reuse existing cards, public-state filtering and session operations. Follow host theme tokens. No additional desktop process or listener.
+
+The plugin host registers authenticated Connection Fetch routes. It owns one lazy in-process Gateway router and uses typertGateway.invoke/stream with connection.browserPeer inside the current host; no credential exchange is needed. Its SSE route validates RP session ownership and cleans up subscribers on request cancellation/unload. The browser registers the two native sidebar stages and a session header action; session-scoped components follow the host's current session. The browser receives only existing protocol-v1 public DTOs. Story, state and archive views are responsive inside a narrow pane, and fullscreen uses the same component tree.
+
+Ship a self-contained installable plugin tarball and installation instructions. Keep the existing standalone source available; make the native plugin the recommended entry. Fix the broken external renderer dependency so a fresh clone can build. Validate unit contracts, native registration/unload, real disposable DSH activation, streaming, navigation, layout and packaging. Do not send paid model requests or modify existing user sessions.

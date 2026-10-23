@@ -4,7 +4,8 @@ import { isAbsolute, join, relative, resolve, win32 } from 'node:path'
 import { validateNodeExecutable } from './runtime-doctor.js'
 import type { DesktopSettings } from './settings.js'
 
-export const REQUIRED_DSH_VERSION = '0.2.0-rc.2'
+export const REQUIRED_DSH_VERSION = '0.2.1-rc.2'
+const SUPPORTED_DSH_VERSIONS = new Set(['0.2.0-rc.2', REQUIRED_DSH_VERSION])
 type NodeValidator = (path: string) => Promise<boolean>
 type NodeLocator = () => Promise<string[]>
 
@@ -59,7 +60,7 @@ async function runtimeVersion(dshRoot: string): Promise<string | undefined> {
 }
 
 async function supportedRuntime(dshRoot: string): Promise<boolean> {
-  return Boolean(dshRoot && await exists(dshRoot) && await runtimeVersion(dshRoot) === REQUIRED_DSH_VERSION)
+  return Boolean(dshRoot && await exists(dshRoot) && SUPPORTED_DSH_VERSIONS.has(await runtimeVersion(dshRoot) ?? ''))
 }
 
 async function resolveDshCli(dshRoot: string): Promise<string> {
