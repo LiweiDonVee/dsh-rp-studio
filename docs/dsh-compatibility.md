@@ -1,3 +1,15 @@
+# DSH 0.2.1-rc.2 原生工作区
+
+2026-10-23 在官方桌面发行版携带的 0.2.1-rc.2 Web 宿主、隔离 DSH_HOME 中验证。原生插件使用 `ctx.typertGateway.invoke/stream`，将 `ctx.connection.browserPeer` 作为调用身份；不需要 HTTP token 或独立 Remote WebSocket。Connection Fetch 路由负责浏览器认证与来源检查，插件再执行 RP 会话归属校验。DSH 的原生客户端继续处理审批和提问，插件仅观察运行状态与移除通知。
+
+浏览器使用 `sidebarRightTabs` + `sidebar.right.pane.tab` 注册原生页签，`conversation.session.header.actions` 注册会话入口，`conversation.hero.options` 提供空白会话入口。跟随 `sidebarRight.mounted` 与 `uiWorkspace.openSession` 导航；页签可见性控制订阅生命周期，关闭与卸载释放 SSE。样式使用宿主主题变量，全屏和宽度调整由宿主提供。
+
+已验证：自包含 tarball 安装、插件激活、宿主健康检查、RP 预设发现、创建测试故事、档案内创建并切换故事、侧栏与全屏、520px 窄窗口、关闭后重开。组件测试另外覆盖流式叙事、晚到响应隔离、发送失败草稿保留与中文输入法。验收没有发送模型 prompt；真实模型生成和具体 RP 预设的工具执行不在这次自动验收内。
+
+独立客户端保留，并允许发现 0.2.0-rc.2 与 0.2.1-rc.2 官方运行时。其下述网络认证说明不适用于原生插件。
+
+---
+
 # DSH 0.2.0-rc.2 compatibility
 
 Checked 2026-09-30 against the installed official DeepSeek Harness runtime at `C:\Users\Owner\AppData\Local\Programs\DeepSeek Harness\resources\runtime`, whose `runtime.json` reports desktop version `0.2.0-rc.2`. The validation covers the compiled Remote definitions, Gateway stream protocol, preset registry, Web authentication, and Session controller types.

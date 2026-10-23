@@ -186,3 +186,23 @@ describe('DSH HTTP adapter', () => {
     } finally { stream.cancel(); mux.stop() }
   })
 })
+
+describe('native carrier', () => {
+  it('routes unary requests through the injected carrier without HTTP or web authentication', async () => {
+    const fetchImpl = vi.fn(async () => { throw new Error('unexpected HTTP') })
+    const call = vi.fn(async () => ({ presets: [] }))
+    const client = createDshClient({ fetchImpl, transport: { call: call as never, open: vi.fn(), stop: vi.fn() } })
+    await expect(client.listPresets()).resolves.toEqual([])
+    expect(call).toHaveBeenCalledWith('agentPresets/list', {}, undefined)
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+})
+
+describe('native Remote failures', () => {
+  it('preserves command and busy error mappings without leaking native error details', async () => {
+    const call = vi.fn(async () => { throw Object.assign(new Error('private diagnostics'), { code: 'session/agent-busy' }) })
+    const client = createDshClient({ transport: { call: call as never, open: vi.fn(), stop: vi.fn() } })
+    const error = await client.listPresets().catch(error => error)
+    expect(mapDshError(error)).toEqual({ code: 'agent-busy', message: '当前回合仍在运行，请等待它完成。', upstreamCode: 'agent-busy' })
+  })
+})

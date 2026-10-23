@@ -1,5 +1,7 @@
 # DSH RP Studio Release Acceptance
 
+This is the historical standalone 1.0 acceptance record. Current native 1.1 evidence is in [native acceptance](native-acceptance.md).
+
 Evidence date: 2026-09-30 (Asia/Shanghai). This document records fresh commands and does not treat compilation, mocks, metadata-only adapters, or owner assertions as release proof.
 
 ## Status

@@ -24,7 +24,11 @@
     "test:integration": "vitest run tests/integration --no-file-parallelism",
     "typecheck": "pnpm -r typecheck",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "verify": "pnpm doctor && pnpm check && pnpm test:integration && pnpm e2e"
+    "verify": "pnpm doctor && pnpm check && pnpm test:integration && pnpm e2e",
+    "plugin:build": "node packages/plugin/scripts/build.mjs",
+    "plugin:test": "node --test packages/plugin/tests/*.test.mjs",
+    "plugin:package": "pnpm plugin:build && node packages/plugin/scripts/pack.mjs",
+    "plugin:smoke": "node scripts/native-smoke.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",

@@ -1,12 +1,28 @@
 # DSH RP Studio
 
-本地优先的 DeepSeek Harness 角色扮演前端。
+DSH 0.2.1-rc.2 内置角色扮演工作区。点击会话顶部的 **RP** 打开右侧页签；空白会话中，RP 位于输入区上方。工作区可以拉宽、全屏阅读或关闭，使用 dsh 本身的主题和会话导航。
 
-```text
-Electron / React SPA -> RP Gateway / BFF -> official DSH Web (loopback)
+- **角色与剧情**：场景、角色状态、目标、关系、任务、物品与记忆。
+- **沉浸阅读**：玩家与 GM 对话、流式回复、发送行动、停止生成、回退、分支和自动续写。
+- **故事档案**：选择已安装的 RP 角色预设开始故事，或继续已有旅程。
+
+原生插件直接使用宿主进程内的 Remote 接口及经过认证的 Connection 路由，不另起服务，不需要复制 token。模型选择、权限审批与数据持久化沿用 dsh；公开状态和叙事仍经过原有过滤，不把 reasoning、tool result 或私有剧情字段发给工作区。
+
+![DSH 内置 RP 工作区](docs/images/native-rp-workspace.png)
+
+## 安装原生插件（推荐）
+
+下载 `dsh-rp-studio-1.1.0.tgz`，完全退出 dsh 后执行：
+
+```powershell
+dsh plugin --profile desktop add ./dsh-rp-studio-1.1.0.tgz
 ```
 
-DSH 继续负责模型、agent preset、工具、session、projection 与持久化。Studio 只提供玩家界面；浏览器不会访问 3080，也不会接收 raw DSH event、reasoning、tool result、`meta.rp`、`secrets` 或 `offscreen`。
+重新启动 dsh 即可。Web 模式将 `desktop` 换为 `web`。也可以通过右侧面板的新增页签导航找到 **RP Studio**。插件不附带角色卡；RP 预设仍需单独安装。具体说明见 [插件文档](packages/plugin/README.md)。
+
+源码构建：Node 24、pnpm 11，执行 `pnpm install` 与 `pnpm plugin:package`。安装包生成在 `packages/plugin/artifacts/`。仅构建原生插件时，若不需要下载旧 Electron 客户端，可以在安装依赖前设置 `ELECTRON_SKIP_BINARY_DOWNLOAD=1`。
+
+下文保留独立客户端及其 Gateway 的使用说明，作为已有用户的兼容入口。
 
 ## 档案
 
@@ -14,7 +30,7 @@ Studio 不附带私有角色卡。新安装的隔离 DSH home 可以没有可玩
 
 Gateway 只展示同时满足以下条件的可玩预设：用户预设、DSH roster 可用、存在合法且目录 id 一致的 `rp-card.json`，且 `kind` 不是 `template`。基础模板仍保留在内部索引中，因此旧会话可继续打开。
 
-## 安装与启动
+## 独立客户端与 Gateway
 
 Windows Desktop portable 位于 `apps/desktop/artifacts/DSH RP Studio-1.0.0-x64.exe`，桌面快捷方式为 `DSH RP Studio.lnk`。它内置 Gateway/Web 构建资源，依赖本机安装的官方 DeepSeek Harness `0.2.0-rc.2`，自动发现其 `resources/runtime/cli/bin/dsh.cmd` 和独立 Node 24，并将新用户数据保存在 Electron `userData`。不会在 portable 内捆绑或替代官方 DSH，也不会读取私有卡库。ZIP 是同一 Windows Desktop 的解压版。
 
@@ -22,7 +38,7 @@ Windows Desktop portable 位于 `apps/desktop/artifacts/DSH RP Studio-1.0.0-x64.
 
 开发构建要求 Node.js 24 和 pnpm 11；portable 运行使用官方 DSH 自带的独立 Node，不要求单独启动 3080/3091 服务。Supervisor 在 loopback 上为 DSH/Gateway 分配端口。可选叙事方法由配置的 DSH Web profile 提供，缺失时仅禁用方法面板。
 
-当前适配目标为 **DSH 0.2.0-rc.2**。Gateway 使用 Remote RPC、`remote.mux`、`session/follow` 和 `session/page`；旧版 `ApiProxy` 的点号 RPC 已不再支持。详细接口与版本边界见 [DSH 兼容说明](docs/dsh-compatibility.md)。
+原生插件的验证目标为 **DSH 0.2.1-rc.2**；独立客户端的运行时发现同时接受 0.2.0-rc.2 与 0.2.1-rc.2。Gateway 使用 Remote RPC、`remote.mux`、`session/follow` 和 `session/page`；旧版 `ApiProxy` 的点号 RPC 已不再支持。详细接口与版本边界见 [DSH 兼容说明](docs/dsh-compatibility.md)。
 
 DSH Web 的 HTTP API 和 WebSocket 在 loopback 上也需要认证。先启动相应 DSH Web profile，将其启动 URL 中 `token` 的值设为 Gateway 进程环境变量（下面为占位示例）：
 
