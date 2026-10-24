@@ -19,6 +19,9 @@ test('native header entry and sidebar type/body register and dispose together', 
   assert.equal(types[0].id, TAB_ID)
   assert.equal(types[0].kind, TAB_KIND)
   assert.equal(entries.find(row => row.options.name === 'sidebar.right.pane.tab').options.key, TAB_ID)
+  assert.deepEqual(entries.find(row => row.options.name === 'sidebar.right.pane.tab').options.children, {
+    'rp.studio.workspace.actions': { kind: 'list', scope: 'session' },
+  })
   const entry = entries.find(row => row.options.name === 'conversation.session.header.actions')
   assert.equal(entry.options.id, TAB_ID)
   assert.equal(entries.find(row => row.options.name === 'conversation.hero.options').options.id, TAB_ID)

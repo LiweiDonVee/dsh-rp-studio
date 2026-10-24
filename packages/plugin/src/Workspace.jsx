@@ -46,7 +46,7 @@ function Story({ detail, streaming }) {
   </div>
 }
 
-export function Workspace({ sessionId, visible = true, openSession, client = api }) {
+export function Workspace({ sessionId, visible = true, openSession, client = api, extraActions = null }) {
   const [detail, setDetail] = useState(null)
   const [cards, setCards] = useState([])
   const [sessions, setSessions] = useState([])
@@ -82,7 +82,7 @@ export function Workspace({ sessionId, visible = true, openSession, client = api
           if (event.type === 'state.updated') setDetail(previous => previous && ({ ...previous, state: event.state }))
           if (event.type === 'session.status') setDetail(previous => previous && ({ ...previous, session: { ...previous.session, running: event.running } }))
           if (event.type === 'session.rebased') void resync()
-          if (event.type === 'error') setError(event.error.message)
+          if (event.type === 'error') { setError(event.error.message); if (event.error.upstreamCode?.startsWith('rp-last-step-')) setStreaming({}) }
         }
         const resync = async () => {
           if (syncing) return
@@ -124,7 +124,7 @@ export function Workspace({ sessionId, visible = true, openSession, client = api
     void act(async () => { await client.send(sessionId, submitted.trim()); if (alive.current) setDraft(value => value === submitted ? '' : value) })
   }
   return <div className="dsh-rp-workspace" data-rp-session={sessionId}>
-    <header className="rp-heading"><div><span className="rp-eyebrow">RP STUDIO</span><h1>{detail?.card.title || '让故事发生'}</h1></div><button type="button" className="rp-icon" aria-label="刷新 RP 工作区" title="刷新" onClick={() => setRevision(value => value + 1)} disabled={loading}>↻</button></header>
+    <header className="rp-heading"><div><span className="rp-eyebrow">RP STUDIO</span><h1>{detail?.card.title || '让故事发生'}</h1></div><div className="rp-heading-actions">{extraActions}<button type="button" className="rp-icon" aria-label="刷新 RP 工作区" title="刷新" onClick={() => setRevision(value => value + 1)} disabled={loading}>↻</button></div></header>
     <nav className="rp-tabs" aria-label="RP 工作区视图">{tabs.map(([id, label]) => <button type="button" key={id} aria-pressed={tab === id} onClick={() => setTab(id)}>{label}</button>)}</nav>
     {error && <div role="alert" className="rp-error"><span>{error}</span><button type="button" aria-label="关闭错误提示" onClick={() => setError('')}>×</button></div>}
     {loading ? <div className="rp-empty" role="status">正在翻开故事…</div> : tab === 'archive' || !detail ? <div className="rp-scroll">

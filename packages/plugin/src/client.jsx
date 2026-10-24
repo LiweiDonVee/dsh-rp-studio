@@ -34,9 +34,9 @@ export function apply(ctx) {
     ctx.uiWorkspace.openSession(id)
     show()
   })
-  function Body({ sessionId, useTabInfo, openSession: navigate }) {
+  function Body({ sessionId, useTabInfo, openSession: navigate, renderSlot }) {
     const { tab } = useTabInfo()
-    return <Workspace key={sessionId} sessionId={sessionId} visible={tab.visible} openSession={navigate} />
+    return <Workspace key={sessionId} sessionId={sessionId} visible={tab.visible} openSession={navigate} extraActions={renderSlot('rp.studio.workspace.actions', {})} />
   }
   registerWorkspace(ctx, { Body, Button: HeaderEntry, openSession })
 }

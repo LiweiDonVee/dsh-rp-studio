@@ -14,6 +14,7 @@ export function buildOutputDirectories(root = repositoryRoot) {
     join(root, 'packages', 'protocol', 'dist'),
     join(root, 'packages', 'plugin', 'dist'),
     join(root, 'packages', 'loop-plugin', 'dist'),
+    join(root, 'packages', 'rp-last-step', 'dist'),
     join(root, 'packages', 'supervisor', 'dist'),
   ]
 }

@@ -1,4 +1,4 @@
-import { foldSurface, projectPublicState, toTranscript, type RawSessionEvent, type SurfaceOperation } from '@dsh-rp/domain'
+import { foldSurface, presentationModeAt, projectPublicState, toTranscript, type RawSessionEvent, type SurfaceOperation } from '@dsh-rp/domain'
 import type { Card, ProductScope, PromptPresetSelection, PromptSession, SessionDetail, SessionSummary, StreamEvent } from '@dsh-rp/protocol'
 import { mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -45,6 +45,7 @@ export interface SessionServiceOptions {
   dsh: DshClient
   dshHome?: string
   promptPresets?: PromptPresetsClient
+  isPresentationSession?: (sessionId: string) => boolean
 }
 
 export class SessionService implements SessionApi {
@@ -53,6 +54,7 @@ export class SessionService implements SessionApi {
   private summaries = new Map<string, DshSessionListItem>()
   private events = new Map<string, RawSessionEvent[]>()
   private historyLoads = new Map<string, Promise<void>>()
+  private presentationModes = new Map<string, { seq: number; enabled: boolean }>()
   private projections = new Map<string, unknown>()
   private projectionSeqs = new Map<string, number>()
   private workspacesBySession = new Map<string, string>()
@@ -131,7 +133,7 @@ export class SessionService implements SessionApi {
     return {
       session: { ...this.toSummary(item, card), state },
       card,
-      messages: toTranscript(foldSurface(this.events.get(sessionId) ?? [])),
+      messages: toTranscript(foldSurface(this.events.get(sessionId) ?? []), this.events.get(sessionId) ?? []),
       state,
       prompt,
     }
@@ -256,6 +258,22 @@ export class SessionService implements SessionApi {
     return this.hub.subscribe(sessionId, listener)
   }
 
+  publishPresentationDelta(sessionId: string, messageId: string, text: string): boolean {
+    if (!this.canPublishPresentation(sessionId) || !messageId || !text) return false
+    this.hub.publish({ type: 'message.delta', sessionId, messageId, text })
+    return true
+  }
+
+  publishPresentationError(sessionId: string, status: 'failed' | 'cancelled'): boolean {
+    if (!this.canPublishPresentation(sessionId)) return false
+    this.hub.publish({ type: 'error', sessionId, error: {
+      code: 'upstream-unavailable',
+      upstreamCode: `rp-last-step-${status}`,
+      message: status === 'cancelled' ? '故事生成已取消。' : '故事生成失败，请重试。',
+    } })
+    return true
+  }
+
   subscribeProduct(listener: (event: ProductSourceEvent) => void): () => void {
     this.productListeners.add(listener)
     return () => this.productListeners.delete(listener)
@@ -368,7 +386,10 @@ export class SessionService implements SessionApi {
       const merged = new Map<number, RawSessionEvent>()
       for (const event of entries.map(entry => rawEvent(entry.event))) merged.set(event.seq, event)
       for (const event of liveEvents) merged.set(event.seq, event)
-      this.events.set(sessionId, [...merged.values()].sort((a, b) => a.seq - b.seq))
+      const events = [...merged.values()].sort((a, b) => a.seq - b.seq)
+      this.events.set(sessionId, events)
+      this.presentationModes.delete(sessionId)
+      for (const event of events) this.rememberPresentationMode(sessionId, event)
     } catch (error) {
       if (this.events.get(sessionId) === liveEvents) this.events.delete(sessionId)
       throw upstreamError(error)
@@ -513,6 +534,22 @@ export class SessionService implements SessionApi {
     }
   }
 
+  private rememberPresentationMode(sessionId: string, event: RawSessionEvent): void {
+    const enabled = presentationModeAt([event])
+    if (enabled === undefined) return
+    const cached = this.presentationModes.get(sessionId)
+    if (!cached || event.seq >= cached.seq) this.presentationModes.set(sessionId, { seq: event.seq, enabled })
+  }
+
+  private isPresentationSession(sessionId: string): boolean {
+    return this.options.isPresentationSession?.(sessionId) === true || this.presentationModes.get(sessionId)?.enabled === true
+  }
+
+  private canPublishPresentation(sessionId: string): boolean {
+    const item = this.summaries.get(sessionId)
+    return !this.stopped && !!item?.agentPreset && this.cardsById.has(item.agentPreset) && this.isPresentationSession(sessionId)
+  }
+
   private onFrame(frame: DshStreamFrame): void {
     if (frame.type === 'session/subscribed') {
       this.events.delete(frame.sessionId)
@@ -535,6 +572,7 @@ export class SessionService implements SessionApi {
     if (frame.type === 'host/session-removed') {
       this.summaries.delete(frame.sessionId)
       this.events.delete(frame.sessionId)
+      this.presentationModes.delete(frame.sessionId)
       this.projections.delete(frame.sessionId)
       this.projectionSeqs.delete(frame.sessionId)
       this.workspacesBySession.delete(frame.sessionId)
@@ -556,11 +594,17 @@ export class SessionService implements SessionApi {
       if (previous.driver?.armed && !state.driver?.armed) this.publishProduct({ type: 'autoplay.completed', sessionId: frame.sessionId, sourceSeq: frame.seq })
       return
     }
+    if (frame.type === 'session/assistant-delta') {
+      if (!this.isPresentationSession(frame.sessionId)) this.hub.publish({ type: 'message.delta', sessionId: frame.sessionId, messageId: frame.messageId, text: frame.text })
+      return
+    }
     if (frame.type !== 'session/event') return
     const event = rawEvent(frame.event)
     const cached = this.events.get(frame.sessionId)
-    if (cached && !cached.some(item => item.seq === event.seq)) cached.push(event)
-    if (event.type === 'assistant/chunk') {
+    if (cached?.some(item => item.seq === event.seq)) return
+    if (cached) cached.push(event)
+    this.rememberPresentationMode(frame.sessionId, event)
+    if (event.type === 'assistant/chunk' && !this.isPresentationSession(frame.sessionId)) {
       const chunk = record(event.data.chunk)
       if (chunk?.type === 'text-delta' && typeof chunk.text === 'string') {
         const turn = typeof event.data.turn === 'number' ? event.data.turn : 0
@@ -568,12 +612,10 @@ export class SessionService implements SessionApi {
         this.hub.publish({ type: 'message.delta', sessionId: frame.sessionId, messageId: `stream-${turn}-${step}`, text: chunk.text })
       }
     }
-    if ((event.type === 'assistant/message' || event.type === 'user/message') && cached) {
-      const messageId = event.type === 'user/message'
-        ? event.data.id
-        : record(event.data.message)?.id
-      const transcript = toTranscript(foldSurface(cached))
-      const message = typeof messageId === 'string' ? transcript.find(item => item.id === messageId) : undefined
+    if ((event.type === 'assistant/message' || event.type === 'user/message' || event.type === 'tool/result') && cached) {
+      const transcript = toTranscript(foldSurface(cached), cached)
+      const message = event.type === 'assistant/message' && this.isPresentationSession(frame.sessionId)
+        ? undefined : transcript.find(item => item.seq === event.seq)
       if (message) this.hub.publish({ type: 'message.completed', sessionId: frame.sessionId, message })
       if (message?.role === 'gm') this.publishProduct({ type: 'turn.completed', sessionId: frame.sessionId, sourceSeq: event.seq })
     }

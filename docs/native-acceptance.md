@@ -1,5 +1,7 @@
 # Native RP Studio 1.1 acceptance
 
+This records the 1.1 release. For RP Studio 1.2 and the independent RP last-step plugin, see [current acceptance](rp-last-step-acceptance.md).
+
 Verified 2026-10-23 with the official DSH 0.2.1-rc.2 runtime and a disposable home. The installable package contains bundled host/client entries, manifest, Cordis patch, README and license; no workspace packages or extra server are required at installation.
 
 | Check | Result |

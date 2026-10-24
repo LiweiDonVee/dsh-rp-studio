@@ -2,6 +2,7 @@ import { mkdtemp, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { streamEventSchema, type StreamEvent } from '@dsh-rp/protocol'
 import type { DshClient, DshHistoryEntry, DshStreamFrame } from './dsh/client.js'
 import { DshRpcError } from './dsh/wire.js'
 import { GatewayError } from './errors.js'
@@ -31,6 +32,7 @@ async function fixture(
   prompt: DshClient['prompt'] = async () => ({ accepted: true }),
   promptPresets?: PromptPresetsClient,
   customize?: (dsh: DshClient, home: string) => void | Promise<void>,
+  isPresentationSession?: (sessionId: string) => boolean,
 ): Promise<{
   service: SessionService
   home: string
@@ -85,7 +87,7 @@ async function fixture(
     },
   }
   await customize?.(dsh, home)
-  const service = new SessionService({ dsh, dshHome: home, ...(promptPresets ? { promptPresets } : {}) })
+  const service = new SessionService({ dsh, dshHome: home, ...(promptPresets ? { promptPresets } : {}), ...(isPresentationSession ? { isPresentationSession } : {}) })
   await service.start()
   return {
     service,
@@ -417,6 +419,163 @@ describe('SessionService product projection source', () => {
       expect.objectContaining({ type: 'attention.required', sessionId: 'session-1' }),
     ]))
     expect(JSON.stringify(events)).not.toContain('公开正文')
+  })
+})
+
+function presentationContext(seq: number, enabled = true): DshHistoryEntry {
+  return { event: {
+    seq, time: 1_700_000_000_000 + seq, type: 'user/message', surfaceOp: 'append',
+    data: { id: `context-${seq}`, source: {
+      kind: 'runtime-context', form: 'snapshot', sections: enabled ? [{ name: 'rp-last-step-binding', text: JSON.stringify({ contract: 'rp-last-step/v1', enabled: true, profileId: 'story', version: 1 }) }] : [],
+    }, content: [{ type: 'text', text: 'PRIVATE_CONTEXT_CANARY' }] },
+  } }
+}
+
+function presentationCall(seq: number, turn = 1): DshHistoryEntry {
+  const entry = assistantEvent(seq, 'PRIVATE_MAIN_CANARY')
+  entry.event.data.turn = turn
+  entry.event.data.step = 1
+  const message = entry.event.data.message as Record<string, unknown>
+  ;(message.content as unknown[]).push({ type: 'tool-call', id: 'present-call', name: 'rp_present', arguments: '{}' })
+  return entry
+}
+
+function presentationToolCall(seq: number, turn = 1): DshHistoryEntry {
+  return { event: { seq, time: 1_700_000_000_000 + seq, type: 'tool/call', data: { turn, step: 1, callId: 'present-call', name: 'rp_present', arguments: '{}' } } }
+}
+
+function presentationResult(seq: number, turn = 1): DshHistoryEntry {
+  return { event: {
+    seq, time: 1_700_000_000_000 + seq, type: 'tool/result', surfaceOp: 'append', sourceEventSeqs: [seq - 1],
+    data: { turn, step: 1,
+      message: { id: 'tool-result', role: 'tool', source: { kind: 'tool', callId: 'present-call' }, toolCallId: 'present-call', isError: false, content: [{ type: 'text', text: 'PRIVATE_TOOL_CANARY' }] },
+      meta: { rpLastStep: { schemaVersion: 1, record: { id: 'presentation-final', text: '星光落在她的肩头。', status: 'complete', createdAt: '2026-10-24T00:00:00.000Z', profileId: 'story', profileVersion: 1, profileHash: 'hash' } } },
+    },
+  } }
+}
+
+describe('SessionService last-step presentation bridge', () => {
+  it.each(['{invalid binding', JSON.stringify({ contract: 'rp-last-step/v2', enabled: true })])('mutes both main-agent carriers when the reserved binding marker is invalid (%s)', async text => {
+    const harness = await fixture(async () => [])
+    services.push(harness.service)
+    await harness.service.session('session-1')
+    const events: StreamEvent[] = []
+    harness.service.subscribe('session-1', item => events.push(item))
+    const context = presentationContext(1)
+    context.event.data.source = { kind: 'runtime-context', form: 'snapshot', sections: [{ name: 'rp-last-step-binding', text }] }
+    harness.emit({ type: 'session/event', sessionId: 'session-1', event: context.event })
+    harness.emit({ type: 'session/assistant-delta', sessionId: 'session-1', messageId: 'main', text: 'PRIVATE_DELTA_CANARY' })
+    harness.emit({ type: 'session/event', sessionId: 'session-1', event: { seq: 2, time: 2, type: 'assistant/chunk', data: { turn: 1, step: 1, chunk: { type: 'text-delta', text: 'PRIVATE_CHUNK_CANARY' } } } })
+    expect(events).toEqual([])
+  })
+
+  it('mutes both main-agent stream carriers after a standalone runtime-context marker and restores them after clearing', async () => {
+    const harness = await fixture(async () => [])
+    services.push(harness.service)
+    await harness.service.session('session-1')
+    const events: StreamEvent[] = []
+    harness.service.subscribe('session-1', item => events.push(item))
+    harness.emit({ type: 'session/event', sessionId: 'session-1', event: presentationContext(1).event })
+    harness.emit({ type: 'session/assistant-delta', sessionId: 'session-1', messageId: 'main', text: 'PRIVATE_DELTA_CANARY' })
+    harness.emit({ type: 'session/event', sessionId: 'session-1', event: { seq: 2, time: 2, type: 'assistant/chunk', data: { turn: 1, step: 1, chunk: { type: 'text-delta', text: 'PRIVATE_CHUNK_CANARY' } } } })
+    harness.emit({ type: 'session/event', sessionId: 'session-1', event: presentationCall(3).event })
+    expect(events).toEqual([])
+    harness.emit({ type: 'session/event', sessionId: 'session-1', event: presentationContext(4, false).event })
+    harness.emit({ type: 'session/assistant-delta', sessionId: 'session-1', messageId: 'legacy', text: '普通故事。' })
+    expect(events).toEqual([{ type: 'message.delta', sessionId: 'session-1', messageId: 'legacy', text: '普通故事。' }])
+    expect((await harness.service.session('session-1')).messages).toEqual([])
+  })
+
+  it('loads presentation mode from history and keeps legacy streaming when player text contains marker-like JSON', async () => {
+    const harness = await fixture(async () => [assistantEvent(0, '旧故事。'), presentationContext(1)])
+    services.push(harness.service)
+    expect((await harness.service.session('session-1')).messages.map(item => item.text)).toEqual(['旧故事。'])
+    const events: StreamEvent[] = []
+    harness.service.subscribe('session-1', item => events.push(item))
+    harness.emit({ type: 'session/assistant-delta', sessionId: 'session-1', messageId: 'main', text: 'PRIVATE_DELTA_CANARY' })
+    expect(events).toEqual([])
+    harness.emit({ type: 'session/event', sessionId: 'session-1', event: presentationContext(2, false).event })
+    harness.emit({ type: 'session/event', sessionId: 'session-1', event: { seq: 3, time: 3, type: 'user/message', data: { id: 'player', source: { kind: 'user' }, content: [{ type: 'text', text: 'rp-last-step/v1 enabled:true' }] }, surfaceOp: 'append' } })
+    harness.emit({ type: 'session/assistant-delta', sessionId: 'session-1', messageId: 'legacy', text: '普通故事。' })
+    expect(events.at(-1)).toMatchObject({ type: 'message.delta', text: '普通故事。' })
+  })
+
+  it('uses the optional native binding cache to mute main deltas before history loads', async () => {
+    const harness = await fixture(async () => [], undefined, undefined, undefined, () => true)
+    services.push(harness.service)
+    const events: StreamEvent[] = []
+    harness.service.subscribe('session-1', item => events.push(item))
+    harness.emit({ type: 'session/assistant-delta', sessionId: 'session-1', messageId: 'main', text: 'PRIVATE_DELTA_CANARY' })
+    harness.emit({ type: 'session/event', sessionId: 'session-1', event: { seq: 1, time: 1, type: 'assistant/chunk', data: { chunk: { type: 'text-delta', text: 'PRIVATE_CHUNK_CANARY' } } } })
+    expect(events).toEqual([])
+  })
+
+  it('only forwards safe presentation deltas for a known RP owner with presentation enabled', async () => {
+    let enabled = true
+    const harness = await fixture(async () => [], undefined, undefined, undefined, () => enabled)
+    services.push(harness.service)
+    const events: StreamEvent[] = []
+    harness.service.subscribe('session-1', item => events.push(item))
+    harness.service.subscribe('unknown', item => events.push(item))
+    expect(harness.service.publishPresentationDelta('session-1', 'writer', '晨风')).toBe(true)
+    expect(harness.service.publishPresentationDelta('unknown', 'writer', 'MUST_NOT_PUBLISH')).toBe(false)
+    enabled = false
+    expect(harness.service.publishPresentationDelta('session-1', 'writer', 'MUST_NOT_PUBLISH')).toBe(false)
+    expect(events).toEqual([{ type: 'message.delta', sessionId: 'session-1', messageId: 'writer', text: '晨风' }])
+  })
+
+  it('publishes a generic typed presentation failure or cancellation without provider details', async () => {
+    const harness = await fixture(async () => [presentationContext(1)])
+    services.push(harness.service)
+    await harness.service.session('session-1')
+    const events: StreamEvent[] = []
+    harness.service.subscribe('session-1', item => events.push(item))
+    expect(harness.service.publishPresentationError('session-1', 'failed')).toBe(true)
+    expect(harness.service.publishPresentationError('session-1', 'cancelled')).toBe(true)
+    expect(harness.service.publishPresentationError('unknown', 'failed')).toBe(false)
+    expect(events).toMatchObject([
+      { type: 'error', error: { code: 'upstream-unavailable', upstreamCode: 'rp-last-step-failed' } },
+      { type: 'error', error: { upstreamCode: 'rp-last-step-cancelled' } },
+    ])
+    for (const item of events) expect(streamEventSchema.safeParse(item).success).toBe(true)
+  })
+
+  it('completes canonical writer narration from the result sequence and emits product turn completion once', async () => {
+    const harness = await fixture(async () => [presentationContext(1), presentationCall(2), presentationToolCall(3)])
+    services.push(harness.service)
+    await harness.service.session('session-1')
+    const events: StreamEvent[] = []
+    const product: import('./app.js').ProductSourceEvent[] = []
+    harness.service.subscribe('session-1', item => events.push(item))
+    harness.service.subscribeProduct(item => product.push(item))
+    const frame: DshStreamFrame = { type: 'session/event', sessionId: 'session-1', event: presentationResult(4).event }
+    harness.emit(frame)
+    harness.emit(frame)
+    expect(events).toMatchObject([{ type: 'message.completed', message: { id: 'presentation-final', text: '星光落在她的肩头。', seq: 4, role: 'gm' } }])
+    expect(product).toEqual([{ type: 'turn.completed', sessionId: 'session-1', sourceSeq: 4 }])
+    expect((await harness.service.session('session-1')).messages).toMatchObject([{ id: 'presentation-final', text: '星光落在她的肩头。' }])
+    expect(JSON.stringify(events)).not.toContain('PRIVATE')
+  })
+
+  it('keeps both completed presentations when a provider call ID is reused in the next turn', async () => {
+    const harness = await fixture(async () => [presentationContext(1)])
+    services.push(harness.service)
+    await harness.service.session('session-1')
+    const events: StreamEvent[] = []
+    harness.service.subscribe('session-1', item => events.push(item))
+    const second = presentationResult(7, 2)
+    const secondRecord = (second.event.data.meta as { rpLastStep: { record: Record<string, unknown> } }).rpLastStep.record
+    secondRecord.id = 'second-final'
+    secondRecord.text = '第二幕星光。'
+    for (const entry of [presentationCall(2), presentationToolCall(3), presentationResult(4), presentationCall(5, 2), presentationToolCall(6, 2), second]) {
+      harness.emit({ type: 'session/event', sessionId: 'session-1', event: entry.event })
+    }
+    expect(events.filter(item => item.type === 'message.completed')).toMatchObject([
+      { message: { id: 'presentation-final', text: '星光落在她的肩头。' } }, { message: { id: 'second-final', text: '第二幕星光。' } },
+    ])
+    expect((await harness.service.session('session-1')).messages.map(item => [item.id, item.text])).toEqual([
+      ['presentation-final', '星光落在她的肩头。'], ['second-final', '第二幕星光。'],
+    ])
   })
 })
 

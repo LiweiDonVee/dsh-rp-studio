@@ -13,3 +13,4 @@ apps/desktop/artifacts/
 .runtime/
 packages/plugin/artifacts/
 packages/loop-plugin/artifacts/
+packages/rp-last-step/artifacts/
