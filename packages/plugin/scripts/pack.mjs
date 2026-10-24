@@ -1,4 +1,5 @@
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve, relative, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,6 +19,9 @@ try {
   const result = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['pack', '--pack-destination', process.platform === 'win32' ? `"${output}"` : output], { cwd: staging, shell: process.platform === 'win32', stdio: 'inherit', windowsHide: true })
   if (result.error) throw result.error
   if (result.status !== 0) throw new Error(`npm pack exited with ${result.status}`)
+  const fileName = `${manifest.name}-${manifest.version}.tgz`
+  const hash = createHash('sha256').update(await readFile(join(output, fileName))).digest('hex')
+  await writeFile(join(output, 'SHA256SUMS.txt'), `${hash}  ${fileName}\n`)
 } finally {
   await rm(staging, { recursive: true, force: true })
 }
