@@ -16,14 +16,24 @@ DSH 0.2.1-rc.2 内置角色扮演工作区。点击会话顶部的 **RP** 打开
 
 ![通用 Agent Loop Studio](docs/images/agent-loop-studio.png)
 
-构建：`pnpm loop:package`；无密钥真实宿主验收：`pnpm loop:smoke`。RP“最后一步”及其 ST 迁移 skill 为独立部分，设计位于 [RP 设计稿](docs/superpowers/specs/2026-10-24-rp-last-step-design.md)。
+构建：`pnpm loop:package`；无密钥真实宿主验收：`pnpm loop:smoke`。
+
+## RP 最后一步
+
+独立的 [dsh-rp-last-step](packages/rp-last-step/README.md) 负责 **SillyTavern 预设迁移 → 模块热组装 → 最终正文**。现有 agent 和工具继续处理模拟、判定与状态；正文模型只接收公开事实和呈现模块。
+
+导入原件独立保存，迁移 skill 生成待审阅的 agent 范式草稿。用户可指定必用、Agent 只读模块；模型按需读取、启停、填充和改写其余模块，变化只进入会话覆盖层。故事固定到所选预设版本，保存新版本不会自动替换正在使用的版本。
+
+插件自带原生预设编辑器和已提交稿件记录，可单独安装。配合 RP Studio 1.2 可在故事页管理预设、流式阅读正文；配合 Loop Studio 可分别给迁移、热组装和写作选择模型。三个包互相独立，不要求同时安装。第一版终止呈现需要原生工具模式，纯 PTC 会话仍可迁移、编辑和预览。
+
+安装包：`dsh-rp-last-step-0.1.0.tgz`。安装方式同下，将包名替换即可。源码构建：`pnpm rp:package`；验收：`pnpm rp:smoke`，只安装该插件的验收：`pnpm rp:smoke -- --standalone`。详见 [验收记录](docs/rp-last-step-acceptance.md) 和 [迁移 skill](skills/adapting-sillytavern-rp-presets/SKILL.md)。
 
 ## 安装原生插件（推荐）
 
-下载 `dsh-rp-studio-1.1.0.tgz`，完全退出 dsh 后执行：
+下载 `dsh-rp-studio-1.2.0.tgz`，完全退出 dsh 后执行：
 
 ```powershell
-dsh plugin --profile desktop add ./dsh-rp-studio-1.1.0.tgz
+dsh plugin --profile desktop add ./dsh-rp-studio-1.2.0.tgz
 ```
 
 重新启动 dsh 即可。Web 模式将 `desktop` 换为 `web`。也可以通过右侧面板的新增页签导航找到 **RP Studio**。插件不附带角色卡；RP 预设仍需单独安装。具体说明见 [插件文档](packages/plugin/README.md)。

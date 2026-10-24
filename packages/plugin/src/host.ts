@@ -12,12 +12,25 @@ export const inject = ['connection', 'typertGateway']
 export function apply(ctx) {
   const routes = createNativeRoutes(async () => {
     const transport = createNativeTransport(ctx)
-    const service = new SessionService({ dsh: createDshClient({ transport }) })
+    const service = new SessionService({
+      dsh: createDshClient({ transport }),
+      isPresentationSession: sessionId => ctx.get('rpLastStep')?.isEnabled(sessionId) === true,
+    })
     const loaded = await loadDefaultProductStore({})
     const product = new ProductService({ sessions: service, ...loaded, pairingEnabled: false })
     const app = buildApp({ api: service, product })
-    const close = async () => { service.stop(); transport.stop(); await app.close(); await product.close() }
+    let stopPresentation = () => {}
+    const close = async () => { stopPresentation(); service.stop(); transport.stop(); await app.close(); await product.close() }
     try {
+      stopPresentation = ctx.on('rp-last-step/presentation', event => {
+        if (typeof event?.sessionId !== 'string') return
+        if (event.status === 'failed' || event.status === 'cancelled') {
+          service.publishPresentationError(event.sessionId, event.status)
+        } else if (event.stageId === 'rp-last-step.render' && event.status === 'rendering'
+          && typeof event.presentationId === 'string' && typeof event.delta === 'string') {
+          service.publishPresentationDelta(event.sessionId, event.presentationId, event.delta)
+        }
+      })
       await service.start()
       await product.start()
       await app.ready()

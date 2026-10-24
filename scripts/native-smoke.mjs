@@ -24,7 +24,7 @@ const cli = process.env.DSH_BIN || (process.platform === 'win32' ? join(process.
 const quotedCli = process.platform === 'win32' ? `"${cli}"` : cli
 const env = { ...process.env, DSH_HOME: home, DEEPSEEK_API_KEY: 'native-smoke-placeholder-never-used' }
 // The fixture has no model traffic. Only this disposable profile is installed/modified.
-const installing = spawn(quotedCli, ['plugin','--profile','web','add',process.platform==='win32' ? `"${resolve('packages/plugin/artifacts/dsh-rp-studio-1.1.0.tgz')}"` : resolve('packages/plugin/artifacts/dsh-rp-studio-1.1.0.tgz')], { shell:process.platform==='win32', windowsHide:true, env, stdio:'pipe' })
+const installing = spawn(quotedCli, ['plugin','--profile','web','add',process.platform==='win32' ? `"${resolve('packages/plugin/artifacts/dsh-rp-studio-1.2.0.tgz')}"` : resolve('packages/plugin/artifacts/dsh-rp-studio-1.2.0.tgz')], { shell:process.platform==='win32', windowsHide:true, env, stdio:'pipe' })
 let installLog = ''
 installing.stdout.on('data', chunk => { installLog += chunk })
 installing.stderr.on('data', chunk => { installLog += chunk })

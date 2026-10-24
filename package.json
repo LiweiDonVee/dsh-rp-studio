@@ -32,7 +32,11 @@
     "loop:build": "node packages/loop-plugin/scripts/build.mjs",
     "loop:test": "node --test packages/loop-plugin/tests/*.test.mjs",
     "loop:package": "pnpm loop:build && node packages/loop-plugin/scripts/pack.mjs",
-    "loop:smoke": "node scripts/loop-smoke.mjs"
+    "loop:smoke": "node scripts/loop-smoke.mjs",
+    "rp:build": "node packages/rp-last-step/scripts/build.mjs",
+    "rp:test": "node --test packages/rp-last-step/tests/*.test.mjs",
+    "rp:package": "pnpm rp:build && node packages/rp-last-step/scripts/pack.mjs",
+    "rp:smoke": "node scripts/rp-last-step-smoke.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",

@@ -6,12 +6,14 @@ DSH 0.2.1-rc.2 原生角色扮演工作区。在会话顶部点击 RP 打开右�
 - 沉浸阅读：玩家与 GM 对话、流式回复，以及发送、停止、回退、分支和自动续写。
 - 故事档案：选择角色开始故事，或继续已有故事。
 
+1.2 可与独立的 `dsh-rp-last-step` 联用：故事页增加预设入口，读取已确认的最终正文，并接收原生正文流。已启用最后一步的故事中，主 Agent 的处理文字不作为旁白；旧故事及普通预设保持原有阅读方式。
+
 ## 安装
 
-下载 `dsh-rp-studio-1.1.0.tgz` 后，先完全退出 dsh，再在终端执行：
+下载 `dsh-rp-studio-1.2.0.tgz` 后，先完全退出 dsh，再在终端执行：
 
 ```powershell
-dsh plugin --profile desktop add ./dsh-rp-studio-1.1.0.tgz
+dsh plugin --profile desktop add ./dsh-rp-studio-1.2.0.tgz
 ```
 
 Web 模式请把 `desktop` 改为 `web`。重新打开 dsh，进入任一会话，点击会话顶部的 RP 按钮。新故事沿用 dsh 自己的模型、权限审批和登录状态。
