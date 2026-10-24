@@ -10,6 +10,14 @@ DSH 0.2.1-rc.2 内置角色扮演工作区。点击会话顶部的 **RP** 打开
 
 ![DSH 内置 RP 工作区](docs/images/native-rp-workspace.png)
 
+## 通用 Agent Loop 插件
+
+独立的 [DSH Loop Studio](packages/loop-plugin/README.md) 适用于任意 dsh 预设的组成分析及内置 agent-loop 执行图。支持为首个模型请求、工具后的后续请求和接入的模型阶段单独配置 provider/model，保存会话覆盖或预设默认；无需安装 RP Studio。第一版保持宿主执行顺序，图内核与适配器分离，为后续可编辑流程保留边界。
+
+![通用 Agent Loop Studio](docs/images/agent-loop-studio.png)
+
+构建：`pnpm loop:package`；无密钥真实宿主验收：`pnpm loop:smoke`。RP“最后一步”及其 ST 迁移 skill 为独立部分，设计位于 [RP 设计稿](docs/superpowers/specs/2026-10-24-rp-last-step-design.md)。
+
 ## 安装原生插件（推荐）
 
 下载 `dsh-rp-studio-1.1.0.tgz`，完全退出 dsh 后执行：
