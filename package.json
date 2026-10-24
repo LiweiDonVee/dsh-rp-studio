@@ -28,7 +28,11 @@
     "plugin:build": "node packages/plugin/scripts/build.mjs",
     "plugin:test": "node --test packages/plugin/tests/*.test.mjs",
     "plugin:package": "pnpm plugin:build && node packages/plugin/scripts/pack.mjs",
-    "plugin:smoke": "node scripts/native-smoke.mjs"
+    "plugin:smoke": "node scripts/native-smoke.mjs",
+    "loop:build": "node packages/loop-plugin/scripts/build.mjs",
+    "loop:test": "node --test packages/loop-plugin/tests/*.test.mjs",
+    "loop:package": "pnpm loop:build && node packages/loop-plugin/scripts/pack.mjs",
+    "loop:smoke": "node scripts/loop-smoke.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",

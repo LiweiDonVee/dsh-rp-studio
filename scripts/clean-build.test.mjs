@@ -11,6 +11,7 @@ test('build cleanup contains only explicit repository output directories', () =>
     'C:/repo/packages/local-data/dist',
     'C:/repo/packages/protocol/dist',
     'C:/repo/packages/plugin/dist',
+    'C:/repo/packages/loop-plugin/dist',
     'C:/repo/packages/supervisor/dist',
   ])
 })

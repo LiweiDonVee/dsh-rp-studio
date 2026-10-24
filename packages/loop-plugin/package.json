@@ -1,0 +1,15 @@
+{
+  "name":"dsh-loop-studio",
+  "version":"0.1.0",
+  "description":"原生图形化查看 DSH agent loop，分析预设并配置模型节点",
+  "license":"MIT",
+  "type":"module",
+  "main":"dist/host.js",
+  "exports":{".":"./dist/host.js","./client":"./dist/client.js","./package.json":"./package.json"},
+  "files":["dist","cordis.patch.yml","README.md","LICENSE"],
+  "engines":{"node":">=24","dsh":">=0.2.1-rc.2 <0.3.0-0"},
+  "dsh":{"bundle":{"patch":"./cordis.patch.yml"},"client":{"inject":["@deepseek-ai/dsh-client-ui-conversation","@deepseek-ai/dsh-client-ui-sidebar-right","@deepseek-ai/dsh-client-ui-workspace"],"platform":"web"}},
+  "scripts":{"build":"node scripts/build.mjs","test":"node --test tests/*.test.mjs"},
+  "peerDependencies":{"react":"^18.3.1"},
+  "devDependencies":{"esbuild":"^0.28.2"}
+}

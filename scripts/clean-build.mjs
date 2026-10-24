@@ -13,6 +13,7 @@ export function buildOutputDirectories(root = repositoryRoot) {
     join(root, 'packages', 'local-data', 'dist'),
     join(root, 'packages', 'protocol', 'dist'),
     join(root, 'packages', 'plugin', 'dist'),
+    join(root, 'packages', 'loop-plugin', 'dist'),
     join(root, 'packages', 'supervisor', 'dist'),
   ]
 }
