@@ -1,5 +1,7 @@
 # RP 最后一步 0.1 / RP Studio 1.2 验收
 
+本文件记录拆仓前的集成快照。独立项目及正式发布包的验证记录、下载和校验值见 [RP 最后一步](https://github.com/LiweiDonVee/dsh-rp-last-step)、[Loop Studio](https://github.com/LiweiDonVee/dsh-loop-studio) 和各自 Releases；下方历史哈希对应当时受测快照。
+
 2026-10-24（Asia/Shanghai）。官方 DSH 0.2.1-rc.2，Node 24，独立临时 home，合成预设、事实工具和模拟模型。现有用户资料未参与验收，没有付费模型请求。
 
 交付包含独立 `dsh-rp-last-step` 0.1.0 和 RP Studio 1.2.0 联动。Loop Studio 0.1.0 是已独立交付的通用组件；RP 通过可选阶段接口接入，不与图插件互相依赖。事实、模拟和结算继续由既有 agent／工具负责。

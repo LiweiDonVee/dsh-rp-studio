@@ -49,5 +49,14 @@
   },
   "devDependencies": {
     "esbuild": "^0.28.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LiweiDonVee/dsh-rp-studio.git",
+    "directory": "packages/plugin"
+  },
+  "homepage": "https://github.com/LiweiDonVee/dsh-rp-studio#readme",
+  "bugs": {
+    "url": "https://github.com/LiweiDonVee/dsh-rp-studio/issues"
   }
 }

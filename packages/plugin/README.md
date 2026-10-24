@@ -6,11 +6,11 @@ DSH 0.2.1-rc.2 原生角色扮演工作区。在会话顶部点击 RP 打开右�
 - 沉浸阅读：玩家与 GM 对话、流式回复，以及发送、停止、回退、分支和自动续写。
 - 故事档案：选择角色开始故事，或继续已有故事。
 
-1.2 可与独立的 `dsh-rp-last-step` 联用：故事页增加预设入口，读取已确认的最终正文，并接收原生正文流。已启用最后一步的故事中，主 Agent 的处理文字不作为旁白；旧故事及普通预设保持原有阅读方式。
+1.2 可与独立的 [RP 最后一步](https://github.com/LiweiDonVee/dsh-rp-last-step) 联用：故事页增加预设入口，读取已确认的最终正文，并接收原生正文流。已启用最后一步的故事中，主 Agent 的处理文字不作为旁白；旧故事及普通预设保持原有阅读方式。[Loop Studio](https://github.com/LiweiDonVee/dsh-loop-studio) 可另外配置节点模型。
 
 ## 安装
 
-下载 `dsh-rp-studio-1.2.0.tgz` 后，先完全退出 dsh，再在终端执行：
+从 [GitHub Releases](https://github.com/LiweiDonVee/dsh-rp-studio/releases/tag/v1.2.0) 下载 `dsh-rp-studio-1.2.0.tgz` 后，先完全退出 dsh，再在终端执行：
 
 ```powershell
 dsh plugin --profile desktop add ./dsh-rp-studio-1.2.0.tgz
@@ -19,6 +19,15 @@ dsh plugin --profile desktop add ./dsh-rp-studio-1.2.0.tgz
 Web 模式请把 `desktop` 改为 `web`。重新打开 dsh，进入任一会话，点击会话顶部的 RP 按钮。新故事沿用 dsh 自己的模型、权限审批和登录状态。
 
 插件在 dsh 内运行，不启动额外服务，不需要复制访问令牌。所有内容通过宿主的认证接口读取；角色配置中的私有字段保持原有过滤规则。
+
+Windows 找不到 `dsh` 命令时，可使用默认官方启动器：
+
+```powershell
+$dshCli = Join-Path $env:LOCALAPPDATA 'Programs/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd'
+& $dshCli plugin --profile desktop add ./dsh-rp-studio-1.2.0.tgz
+```
+
+发布页附 SHA256SUMS。完整使用、角色预设和三插件配置见 [原生指南](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/native-usage.md)。
 
 ## 从源码构建
 

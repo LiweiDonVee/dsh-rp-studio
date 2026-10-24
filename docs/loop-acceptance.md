@@ -1,5 +1,7 @@
 # DSH Loop Studio 0.1.0 验收
 
+本文件记录拆仓前的集成快照。后续开发、独立验收与正式发布包见 [dsh-loop-studio](https://github.com/LiweiDonVee/dsh-loop-studio)；下方哈希保留为当时测试证据。
+
 2026-10-24（Asia/Shanghai）。独立包 `dsh-loop-studio`，无 RP 运行依赖。基于官方 DSH 0.2.1-rc.2，在全新隔离 home 中安装自包含 tgz，使用模拟提供方，无真实模型请求或私人预设。
 
 | 检查 | 结果 |
