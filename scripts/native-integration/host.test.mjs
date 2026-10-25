@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { resolve } from 'node:path'
 import { join, basename, sep } from 'node:path'
-import { mkdtemp, mkdir, symlink, writeFile, readFile, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, symlink, writeFile, readFile, readdir, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { assertRunDirectory, redact, installInputs, runCli, stopOwned, closeOwnedResources } from './host.mjs'
 import { spawn } from 'node:child_process'
@@ -20,7 +20,7 @@ async function scratch(work) {
 test('native run ownership does not include workspace root, sibling homes or path-prefix lookalikes', () => scratch(async root => {
   const workspace = join(root, 'workspace')
   await mkdir(join(workspace, '.runtime'), { recursive: true })
-  assert.equal(await assertRunDirectory(workspace, resolve(workspace, '.runtime', 'one')), resolve(workspace, '.runtime', 'one'))
+  assert.equal(await assertRunDirectory(workspace, resolve(workspace, '.runtime', 'one')), resolve(await realpath(workspace), '.runtime', 'one'))
   for (const directory of [workspace, resolve(workspace, '.runtime-other', 'one'), resolve(workspace, '..', 'another', 'home')]) await assert.rejects(async () => assertRunDirectory(workspace, directory), /RUN_DIRECTORY_OUTSIDE_WORKSPACE/u)
 }))
 
@@ -67,7 +67,7 @@ test('browser cleanup failure does not skip terminating the owned process or hid
   try {
     const errors = await closeOwnedResources({ close() { throw new Error('synthetic browser close failure') } }, { async close() { await stopOwned(child); hostClosed = true; throw new Error('synthetic evidence write failure') } })
     assert.equal(hostClosed, true)
-    assert.notEqual(child.exitCode, null)
+    assert.ok(child.exitCode !== null || child.signalCode !== null, 'owned process must have exited by code or signal')
     assert.deepEqual(errors.map(error => error.resource), ['browser', 'host'])
   } finally { await stopOwned(child) }
 })
