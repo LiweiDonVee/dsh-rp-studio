@@ -23,6 +23,7 @@ node scripts/native-integration/run.mjs --manifest ./reviewed-inputs.json --mode
 node scripts/native-integration/run.mjs --manifest ./reviewed-inputs.json --mode inspect --ui --browser <existing-headless-chromium>
 node scripts/native-integration/run.mjs --manifest ./reviewed-final-inputs.json --mode diagnose --browser <existing-headless-chromium>
 node scripts/native-integration/run.mjs --manifest ./reviewed-final-inputs.json --mode full --browser <existing-headless-chromium>
+node scripts/native-integration/readback-defaults.mjs --run <existing-passed-run> --browser <existing-headless-chromium>
 node --test scripts/native-integration/*.test.mjs
 ```
 
@@ -49,3 +50,5 @@ For the pending restore case, a public AbortSignal interrupts a real restore whi
 Every successful player action requires a new accepted fact receipt and canonical narrative, matching effective body, active GM, expected facts and actual dispatch/render increments. Intentional assembly/writer failures have separate assertions. Document-cache proof associates actual public document/chunk refs with their first warm HTTP body embeddings and search hits, then checks cold query-only embedding and stable content revision. Each process segment retains its final counters, browser errors and cleanup status; all segments contribute to the final verdict. Setup/read-only/negative owner requests use the browser context's authenticated API client; user actions still use real native clicks.
 
 Restore completion must come from real StoryKit and all real state owners; pending/deferred Loop validation is never a pass. Final reports must distinguish the actual run's coverage from any separately accepted evidence for the exact same product hashes.
+
+`readback-defaults.mjs` performs bounded public reads in an existing passed run's source and destination homes. It verifies the same installed bytes and actual host version, reads exact pinned/default and source-latest versions plus original sources/documents/current bindings, and writes a new exclusive `public-defaults-readback.json`. It never resumes an Agent, sends a prompt, creates a story/job, changes a private payload, or overwrites the original full-result/scene evidence. Its two process records retain raw responses, zero-model counters and owned cleanup.
