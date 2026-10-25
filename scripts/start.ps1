@@ -15,43 +15,19 @@ if ($Port -lt 1 -or $Port -gt 65535) { throw 'Studio port must be between 1 and 
 if ($DshPort -lt 1 -or $DshPort -gt 65535) { throw 'DSH port must be between 1 and 65535.' }
 if ($PromptPresetsPort -lt 1 -or $PromptPresetsPort -gt 65535) { throw 'Prompt Presets port must be between 1 and 65535.' }
 
-function Test-LocalPortAvailable([int]$Candidate) {
-  $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $Candidate)
-  try {
-    $listener.Start()
-    return $true
-  } catch {
-    return $false
-  } finally {
-    $listener.Stop()
-  }
-}
-
-try {
-  $existing = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/v1/health" -TimeoutSec 2
-  if ($existing.protocolVersion -eq 1) {
-    if ($ProbeOnly) {
-      [pscustomobject]@{ studioUrl = "http://127.0.0.1:$Port"; dshUrl = "http://127.0.0.1:$DshPort"; promptPresetsUrl = "http://127.0.0.1:$PromptPresetsPort/prompt-presets/api"; existing = $true } | ConvertTo-Json -Compress
-      return
-    }
-    Write-Host "DSH RP Studio is already running: http://127.0.0.1:$Port"
-    return
-  }
-} catch {
-  # The preferred port is either free or belongs to another local process.
-}
-
-$selectedPort = $Port
-$lastPort = [Math]::Min($Port + 20, 65535)
-while (-not (Test-LocalPortAvailable $selectedPort)) {
-  if ($selectedPort -ge $lastPort) { throw 'No local RP Studio port is available.' }
-  $selectedPort++
-}
+$probeOutput = & node (Join-Path $PSScriptRoot 'launcher-ports.mjs') $Port $DshPort $PromptPresetsPort 2>&1
+if ($LASTEXITCODE -ne 0) { throw ($probeOutput -join [Environment]::NewLine) }
+$probe = $probeOutput | ConvertFrom-Json
 
 if ($ProbeOnly) {
-  [pscustomobject]@{ studioUrl = "http://127.0.0.1:$selectedPort"; dshUrl = "http://127.0.0.1:$DshPort"; promptPresetsUrl = "http://127.0.0.1:$PromptPresetsPort/prompt-presets/api"; existing = $false } | ConvertTo-Json -Compress
+  $probeOutput
   return
 }
+if ($probe.existing) {
+  Write-Host "DSH RP Studio is already running: http://127.0.0.1:$Port"
+  return
+}
+$selectedPort = ([uri]$probe.studioUrl).Port
 
 if (-not $NoBuild) {
   & pnpm build

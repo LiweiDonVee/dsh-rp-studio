@@ -11,6 +11,7 @@ import { registerStaticApp, startServer } from './server.js'
 
 const execFileAsync = promisify(execFile)
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
+const launcherPortProbe = join(projectRoot, 'scripts', 'launcher-ports.mjs')
 
 async function listen(server: Server): Promise<number> {
   await new Promise<void>((resolveListen, reject) => {
@@ -109,24 +110,39 @@ describe('production static app', () => {
     })
     const occupiedPort = await listen(blocker)
     try {
-      const { stdout } = await execFileAsync('powershell.exe', [
-        '-NoProfile', '-ExecutionPolicy', 'Bypass',
-        '-File', join(projectRoot, 'scripts', 'start.ps1'),
-        '-Port', String(occupiedPort),
-        '-DshPort', '3080',
-        '-ProbeOnly',
-      ], { cwd: projectRoot, timeout: 10_000 })
+      const { stdout } = await execFileAsync(process.execPath, [launcherPortProbe, String(occupiedPort), '3080', '3091'], { cwd: projectRoot, timeout: 10_000 })
       const result = JSON.parse(stdout.trim().split(/\r?\n/u).at(-1) ?? '{}') as {
         studioUrl?: string
         dshUrl?: string
+        promptPresetsUrl?: string
         existing?: boolean
       }
       expect(result.existing).toBe(false)
       expect(result.dshUrl).toBe('http://127.0.0.1:3080')
+      expect(result.promptPresetsUrl).toBe('http://127.0.0.1:3091/prompt-presets/api')
       expect(result.studioUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/u)
       expect(result.studioUrl).not.toBe(`http://127.0.0.1:${occupiedPort}`)
     } finally {
       await close(blocker)
     }
   }, 15_000)
+
+  it('reuses an existing Studio without changing launcher upstream ports', async () => {
+    const existing = createServer((_request, response) => {
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify({ protocolVersion: 1 }))
+    })
+    const port = await listen(existing)
+    try {
+      const { stdout } = await execFileAsync(process.execPath, [launcherPortProbe, String(port), '3082', '3093'], { cwd: projectRoot, timeout: 10_000 })
+      expect(JSON.parse(stdout)).toEqual({
+        studioUrl: `http://127.0.0.1:${port}`,
+        dshUrl: 'http://127.0.0.1:3082',
+        promptPresetsUrl: 'http://127.0.0.1:3093/prompt-presets/api',
+        existing: true,
+      })
+    } finally {
+      await close(existing)
+    }
+  })
 })
