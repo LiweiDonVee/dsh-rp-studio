@@ -14,7 +14,7 @@ DSH 0.2.1-rc.2 内置角色扮演工作区。点击会话顶部的 **RP** 打开
 
 这些项目可独立安装；需要组合联动时，把所需包安装到同一个 DSH profile。新插件的主仓库、独立构建和问题跟踪位于上表对应项目。本仓库保留 `packages/loop-plugin`、`packages/rp-last-step` 和迁移 skill 的历史集成快照；后续开发、当前验收与正式发布以独立仓库为准。
 
-[原生使用指南](docs/native-usage.md) · [更新记录](CHANGELOG.md) · [最后一步联动验收](docs/rp-last-step-acceptance.md)
+[原生使用指南](docs/native-usage.md) · [更新记录](CHANGELOG.md) · [最后一步联动验收](docs/rp-last-step-acceptance.md) · [Agent RP 项目规划（提案）](docs/agent-rp-project-roadmap.md)
 
 - **角色与剧情**：场景、角色状态、目标、关系、任务、物品与记忆。
 - **沉浸阅读**：玩家与 GM 对话、流式回复、发送行动、停止生成、回退、分支和自动续写。
