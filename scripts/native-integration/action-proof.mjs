@@ -5,6 +5,15 @@ const successfulFacts = events => {
   const calls = new Map(events.filter(event => event.type === 'tool/call').map(event => [event.data.callId, event.data.name]))
   return events.filter(event => event.type === 'tool/result' && event.data.message?.isError !== true && calls.get(event.data.message?.toolCallId) === 'rp_commit_turn').length
 }
+export function verifyColdBeforeAction(before, baseline) {
+  assert.equal(before.models.total, 0)
+  for (const stage of ['gm', 'prepare', 'summarize', 'assembly', 'writer', 'writer-alt']) assert.equal(before.models.counts[stage], 0, `historical ${stage} work ran before click`)
+  assert.equal(before.gm.lastFactReceipt?.id, baseline.receiptId)
+  assert.deepEqual(before.snapshot.header, baseline.snapshot.header); assert.equal(before.snapshot.inheritedEventCount, baseline.snapshot.inheritedEventCount)
+  assert.deepEqual(before.snapshot.events.slice(0, baseline.snapshot.events.length), baseline.snapshot.events)
+  assert.ok(before.snapshot.events.slice(baseline.snapshot.events.length).every(event => event.type === 'session/end-seed'), 'canonical work ran while opening the cold UI')
+  return { receiptId: baseline.receiptId, prefixHash: createHash('sha256').update(JSON.stringify(baseline.snapshot.events)).digest('hex'), modelCounts: before.models.counts }
+}
 export function verifyAction(before, after, { text, fact = 'new', presentation = 'accepted', failureStage, facts } = {}) {
   const receipt = after.gm.lastFactReceipt, previous = before.gm.lastFactReceipt, priorSeq = before.snapshot.events.at(-1)?.seq ?? -1
   assert.equal(after.gm.binding?.status, 'active', 'GM did not admit active play')

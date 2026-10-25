@@ -10,7 +10,7 @@ import { SCENARIOS, assessServices } from './requirements.mjs'
 import { openNativeContext, waitForNative } from './contexts.mjs'
 import { ownedRunPath } from './paths.mjs'
 import { redact } from './host.mjs'
-import { verifyAction } from './action-proof.mjs'
+import { verifyAction, verifyColdBeforeAction } from './action-proof.mjs'
 import { verifyDocumentCache } from './document-proof.mjs'
 import { verifyUnchanged } from './witness-proof.mjs'
 
@@ -50,12 +50,15 @@ async function sendUi(context, sessionId, text, expected = {}) {
     return { gm, narratives: narratives.records, snapshot, models }
   }
   const before = await capture()
+  let coldProof
+  if (expected.coldBaseline) try { coldProof = verifyColdBeforeAction(before, expected.coldBaseline) }
+  catch (error) { context.failedAction = { sessionId, before, expected: { text, ...expected } }; throw error }
   const received = context.page.waitForResponse(response => response.url().endsWith('/api/rp-studio/request') && response.request().postDataJSON()?.path?.endsWith('/messages'))
   await context.page.getByRole('textbox', { name: '写下你的行动', exact: true }).fill(text)
   await context.page.getByRole('button', { name: '发送行动 ↑', exact: true }).click()
   assert.equal((await received).status(), 200); await context.idle(sessionId)
   const after = await capture()
-  try { context.actionProofs.push(verifyAction(before, after, { text, ...expected })) }
+  try { context.actionProofs.push({ ...verifyAction(before, after, { text, ...expected }), ...(coldProof ? { coldBeforeClick: coldProof } : {}) }) }
   catch (error) { context.failedAction = { sessionId, before, after, expected: { text, ...expected } }; throw error }
 }
 async function bindStyle(context, sessionId, profile) {
@@ -265,6 +268,8 @@ export async function executeFullNative({ workspace, run, staged, cli, browserPa
       await source.openStudio(primaryId)
       const forkResponse = source.page.waitForResponse(response => response.url().endsWith('/api/rp-studio/request') && response.request().postDataJSON()?.path?.endsWith('/fork'))
       await source.page.getByRole('button', { name: '分支', exact: true }).click(); const forked = (await (await forkResponse).json()).data
+      await source.page.locator(`.dsh-rp-workspace[data-rp-session="${forked.session.id}"]`).waitFor()
+      await source.page.locator('.rp-empty').waitFor({ state: 'hidden' })
       assert.equal((await currentStyle(source, forked.session.id)).profileId, styles.B.profileId)
       await source.openStudio(primaryId)
       const rollbackResponse = source.page.waitForResponse(response => response.url().endsWith('/api/rp-studio/request') && response.request().postDataJSON()?.path?.endsWith('/rollback'))
@@ -295,7 +300,8 @@ export async function executeFullNative({ workspace, run, staged, cli, browserPa
       const coldRevision = await source.api('database', 'contentRevision')
       documentCacheProof = verifyDocumentCache({ databaseHash: staged.packages.find(row => row.name === 'dsh-rp-database').sha256, query: cacheQuery, documents: documentRefs, entries: documentEntries, warmResults, coldResult, requests: provider.stats().requests, beforeIndex, warmIndex, revisions: [beforeRevision, warmRevision, coldRevision] })
       await source.probe('resume', { sessionId: selectedId }); assert.equal((await source.probe('models')).total, 0)
-      await sendUi(source, selectedId, '冷启动后明确继续当前故事。')
+      const sourceColdBaseline = { snapshot: await source.snapshot(selectedId), receiptId: (await source.api('studio', 'gmState', { sessionId: selectedId })).lastFactReceipt.id }
+      await sendUi(source, selectedId, '冷启动后明确继续当前故事。', { coldBaseline: sourceColdBaseline })
       assert.equal((await currentStyle(source, selectedId)).profileId, styles.B.profileId)
       await write('branch-cold.json', { primaryId, selectedId, forkId: forked.session.id, snapshots, state, coldEmbeddings, models, adoptedSummary, documentCacheProof, warmResults, coldResult, documentEntries }); return { selectedId, exactColdPrefix: true, historicalModelRequests: 0, currentSourcesAuthoritativeInDatabase: true }
     })
@@ -448,7 +454,8 @@ export async function executeFullNative({ workspace, run, staged, cli, browserPa
       const coldRestoredWitness = await verifyRestoredBindings()
       assert.equal((await destination.probe('models')).total, 0)
       await destination.probe('resume', { sessionId: selectedId }); assert.equal((await destination.probe('models')).total, 0)
-      await sendUi(destination, selectedId, '恢复后明确继续，不重演历史。')
+      const destinationColdBaseline = { snapshot: await destination.snapshot(selectedId), receiptId: (await destination.api('studio', 'gmState', { sessionId: selectedId })).lastFactReceipt.id }
+      await sendUi(destination, selectedId, '恢复后明确继续，不重演历史。', { coldBaseline: destinationColdBaseline })
       assert.equal((await currentStyle(destination, selectedId)).profileId, styles.B.profileId)
       const rolled = await destination.studio('POST', `/api/v1/sessions/${selectedId}/rollback`), forked = await destination.studio('POST', `/api/v1/sessions/${selectedId}/fork`, {})
       assert.ok(rolled.sessionId); assert.ok(forked.session.id)
