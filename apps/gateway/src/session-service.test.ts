@@ -7,7 +7,7 @@ import type { DshClient, DshHistoryEntry, DshStreamFrame } from './dsh/client.js
 import { DshRpcError } from './dsh/wire.js'
 import { GatewayError } from './errors.js'
 import type { PromptPresetsClient } from './prompt-presets-client.js'
-import { SessionService } from './session-service.js'
+import { SessionService, type SessionServiceOptions } from './session-service.js'
 
 function assistantEvent(seq: number, text: string): DshHistoryEntry {
   return {
@@ -33,6 +33,7 @@ async function fixture(
   promptPresets?: PromptPresetsClient,
   customize?: (dsh: DshClient, home: string) => void | Promise<void>,
   isPresentationSession?: (sessionId: string) => boolean,
+  nativeOptions: Partial<SessionServiceOptions> = {},
 ): Promise<{
   service: SessionService
   home: string
@@ -87,7 +88,7 @@ async function fixture(
     },
   }
   await customize?.(dsh, home)
-  const service = new SessionService({ dsh, dshHome: home, ...(promptPresets ? { promptPresets } : {}), ...(isPresentationSession ? { isPresentationSession } : {}) })
+  const service = new SessionService({ dsh, dshHome: home, ...(promptPresets ? { promptPresets } : {}), ...(isPresentationSession ? { isPresentationSession } : {}), ...nativeOptions })
   await service.start()
   return {
     service,
@@ -101,6 +102,89 @@ async function fixture(
 const services: SessionService[] = []
 afterEach(() => {
   for (const service of services.splice(0)) service.stop()
+})
+
+describe('generic native story services', () => {
+  const binding = { schemaVersion: 1, id: 'binding-one', sessionId: 'session-1', launchId: 'launch-one', title: '雨后的港口', status: 'active', character: { assetId: 'actor', version: 2, name: '林', description: '港口的向导。' }, persona: { assetId: 'player', version: 1, name: '旅人', description: '来访者' }, opening: { id: 'first', text: '船靠岸了。' }, examples: '', sources: [], profile: { profileId: 'profile', version: 1 }, factEntryRefs: [], createdAt: '2026-10-25T00:00:00Z' }
+  const scene = { schemaVersion: 1, title: '抵港', location: '码头', presentActorIds: ['actor'] }
+  const facts = { schemaVersion: 1, items: [{ id: 'arrived', text: '旅人已到达码头。' }] }
+  const ref = { sessionId: 'session-1', presentationId: 'receipt-one', assistantMessageId: 'gm-1', callSeq: 2, baseResultSeq: 3, resultSeq: 8 }
+  function gm() {
+    return { apiVersion: 1, listStories: async () => ({ stories: [{ ...binding }] }), binding: async (input: { sessionId: string }) => ({ ...binding, sessionId: input.sessionId }),
+      storyState: async () => ({ binding, scene, facts, capabilities: { rollback: true, fork: true, autoplay: false } }),
+      forkStory: async () => ({ sessionId: 'child', binding: { ...binding, sessionId: 'child' } }),
+      rollbackStory: async () => ({ sessionId: 'child', binding: { ...binding, sessionId: 'child' } }) }
+  }
+
+  it('discovers a generic story from its owner and projects current scene/facts without a per-card preset', async () => {
+    const owner = gm()
+    const h = await fixture(async () => [assistantEvent(1, 'PRIVATE_MAIN_GM')], undefined, undefined, dsh => {
+      dsh.listPresets = async () => []
+      dsh.listSessions = async () => [{ sessionId: 'session-1', updatedAt: 1, running: false, blank: false, agentPreset: 'plain-gm' }]
+    }, undefined, { getGM: () => owner })
+    services.push(h.service)
+    expect(await h.service.cards()).toEqual([])
+    expect(await h.service.sessions()).toMatchObject([{ id: 'session-1', title: '雨后的港口' }])
+    expect(await h.service.session('session-1')).toMatchObject({ messages: [], card: { protagonist: '旅人' }, state: { scene: { location: '码头' }, extensions: { gm: { scene, facts, capabilities: { autoplay: false } } } } })
+  })
+
+  it('prefers current native narrative revisions while retaining player actions', async () => {
+    const owner = gm()
+    const history: DshHistoryEntry[] = [{ event: { seq: 0, time: 1, type: 'user/message', data: { id: 'player', source: { kind: 'user' }, content: [{ type: 'text', text: '靠岸。' }] }, surfaceOp: 'append' } }]
+    const h = await fixture(async () => history, undefined, undefined, undefined, undefined, {
+      getGM: () => owner,
+      getLastStep: () => ({ narratives: async () => ({ records: [{ id: '["receipt-one",8]', ref, turn: 1, action: '靠岸。', text: '有效采用稿。' }] }) }),
+    })
+    services.push(h.service)
+    expect((await h.service.session('session-1')).messages.map(message => [message.role, message.text])).toEqual([['player', '靠岸。'], ['gm', '有效采用稿。']])
+  })
+
+  it('delegates generic branch controls and refuses legacy autoplay commands', async () => {
+    const owner = gm(), prompt = vi.fn(async () => ({ accepted: true }))
+    let listed = ['session-1']
+    owner.listStories = async () => ({ stories: listed.map(sessionId => ({ ...binding, sessionId })) })
+    owner.binding = async ({ sessionId }: { sessionId: string }) => ({ ...binding, sessionId })
+    owner.forkStory = async () => { listed = ['session-1', 'child']; return { sessionId: 'child', binding: { ...binding, sessionId: 'child' } } }
+    owner.rollbackStory = owner.forkStory
+    const h = await fixture(async () => [], prompt, undefined, dsh => {
+      dsh.listSessions = async () => listed.map(sessionId => ({ sessionId, updatedAt: 1, running: false, blank: false, agentPreset: 'generic-gm' }))
+    }, undefined, { getGM: () => owner })
+    services.push(h.service)
+    expect(await h.service.fork('session-1')).toMatchObject({ session: { id: 'child' } })
+    expect(await h.service.rollback('session-1')).toMatchObject({ accepted: true, sessionId: 'child' })
+    await expect(h.service.autoplay('session-1', { rounds: 3 })).rejects.toThrow(/自动续写/u)
+    expect(prompt).not.toHaveBeenCalled()
+    expect((await h.service.sessions()).map(item => item.id)).toContain('session-1')
+  })
+
+  it('invalidates an idle reader when the owner changes state and releases that subscription', async () => {
+    let notify = (_event: Record<string, unknown>) => {}
+    const owner = { ...gm(), subscribe: (_id: string, listener: typeof notify) => { notify = listener; return () => { notify = () => {} } } }
+    const h = await fixture(async () => [], undefined, undefined, undefined, undefined, { getGM: () => owner })
+    services.push(h.service)
+    const events: StreamEvent[] = []
+    const stop = h.service.subscribe('session-1', event => events.push(event))
+    notify({ type: 'changed', sessionId: 'session-1' })
+    expect(events).toEqual([{ type: 'session.rebased', sessionId: 'session-1' }])
+    stop()
+    notify({ type: 'changed', sessionId: 'session-1' })
+    expect(events).toHaveLength(1)
+  })
+
+  it('reports an unavailable generic rollback through the existing safe API error contract', async () => {
+    const owner = gm()
+    owner.rollbackStory = async () => { throw Object.assign(new Error('No ordinary factual turn'), { code: 'ROLLBACK_UNAVAILABLE', status: 409 }) }
+    const h = await fixture(async () => [], undefined, undefined, undefined, undefined, { getGM: () => owner })
+    services.push(h.service)
+    await expect(h.service.rollback('session-1')).rejects.toMatchObject({ statusCode: 409, apiError: { code: 'rollback-unavailable' } })
+  })
+
+  it('does not advertise generic branch controls when the installed owner lacks their methods', async () => {
+    const { forkStory: _fork, rollbackStory: _rollback, ...owner } = gm()
+    const h = await fixture(async () => [], undefined, undefined, undefined, undefined, { getGM: () => owner })
+    services.push(h.service)
+    expect((await h.service.session('session-1')).state.extensions.gm).toMatchObject({ capabilities: { rollback: false, fork: false, autoplay: false } })
+  })
 })
 
 describe('SessionService transcript recovery', () => {

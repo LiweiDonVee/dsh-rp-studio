@@ -1,5 +1,5 @@
 import { foldSurface, presentationModeAt, projectPublicState, toTranscript, type RawSessionEvent, type SurfaceOperation } from '@dsh-rp/domain'
-import type { Card, ProductScope, PromptPresetSelection, PromptSession, SessionDetail, SessionSummary, StreamEvent } from '@dsh-rp/protocol'
+import type { Card, ProductScope, PromptPresetSelection, PromptSession, RollbackResult, SessionDetail, SessionSummary, StreamEvent } from '@dsh-rp/protocol'
 import { mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import { discoverCards } from './cards.js'
@@ -9,6 +9,7 @@ import { GatewayError } from './errors.js'
 import { EventHub } from './event-hub.js'
 import type { ProductSourceEvent, SessionApi } from './app.js'
 import { PromptPresetsClientError, type PromptPresetsClient, type PromptProfileView } from './prompt-presets-client.js'
+import { nativeTranscript, storyCard, storyPublicState, type NativeGM, type NativeLastStep, type StorySummary } from './native-stories.js'
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -37,6 +38,7 @@ function rawEvent(entry: DshHistoryEntry['event']): RawSessionEvent {
 }
 
 function upstreamError(error: unknown): GatewayError {
+  if (error instanceof GatewayError) return error
   const apiError = mapDshError(error)
   return new GatewayError(apiError, statusForDshError(apiError))
 }
@@ -46,11 +48,14 @@ export interface SessionServiceOptions {
   dshHome?: string
   promptPresets?: PromptPresetsClient
   isPresentationSession?: (sessionId: string) => boolean
+  getGM?: () => NativeGM | undefined
+  getLastStep?: () => NativeLastStep | undefined
 }
 
 export class SessionService implements SessionApi {
   private readonly hub = new EventHub()
   private cardsById = new Map<string, Card>()
+  private genericStories = new Map<string, StorySummary>()
   private summaries = new Map<string, DshSessionListItem>()
   private events = new Map<string, RawSessionEvent[]>()
   private historyLoads = new Map<string, Promise<void>>()
@@ -63,6 +68,7 @@ export class SessionService implements SessionApi {
   private recoveryAttempts = 0
   private recoveryTimer: ReturnType<typeof setTimeout> | undefined
   private stopped = false
+  private readonly ownerSubscriptions = new Set<() => void>()
   private readonly productListeners = new Set<(event: ProductSourceEvent) => void>()
 
   constructor(private readonly options: SessionServiceOptions) {}
@@ -90,6 +96,7 @@ export class SessionService implements SessionApi {
 
   stop(): void {
     this.stopped = true
+    for (const stop of this.ownerSubscriptions) stop()
     this.closeStreams?.()
     this.closeStreams = undefined
     if (this.recoveryTimer) clearTimeout(this.recoveryTimer)
@@ -116,7 +123,7 @@ export class SessionService implements SessionApi {
   async sessions(): Promise<SessionSummary[]> {
     await this.refreshSessions()
     return [...this.summaries.values()].flatMap(item => {
-      const card = item.agentPreset ? this.cardsById.get(item.agentPreset) : undefined
+      const card = this.cardFor(item)
       return card ? [this.toSummary(item, card)] : []
     }).sort((a, b) => b.updatedAt - a.updatedAt)
   }
@@ -125,15 +132,26 @@ export class SessionService implements SessionApi {
     await this.refreshSessions()
     const item = this.summaries.get(sessionId)
     if (!item) throw new GatewayError({ code: 'not-found', message: '找不到该 RP 会话。' }, 404)
-    const card = item.agentPreset ? this.cardsById.get(item.agentPreset) : undefined
+    const card = this.cardFor(item)
     if (!card) throw new GatewayError({ code: 'card-unavailable', message: '该会话不属于可用的 RP 卡片。' }, 409)
     await this.ensureHistory(sessionId)
-    const state = projectPublicState(this.projections.get(sessionId) ?? item.projections?.values['rp-state'])
+    const owner = this.genericStories.has(sessionId) ? this.gm() : undefined
+    if (owner && !await owner.binding({ sessionId })) throw new GatewayError({ code: 'not-found', message: '找不到该通用故事绑定。' }, 404)
+    const nativeState = owner ? await owner.storyState({ sessionId }) : undefined
+    const state = owner && nativeState ? storyPublicState({ ...nativeState, capabilities: {
+      rollback: nativeState.capabilities?.rollback === true && typeof owner.rollbackStory === 'function',
+      fork: nativeState.capabilities?.fork === true && typeof owner.forkStory === 'function', autoplay: false,
+    } }) : projectPublicState(this.projections.get(sessionId) ?? item.projections?.values['rp-state'])
     const prompt = await this.promptSettingsFor(sessionId, card)
+    const events = this.events.get(sessionId) ?? []
+    const canonicalIds = events.flatMap(event => {
+      const item = record(record(record(event.data.meta)?.rpLastStep)?.record)
+      return typeof item?.id === 'string' ? [item.id] : []
+    })
     return {
       session: { ...this.toSummary(item, card), state },
       card,
-      messages: toTranscript(foldSurface(this.events.get(sessionId) ?? []), this.events.get(sessionId) ?? []),
+      messages: await nativeTranscript(this.options.getLastStep?.(), sessionId, toTranscript(foldSurface(events), events, !!owner), canonicalIds),
       state,
       prompt,
     }
@@ -166,6 +184,8 @@ export class SessionService implements SessionApi {
     }
   }
 
+  async authorize(sessionId: string): Promise<void> { await this.assertOwned(sessionId) }
+
   async cancel(sessionId: string): Promise<Record<string, unknown>> {
     await this.assertOwned(sessionId)
     try {
@@ -179,7 +199,9 @@ export class SessionService implements SessionApi {
   async fork(sessionId: string, atSeq?: number): Promise<SessionDetail> {
     await this.assertOwned(sessionId)
     try {
-      const child = await this.options.dsh.fork(sessionId, atSeq)
+      const owner = this.genericStories.has(sessionId) ? this.gm() : undefined
+      if (owner && typeof owner.forkStory !== 'function') throw new GatewayError({ code: 'bad-request', message: '通用 GM 未提供分支能力。' }, 409)
+      const child = owner ? await owner.forkStory!({ sessionId, ...(atSeq === undefined ? {} : { atSeq }) }) : await this.options.dsh.fork(sessionId, atSeq)
       await this.refreshSessions()
       return this.session(child.sessionId)
     } catch (error) {
@@ -187,9 +209,23 @@ export class SessionService implements SessionApi {
     }
   }
 
-  async rollback(sessionId: string): Promise<Record<string, unknown>> {
+  async rollback(sessionId: string): Promise<RollbackResult> {
+    await this.assertOwned(sessionId)
+    if (this.genericStories.has(sessionId)) {
+      const owner = this.gm()
+      if (typeof owner?.rollbackStory !== 'function') throw new GatewayError({ code: 'rollback-unavailable', message: '通用 GM 未提供回退能力。' }, 409)
+      try {
+        const child = await owner.rollbackStory({ sessionId })
+        await this.refreshSessions()
+        return { accepted: true, sessionId: child.sessionId }
+      } catch (error) {
+        if (record(error)?.code === 'ROLLBACK_UNAVAILABLE') throw new GatewayError({ code: 'rollback-unavailable', message: '当前没有可回退的普通事实回合；开场将保留。' }, 409)
+        throw upstreamError(error)
+      }
+    }
     try {
-      return await this.prompt(sessionId, '/rp-rollback')
+      await this.prompt(sessionId, '/rp-rollback')
+      return { accepted: true }
     } catch (error) {
       if (error instanceof GatewayError && error.apiError.upstreamCode === 'command-error') {
         throw new GatewayError({
@@ -202,7 +238,9 @@ export class SessionService implements SessionApi {
     }
   }
 
-  autoplay(sessionId: string, input: { off?: boolean; rounds?: number; objective?: string }): Promise<Record<string, unknown>> {
+  async autoplay(sessionId: string, input: { off?: boolean; rounds?: number; objective?: string }): Promise<Record<string, unknown>> {
+    await this.assertOwned(sessionId)
+    if (this.genericStories.has(sessionId)) throw new GatewayError({ code: 'bad-request', message: '通用 GM 暂不支持自动续写，请发送下一条行动。' }, 409)
     const command = input.off
       ? '/rp-autoplay off'
       : `/rp-autoplay ${input.rounds ?? 8}${input.objective ? ` ${input.objective}` : ''}`
@@ -255,7 +293,19 @@ export class SessionService implements SessionApi {
   }
 
   subscribe(sessionId: string, listener: (event: StreamEvent) => void): () => void {
-    return this.hub.subscribe(sessionId, listener)
+    const stops = [this.hub.subscribe(sessionId, listener)]
+    let closed = false
+    const invalidate = (event: Record<string, unknown>) => {
+      if (closed || this.stopped || (event.type !== 'changed' && !['complete', 'failed', 'cancelled'].includes(String(event.status)))) return
+      this.events.delete(sessionId)
+      this.hub.publish({ type: 'session.rebased', sessionId })
+    }
+    for (const owner of [this.gm(), this.options.getLastStep?.()]) {
+      if (typeof owner?.subscribe === 'function') stops.push(owner.subscribe(sessionId, invalidate))
+    }
+    const stop = () => { if (closed) return; closed = true; for (const dispose of stops) dispose(); this.ownerSubscriptions.delete(stop) }
+    this.ownerSubscriptions.add(stop)
+    return stop
   }
 
   publishPresentationDelta(sessionId: string, messageId: string, text: string): boolean {
@@ -340,11 +390,12 @@ export class SessionService implements SessionApi {
       // public snapshot request to backfill any narrative missed in the outage.
       this.events.clear()
       for (const item of this.summaries.values()) {
-        const card = item.agentPreset ? this.cardsById.get(item.agentPreset) : undefined
+        const card = this.cardFor(item)
         if (!card) continue
         const state = projectPublicState(this.projections.get(item.sessionId) ?? item.projections?.values['rp-state'])
         this.hub.publish({ type: 'connected', sessionId: item.sessionId })
         this.hub.publish({ type: 'session.status', sessionId: item.sessionId, running: item.running })
+        if (this.genericStories.has(item.sessionId)) { this.hub.publish({ type: 'session.rebased', sessionId: item.sessionId }); continue }
         this.hub.publish({ type: 'state.updated', sessionId: item.sessionId, state })
         this.publishProduct({ type: 'projection', sessionId: item.sessionId, branchId: item.sessionId, sourceSeq: this.projectionSeqs.get(item.sessionId) ?? item.projections?.asOfSeq ?? 0, state })
       }
@@ -414,6 +465,14 @@ export class SessionService implements SessionApi {
       const archivedSessionIds = new Set(workspaces.archivedSessionIds)
       const items = listedSessions.filter(item => !archivedSessionIds.has(item.sessionId))
       this.summaries = new Map(items.map(item => [item.sessionId, item]))
+      const owner = this.gm()
+      try {
+        const stories = owner ? (await owner.listStories({})).stories : []
+        this.genericStories = new Map(stories.filter(story => this.summaries.has(story.sessionId)).map(story => [story.sessionId, story]))
+      } catch {
+        // Optional GM availability must not prevent reading an old preset story.
+        this.genericStories.clear()
+      }
       this.workspacesBySession = new Map(workspaces.items.flatMap(workspace => workspace.sessionIds.map(sessionId => [sessionId, workspace.workspaceId] as const)))
       for (const item of items) {
         if (this.workspacesBySession.has(item.sessionId) || !item.cwd) continue
@@ -450,7 +509,7 @@ export class SessionService implements SessionApi {
   private async ownedCard(sessionId: string): Promise<Card> {
     await this.refreshSessions()
     const item = this.summaries.get(sessionId)
-    const card = item?.agentPreset ? this.cardsById.get(item.agentPreset) : undefined
+    const card = item ? this.cardFor(item) : undefined
     if (!item || !card) throw new GatewayError({ code: 'not-found', message: '找不到该 RP 会话。' }, 404)
     return card
   }
@@ -525,7 +584,7 @@ export class SessionService implements SessionApi {
     return {
       id: item.sessionId,
       cardId: card.id,
-      title: typeof titleValue === 'string' && titleValue.trim() ? titleValue : card.title,
+      title: this.genericStories.get(item.sessionId)?.title ?? (typeof titleValue === 'string' && titleValue.trim() ? titleValue : card.title),
       updatedAt: item.updatedAt,
       running: item.running,
       blank: item.blank,
@@ -542,12 +601,22 @@ export class SessionService implements SessionApi {
   }
 
   private isPresentationSession(sessionId: string): boolean {
-    return this.options.isPresentationSession?.(sessionId) === true || this.presentationModes.get(sessionId)?.enabled === true
+    return this.genericStories.has(sessionId) || this.options.isPresentationSession?.(sessionId) === true || this.presentationModes.get(sessionId)?.enabled === true
   }
 
   private canPublishPresentation(sessionId: string): boolean {
     const item = this.summaries.get(sessionId)
-    return !this.stopped && !!item?.agentPreset && this.cardsById.has(item.agentPreset) && this.isPresentationSession(sessionId)
+    return !this.stopped && !!item && !!this.cardFor(item) && this.isPresentationSession(sessionId)
+  }
+
+  private gm(): NativeGM | undefined {
+    const owner = this.options.getGM?.()
+    return owner?.apiVersion === 1 && ['listStories', 'binding', 'storyState'].every(key => typeof owner[key as keyof NativeGM] === 'function') ? owner : undefined
+  }
+
+  private cardFor(item: DshSessionListItem): Card | undefined {
+    const story = this.genericStories.get(item.sessionId)
+    return story ? storyCard(story) : item.agentPreset ? this.cardsById.get(item.agentPreset) : undefined
   }
 
   private onFrame(frame: DshStreamFrame): void {
@@ -583,6 +652,7 @@ export class SessionService implements SessionApi {
       return
     }
     if (frame.type === 'session/projection' && frame.key === 'rp-state') {
+      if (this.genericStories.has(frame.sessionId)) return
       const cachedSeq = this.projectionSeqs.get(frame.sessionId)
       if (cachedSeq !== undefined && frame.seq < cachedSeq) return
       const previous = projectPublicState(this.projections.get(frame.sessionId))
@@ -604,6 +674,11 @@ export class SessionService implements SessionApi {
     if (cached?.some(item => item.seq === event.seq)) return
     if (cached) cached.push(event)
     this.rememberPresentationMode(frame.sessionId, event)
+    const nativeBody = event.type === 'tool/result' && record(event.data.meta)?.rpLastStep && typeof this.options.getLastStep?.()?.narratives === 'function'
+    if (nativeBody || this.genericStories.has(frame.sessionId) && event.type === 'tool/result') {
+      this.hub.publish({ type: 'session.rebased', sessionId: frame.sessionId })
+      return
+    }
     if (event.type === 'assistant/chunk' && !this.isPresentationSession(frame.sessionId)) {
       const chunk = record(event.data.chunk)
       if (chunk?.type === 'text-delta' && typeof chunk.text === 'string') {

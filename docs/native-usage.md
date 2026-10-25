@@ -1,5 +1,7 @@
 # 原生 RP Studio 使用指南
 
+1.3 开发版面向 DSH 0.2.1-rc.3，新增通用故事、候选与材料、Story Kit 转移操作，参见 [1.3 组合使用指南](agent-rp-integration.md)。正式跨插件原生验收与发布仍待完成；下文的 1.2 安装和 rc.2 记录保留供已发布版本使用。
+
 ## 安装与升级
 
 已验证 DSH 0.2.1-rc.2。下载 [RP Studio 1.2](https://github.com/LiweiDonVee/dsh-rp-studio/releases/tag/v1.2.0) 中的 tgz，完全退出 DSH 后用 `dsh plugin --profile desktop add ./dsh-rp-studio-1.2.0.tgz` 安装，再重新启动。Web 模式改为 `--profile web`，升级时安装新版本。

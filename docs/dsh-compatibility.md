@@ -1,4 +1,8 @@
-# DSH 0.2.1-rc.2 原生工作区
+# DSH 0.2.1-rc.3 与 1.3 开发版
+
+新版 plugin engine 下限为 `>=0.2.1-rc.3 <0.3.0-0`。通用 GM / Story Kit 和正文修订通过可选 owner 服务接入，不以旧 rc.2 参考源码代替真实宿主验证。Studio 工程检查与真实 tgz 全链结果分别记录；跨插件原生验收完成前不宣称完整工作流已验证。[用法与依赖矩阵](agent-rp-integration.md)。
+
+# DSH 0.2.1-rc.2 原生工作区（1.2 历史记录）
 
 2026-10-23 在官方桌面发行版携带的 0.2.1-rc.2 Web 宿主、隔离 DSH_HOME 中验证。原生插件使用 `ctx.typertGateway.invoke/stream`，将 `ctx.connection.browserPeer` 作为调用身份；不需要 HTTP token 或独立 Remote WebSocket。Connection Fetch 路由负责浏览器认证与来源检查，插件再执行 RP 会话归属校验。DSH 的原生客户端继续处理审批和提问，插件仅观察运行状态与移除通知。
 

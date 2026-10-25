@@ -1,0 +1,15 @@
+# 目标版本与能力矩阵
+
+开发合同中的目标版本，不是下载清单。正式发布前分别完成单包独立验收、真实 tgz 组合验收与冷恢复验证。已发布旧包的 rc.2 支持仍保留；下列新版本宿主范围为 `>=0.2.1-rc.3 <0.3.0-0`。
+
+| 项目 | 起始版本 | 目标版本 | 依赖与能力边界 |
+| --- | --- | --- | --- |
+| RP Database | 0.1.1 | 0.2.0 | apiVersion 2；多来源、事实、文档与转移；保留 v1 单来源包装 |
+| RP Context | 0.1.0 | 0.2.0 | 新模式用 Database 0.2；保留旧 adapter；可选 LastStep 0.3 narratives/material |
+| RP 最后一步 | 0.2.0 | 0.3.0 | 旧 packet/失败重试可独立使用；可选 GM 0.1 与 Context 0.2；兼容旧 Context 输入 |
+| RP GM | 新项目 | 0.1.0 | 游玩需要 Database 0.2 与 LastStep 0.3；Context 0.2 可选，已安装却不兼容的服务在开局前诊断 |
+| Story Kit | 新项目 | 0.1.0 | 角色库独立；开局需要 GM 及其依赖；恢复需要所有纳入的状态 owner 能力 |
+| RP Studio | 1.2.0 | 1.3.0 | 旧故事保留；可选接入 GM 0.1、Story Kit 0.1 与 LastStep 0.3；不要求旧阅读安装整套插件 |
+| Loop Studio | 0.1.0 | 0.1.0，不变 | 复用已有主请求、prepare、summarize、assemble、render 路由；没有新增执行器 |
+
+缺少服务、apiVersion 或方法只阻止依赖它的动作，不能让独立资料库面板失效。不可从服务名字推测兼容性，不可让 throwing placeholder 宣称已提供能力。完整存档保留 ID，冲突拒绝，不自动重新映射；阅读稿和内容包不等于完整存档恢复。

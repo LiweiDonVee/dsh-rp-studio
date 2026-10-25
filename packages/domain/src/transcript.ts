@@ -88,13 +88,43 @@ function presentationCalls(events: readonly RawSessionEvent[], sourceEvents: rea
   return calls
 }
 
-function completedPresentation(event: RawSessionEvent, calls: ReadonlyMap<number, RawSessionEvent>): UnknownRecord | undefined {
-  if (event.type !== 'tool/result' || event.surfaceOp !== 'append' || event.sourceEventSeqs?.length !== 1) return undefined
+function equalValue(left: unknown, right: unknown): boolean {
+  if (left === right) return true
+  if (Array.isArray(left) || Array.isArray(right)) return Array.isArray(left) && Array.isArray(right)
+    && left.length === right.length && left.every((value, index) => equalValue(value, right[index]))
+  const a = record(left), b = record(right)
+  return !!a && !!b && Object.keys(a).length === Object.keys(b).length
+    && Object.keys(a).every(key => Object.hasOwn(b, key) && equalValue(a[key], b[key]))
+}
+
+function sameResultData(left: UnknownRecord, right: UnknownRecord): boolean {
+  const withoutContent = (data: UnknownRecord) => ({ ...data, message: { ...record(data.message), content: [] } })
+  return equalValue(withoutContent(left), withoutContent(right))
+}
+
+function completedPresentation(event: RawSessionEvent, calls: ReadonlyMap<number, RawSessionEvent>, bySeq: ReadonlyMap<number, RawSessionEvent>, seen = new Set<number>()): { item: UnknownRecord; callSeq: number; ancestors: Set<number> } | undefined {
+  if (event.type !== 'tool/result' || seen.has(event.seq)) return undefined
+  seen.add(event.seq)
+  const sources = event.sourceEventSeqs
+  if (!sources?.length || new Set(sources).size !== sources.length
+    || sources.some(seq => !Number.isSafeInteger(seq) || seq < 0 || seq >= event.seq)) return undefined
   const message = record(event.data.message)
   const source = record(message?.source)
   if (!message || message.isError === true || source?.kind !== 'tool' || typeof source.callId !== 'string'
     || message.toolCallId !== source.callId) return undefined
-  const call = calls.get(event.sourceEventSeqs[0] ?? -1)
+  const body = textContent(message.content)
+  if (!body) return undefined
+  if (typeof event.surfaceOp === 'object' && event.surfaceOp.op === 'replace') {
+    if (event.surfaceOp.startSeq !== event.surfaceOp.endSeq) return undefined
+    const shadowed = bySeq.get(event.surfaceOp.startSeq)
+    const original = shadowed && completedPresentation(shadowed, calls, bySeq, seen)
+    if (!original || !shadowed || !sameResultData(event.data, shadowed.data)
+      || !sources.includes(original.callSeq) || !sources.includes(shadowed.seq)
+      || sources.some(seq => seq !== original.callSeq && !original.ancestors.has(seq))) return undefined
+    return { ...original, item: { ...original.item, text: body }, ancestors: new Set([...original.ancestors, event.seq]) }
+  }
+  if (event.surfaceOp !== 'append' || sources.length !== 1) return undefined
+  const call = calls.get(sources[0] ?? -1)
   if (!call || call.seq >= event.seq || call.data.callId !== source.callId || stepIdentity(call) !== stepIdentity(event)) return undefined
   const meta = record(record(event.data.meta)?.rpLastStep)
   const item = record(meta?.record)
@@ -105,15 +135,18 @@ function completedPresentation(event: RawSessionEvent, calls: ReadonlyMap<number
     || typeof item.profileId !== 'string' || !item.profileId
     || typeof item.profileVersion !== 'number' || !Number.isSafeInteger(item.profileVersion) || item.profileVersion < 1
     || typeof item.profileHash !== 'string' || !item.profileHash) return undefined
-  return item
+  // Legacy original receipts expose their public body in this metadata. Only
+  // revisions must read effective content, since their metadata stays intact.
+  return { item, callSeq: call.seq, ancestors: new Set([event.seq]) }
 }
 
-export function toTranscript(events: readonly RawSessionEvent[], sourceEvents: readonly RawSessionEvent[] = events): TranscriptMessage[] {
+export function toTranscript(events: readonly RawSessionEvent[], sourceEvents: readonly RawSessionEvent[] = events, presentationOnly = false): TranscriptMessage[] {
   const calls = presentationCalls(events, sourceEvents)
+  const bySeq = new Map(sourceEvents.map(event => [event.seq, event]))
   const presentations = new Map<number, UnknownRecord>()
   const presentationTurns = new Set<number>()
   for (const event of events) {
-    const item = completedPresentation(event, calls)
+    const item = completedPresentation(event, calls, bySeq)?.item
     if (!item) continue
     presentations.set(event.seq, item)
     if (typeof event.data.turn === 'number') presentationTurns.add(event.data.turn)
@@ -148,7 +181,7 @@ export function toTranscript(events: readonly RawSessionEvent[], sourceEvents: r
     // Context replacements shadow older surface rows. Their historical mode
     // still controls prose at that time, so read the raw log, not the fold.
     const mode = presentationModeAt(sourceEvents, event.seq)
-    if (mode === true || (mode === undefined && typeof event.data.turn === 'number' && presentationTurns.has(event.data.turn))) continue
+    if (presentationOnly || mode === true || (mode === undefined && typeof event.data.turn === 'number' && presentationTurns.has(event.data.turn))) continue
     const text = textContent(message.content)
     if (!text) continue
     messages.push({

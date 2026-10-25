@@ -14,6 +14,9 @@ export function apply(ctx) {
     return () => style.remove()
   }, 'RP Studio styles')
   const pending = new Set()
+  const ownerKinds = new Set(['rp-gm', 'rp-story-kit', 'rp-database', 'rp-context', 'rp-last-step', 'loop-studio'])
+  const hasOwnerTab = kind => ownerKinds.has(kind) && typeof ctx.sidebarRightTabs.get === 'function' && ctx.sidebarRightTabs.get(kind) !== undefined
+  const openOwner = kind => { if (hasOwnerTab(kind)) ctx.sidebarRight.openTab(kind) }
   ctx.effect(() => () => { for (const cancel of pending) cancel(new Error('RP Studio 已停用。')) }, 'RP Studio navigation')
   const openSession = id => new Promise((resolve, reject) => {
     let frame
@@ -36,7 +39,7 @@ export function apply(ctx) {
   })
   function Body({ sessionId, useTabInfo, openSession: navigate, renderSlot }) {
     const { tab } = useTabInfo()
-    return <Workspace key={sessionId} sessionId={sessionId} visible={tab.visible} openSession={navigate} extraActions={renderSlot('rp.studio.workspace.actions', {})} />
+    return <Workspace key={sessionId} sessionId={sessionId} visible={tab.visible} openSession={navigate} openOwner={openOwner} hasOwnerTab={hasOwnerTab} extraActions={renderSlot('rp.studio.workspace.actions', {})} />
   }
   registerWorkspace(ctx, { Body, Button: HeaderEntry, openSession })
 }
