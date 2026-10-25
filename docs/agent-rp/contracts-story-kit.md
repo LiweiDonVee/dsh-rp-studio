@@ -104,3 +104,26 @@ DocumentContent is defined in transfer T4. exportContent includes exactly the im
 Content-pack import creates fresh database/document IDs and maps incoming document/version pairs using JSON.stringify([oldDocumentId,oldVersion]) to {documentId,version}. Remap database Entry.provenance and every Extraction chunk ref; Document.databaseId points to the new database. Preserve the raw bytes, extraction text, hashes, parser/chunking versions, and original SourcePayload/provenance unchanged as audit data. Validate each remapped reference resolves to its corresponding document/chunk and hash; do not mutate original source provenance to make new IDs look original. Same requestId replay returns the same mapping.
 
 SavedStory exact-ID restore is different: it preserves document IDs/versions and canonical references with collision checks, as in transfer T2. Both transfer modes omit vector cache and rebuild it. Empty/absent documents keeps earlier ordinary DatabaseContent fully compatible.
+
+## Amendment SK5 — saved-story capabilities and profile precedence [FROZEN]
+
+StoryKit capabilities adds required booleans savedStoryExport, savedStoryPreview and savedStoryRestore. They describe actually implemented/available mechanisms and dependencies; per-payload conflicts and deferredChecks still require preview. False for absent/unimplemented capabilities, never optimism based on a stub.
+
+launch.profile and StoryTemplate.profile allow ProfileRef | null | omission. Precedence: explicit ProfileRef wins; explicit null selects GM builtin; omitted field inherits selected Character.profileRef if present; only when both are absent does it choose GM builtin. Linked missing/unready/draft profiles must surface the owner profile resolution/ready error; do not silently ignore the link, auto-ready it or fall back. StoryKit resolves this selection before GM launch. GM.startStory itself retains optional ready ProfileRef and builtin when absent; StoryKit translates explicit builtin/null to that omission after resolving precedence. Pack parsing preserves null versus absence.
+
+## Amendment SK6 — resumable reviewed launch and scoped document maps [FROZEN]
+
+Before first GM startStory call, StoryKit persists an immutable normalized reviewed launch request and fingerprint in its own launch journal. This is startup configuration, not a second copy of evolving facts. Preserve selected asset versions, opening, sources, resolved profile choice, initialScene/initialFacts and launchId; no credentials/signals. Resume uses this stored request and the same launchId, never current React state, latest asset versions or newly guessed seed.
+
+state() adds pendingLaunches:[{launchId:string,title:string,status:'prepared'|'starting'|'failed',sessionId?:string,errorCode?:string,createdAt:string}]. Completed launches are excluded. Add owner resumeLaunch({launchId,signal?})->{sessionId,binding,status}. It validates dependencies and calls GM with the original reviewed normalized request; no field-edit override in resume. A changed setup is a distinct new launch, not a mutation of the old fingerprint. GM idempotency prevents duplicate session/opening. Missing source versions remain a visible requirement, not a substitute.
+
+Database provider documentMappings is Record<JSON.stringify([oldDocumentId,oldVersion]),{documentId:string,version:number}>. StoryKit preserves it UNDER the particular source database-version mapping:
+
+```ts
+mappings.databases[JSON.stringify([oldDatabaseId,oldVersion])] = {
+ databaseId:string,version:number,sourceId?:string,
+ documentMappings?:Record<string,{documentId:string,version:number}>
+}
+```
+
+Never flatten document maps globally: two exported versions of one database may reference the same old document/version yet import into distinct new databases/documents. The provider already remaps its own entries/extraction refs. SourceBinding remap explicitly selects {key:oldBinding.key,databaseId:mapping.databaseId,version:mapping.version}; never spread documentMappings/sourceId into SourceBinding. Original SourcePayload/provenance remains unchanged audit data.

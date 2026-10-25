@@ -260,6 +260,63 @@ describe('unified owner operations', () => {
     expect(editor.value).toBe('不要丢失的手改文字。')
   })
 
+  it('preserves text typed while saving and saves that remaining dirty edit against the confirmed version', async () => {
+    const h = ecosystem(), action = h.api.action, submitted = []
+    let finishSave
+    h.api.action = (name, input, signal) => {
+      if (name === 'editDraft') {
+        submitted.push(structuredClone(input))
+        if (submitted.length === 1) return new Promise(resolve => { finishSave = async () => resolve(await action(name, input, signal)) })
+      }
+      return action(name, input, signal)
+    }
+    render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
+    await screen.findByText('山间驿站')
+    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    fireEvent.click(await screen.findByText('正文与材料'))
+    fireEvent.click(await screen.findByRole('button', { name: '手改当前正文' }))
+    const editor = await screen.findByRole('textbox', { name: '候选正文' })
+    fireEvent.change(editor, { target: { value: '本次提交文字。' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存候选修改' }))
+    await waitFor(() => expect(typeof finishSave).toBe('function'))
+    expect(editor).not.toBeDisabled()
+    fireEvent.change(editor, { target: { value: '本次提交文字。继续输入且尚未保存。' } })
+    await act(async () => finishSave())
+    await screen.findByText('候选修改已保存。')
+    expect(editor.value).toBe('本次提交文字。继续输入且尚未保存。')
+    const save = screen.getByRole('button', { name: '保存候选修改' })
+    await waitFor(() => expect(save).not.toBeDisabled())
+    expect(screen.getByRole('button', { name: '采用这个候选' })).toBeDisabled()
+    fireEvent.click(save)
+    await waitFor(() => expect(submitted).toHaveLength(2))
+    expect(submitted[1]).toMatchObject({ draftId: 'draft-a', expectedDraftVersion: 2, text: '本次提交文字。继续输入且尚未保存。' })
+    await waitFor(() => expect(save).toBeDisabled())
+  })
+
+  it('does not switch a newly selected candidate when an earlier save resolves', async () => {
+    const h = ecosystem(), action = h.api.action
+    let finishSave
+    h.api.action = (name, input, signal) => name === 'editDraft' ? new Promise(resolve => { finishSave = async () => resolve(await action(name, input, signal)) }) : action(name, input, signal)
+    render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
+    await screen.findByText('山间驿站')
+    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    fireEvent.click(await screen.findByText('正文与材料'))
+    fireEvent.click(await screen.findByRole('button', { name: '手改当前正文' }))
+    const editor = await screen.findByRole('textbox', { name: '候选正文' })
+    h.drafts.push({ ...structuredClone(h.drafts[0]), id: 'draft-b', kind: 'writer', text: '另一个候选的正文。' })
+    fireEvent.click(screen.getByRole('button', { name: '刷新正文操作' }))
+    const other = await screen.findByRole('button', { name: '写作 · ready · v1' })
+    fireEvent.change(editor, { target: { value: '保存第一个候选。' } })
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存候选修改' })).not.toBeDisabled())
+    fireEvent.click(screen.getByRole('button', { name: '保存候选修改' }))
+    await waitFor(() => expect(typeof finishSave).toBe('function'))
+    fireEvent.click(other)
+    expect(editor.value).toBe('另一个候选的正文。')
+    await act(async () => finishSave())
+    expect(editor.value).toBe('另一个候选的正文。')
+    expect(other).toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('reads the stored material snapshot and marks a claimed author note without consuming it', async () => {
     const h = ecosystem()
     render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)

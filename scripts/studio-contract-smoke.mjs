@@ -28,7 +28,7 @@ const services = {
     material: async ({ presentationId }) => ({ presentationId, packet: { playerAction: '推开门' }, storySnapshot: { title: '码头来信', character: { assetId: 'guide', version: 1, name: '港口向导', description: '仅用于合成合同测试的固定来源。' }, persona: { assetId: 'traveler', version: 1, name: '旅人', description: '来访者。' }, examples: '' }, contextPreparation: { candidates: [{ ref: { sourceKey: 'world', entryId: '0' }, title: '港口' }] }, compiled: { text: '公开合成冻结模块。' }, models: { render: { provider: 'synthetic', model: 'contract-only' } }, status: 'complete' }),
   },
   rpContext: { authorNote: async () => ({ id: 'note', version: 1, text: '多一些停顿。', status: 'pending' }) },
-  rpStoryKit: { apiVersion: 1, state: async () => ({ capabilities: { readingExport: true } }), exportReading: async () => ({ fileName: 'reading.md', mimeType: 'text/markdown', text: `# 阅读稿\n${current.text}` }) },
+  rpStoryKit: { apiVersion: 1, state: async () => ({ capabilities: { readingExport: true, savedStoryExport: false, savedStoryPreview: false, savedStoryRestore: false } }), exportReading: async () => ({ fileName: 'reading.md', mimeType: 'text/markdown', text: `# 阅读稿\n${current.text}` }) },
   rpDatabase: { apiVersion: 2 },
 }
 const actions = createStudioActions({ getService: name => services[name], authorize: async id => { if (!sessions.includes(id)) throw Object.assign(new Error('无权访问故事。'), { code: 'FORBIDDEN', status: 403 }) } })

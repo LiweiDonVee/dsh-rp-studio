@@ -40,6 +40,22 @@ test('capabilities are method/version projections and require the owner retryDis
   assert.equal((await route.request(post({ action: 'retryPresentation', sessionId: 's', presentationId: 'p' }))).status, 503)
 })
 
+for (const [action, flag, input] of [
+  ['exportSavedStory', 'savedStoryExport', { sessionId: 's' }],
+  ['previewSavedStory', 'savedStoryPreview', { snapshot: { format: 'dsh-rp-saved-story', schemaVersion: 1, identityMode: 'preserve', exportedAt: '2026-10-25T00:00:00Z', selectedSessionId: 's', sessions: [{ header: { id: 's' }, events: [], inheritedEventCount: 0 }], pluginState: { database: {}, context: null, lastStep: {}, gm: {}, storyKit: {} }, resources: [], requirements: [] } }],
+  ['restoreSavedStory', 'savedStoryRestore', { restoreId: 'restore', snapshot: { format: 'dsh-rp-saved-story', schemaVersion: 1, identityMode: 'preserve', exportedAt: '2026-10-25T00:00:00Z', selectedSessionId: 's', sessions: [{ header: { id: 's' }, events: [], inheritedEventCount: 0 }], pluginState: { database: {}, context: null, lastStep: {}, gm: {}, storyKit: {} }, resources: [], requirements: [] } }],
+]) test(`${action} requires its actual StoryKit capability and method`, async () => {
+  for (const [enabled, method, expected] of [[false, true, false], [true, true, true], [true, false, false]]) {
+    let calls = 0
+    const owner = { apiVersion: 1, state: async () => ({ capabilities: { readingExport: true, savedStoryExport: false, savedStoryPreview: false, savedStoryRestore: false, [flag]: enabled } }), ...(method ? { [action]: async () => { calls++; return { status: 'pending' } } } : {}) }
+    const route = createStudioActions({ getService: name => name === 'rpStoryKit' ? owner : undefined, authorize: async () => {} })
+    const projection = await (await route.request(post({ action: 'capabilities', sessionId: 's' }))).json()
+    assert.equal(projection.actions[action], expected)
+    assert.equal((await route.request(post({ action, ...input }))).status, expected ? 200 : 503)
+    assert.equal(calls, expected ? 1 : 0)
+  }
+})
+
 test('missing capability and owner conflicts are explicit without guessing receipt internals', async () => {
   const route = createStudioActions({ getService: name => name === 'rpLastStep' ? { editDraft: async () => { throw Object.assign(new Error('草稿已更新。'), { code: 'DRAFT_CONFLICT', status: 409 }) } } : undefined, authorize: async () => {} })
   assert.equal((await route.request(post({ action: 'material', sessionId: 's', presentationId: 'p' }))).status, 503)
@@ -84,7 +100,7 @@ test('saved-story preview preserves authoritative inherited count and deferred c
   const snapshot = { format: 'dsh-rp-saved-story', schemaVersion: 1, identityMode: 'preserve', exportedAt: '2026-10-25T00:00:00Z', selectedSessionId: 's', sessions: [{ header: { id: 's' }, events: [], inheritedEventCount: 0 }], pluginState: { database: {}, lastStep: {}, gm: {}, storyKit: {} }, resources: [], requirements: [] }
   const preview = { supported: true, conflicts: [], requirements: [], identityMode: 'preserve', deferredChecks: [{ code: 'LOOP_NODE_VALIDATION', sessionId: 's', nodeIds: ['render'] }] }
   let actual
-  const route = createStudioActions({ getService: name => name === 'rpStoryKit' ? { apiVersion: 1, previewSavedStory: async input => { actual = input.snapshot; return preview } } : undefined, authorize: async () => { throw new Error('A destination ID is not an existing selected story') } })
+  const route = createStudioActions({ getService: name => name === 'rpStoryKit' ? { apiVersion: 1, state: async () => ({ capabilities: { readingExport: false, savedStoryExport: false, savedStoryPreview: true, savedStoryRestore: false } }), previewSavedStory: async input => { actual = input.snapshot; return preview } } : undefined, authorize: async () => { throw new Error('A destination ID is not an existing selected story') } })
   const response = await route.request(post({ action: 'previewSavedStory', snapshot }))
   assert.equal(response.status, 200)
   assert.deepEqual(await response.json(), preview)

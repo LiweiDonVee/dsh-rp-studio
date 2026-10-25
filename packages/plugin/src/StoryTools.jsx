@@ -46,7 +46,7 @@ export function StoryTools({ sessionId, client, running = false, narrativeRevisi
   const [edit, setEdit] = useState('')
   const [instruction, setInstruction] = useState('')
   const [material, setMaterial] = useState(null)
-  const mounted = useRef(true), operation = useRef(null), editor = useRef(null)
+  const mounted = useRef(true), operation = useRef(null), editor = useRef(null), selection = useRef(0)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; operation.current?.abort() } }, [])
   useEffect(() => {
     if (typeof client.action !== 'function') return
@@ -88,13 +88,24 @@ export function StoryTools({ sessionId, client, running = false, narrativeRevisi
     } catch (cause) { if (mounted.current && !controller.signal.aborted) setError(`${errorText(cause)}${cause.code === 'DRAFT_VERSION_CONFLICT' ? ' 请刷新并重新预览候选；当前编辑已保留。' : ''}`) }
     finally { operation.current = null; if (mounted.current) setBusy(false) }
   }
-  function choose(draft) { setSelected({ ...draft }); setEdit(draft.text); requestAnimationFrame(() => editor.current?.focus()) }
+  function choose(draft) { selection.current++; setSelected({ ...draft }); setEdit(draft.text); requestAnimationFrame(() => editor.current?.focus()) }
   const latest = data.records.at(-1), flags = data.capabilities?.actions ?? {}
   const dirty = selected && edit !== selected.text
   const currentFamily = selected && latest && selected.basedOn.sessionId === sessionId && selected.basedOn.presentationId === latest.ref.presentationId && selected.basedOn.baseResultSeq === latest.ref.baseResultSeq
   const unavailable = busy || running || loading
   const scoped = input => ({ sessionId, ...input })
   const create = kind => run('createDraft', scoped({ basedOn: latest.ref, kind, ...(kind === 'writer' && instruction.trim() ? { instruction: instruction.trim() } : {}) }), draft => { choose(draft); setTick(value => value + 1) })
+  function saveSelected() {
+    const submittedText = edit, submittedSelection = selection.current
+    return run('editDraft', scoped({ draftId: selected.id, text: submittedText, expectedDraftVersion: selected.version }), draft => {
+      if (selection.current === submittedSelection) {
+        setSelected({ ...draft })
+        setEdit(current => current === submittedText ? draft.text : current)
+        setNotice('候选修改已保存。')
+      } else setNotice('之前选中的候选修改已保存，当前选择保持不变。')
+      setTick(value => value + 1)
+    })
+  }
   if (typeof client.action !== 'function') return null
   const owners = { openOwner, hasOwnerTab }
   const transfer = <section className="rp-section rp-tool-section"><h3>内容与存档</h3>
@@ -117,7 +128,7 @@ export function StoryTools({ sessionId, client, running = false, narrativeRevisi
     {data.drafts.length > 0 && <section className="rp-tool-section"><h3>候选与历史草稿</h3><div className="rp-draft-list">{data.drafts.map(draft => <button type="button" key={draft.id} aria-pressed={selected?.id === draft.id} onClick={() => choose(draft)}>{draft.kind === 'manual' ? '手改' : '写作'} · {draft.status} · v{draft.version}{latest && draft.basedOn.presentationId !== latest.ref.presentationId ? ' · 历史回合' : ''}</button>)}</div></section>}
     {selected && <section className="rp-tool-section"><label>候选正文<textarea ref={editor} aria-label="候选正文" value={edit} onChange={event => setEdit(event.target.value)} rows={7} /></label>{selected.models?.render && <p className="rp-note">{selected.kind === 'manual' ? '原始生成模型' : '候选生成模型'}：{selected.models.render.provider} / {selected.models.render.model}</p>}
       <details><summary>比较当前正式稿与候选</summary><div className="rp-compare"><section><h3>当前正式稿</h3><pre>{latest?.text || '无正式稿'}</pre></section><section><h3>候选</h3><pre>{edit}</pre></section></div></details>
-      <div className="rp-action-row"><button type="button" disabled={unavailable || !flags.editDraft || !dirty || !edit.trim()} onClick={() => void run('editDraft', scoped({ draftId: selected.id, text: edit, expectedDraftVersion: selected.version }), draft => { choose(draft); setNotice('候选修改已保存。'); setTick(value => value + 1) })}>保存候选修改</button><button type="button" disabled={unavailable || !flags.adoptDraft || !currentFamily || dirty || !['ready', 'draft'].includes(selected.status)} onClick={() => void run('adoptDraft', scoped({ draftId: selected.id, expectedDraftVersion: selected.version, expectedNarrative: latest.ref }), async result => { if (!result.narrative?.ref || result.narrative.ref.sessionId !== sessionId) throw new Error('未收到有效的采用确认。'); setData(previous => ({ ...previous, records: [...previous.records.slice(0, -1), result.narrative] })); setNotice('采用已确认。宿主维护回合可能显示 blocked；这不代表故事动作失败，宿主诊断仍保留。'); await onAdopt?.(result.narrative); if (mounted.current) setTick(value => value + 1) })}>采用这个候选</button></div>
+      <div className="rp-action-row"><button type="button" disabled={unavailable || !flags.editDraft || !dirty || !edit.trim()} onClick={() => void saveSelected()}>保存候选修改</button><button type="button" disabled={unavailable || !flags.adoptDraft || !currentFamily || dirty || !['ready', 'draft'].includes(selected.status)} onClick={() => void run('adoptDraft', scoped({ draftId: selected.id, expectedDraftVersion: selected.version, expectedNarrative: latest.ref }), async result => { if (!result.narrative?.ref || result.narrative.ref.sessionId !== sessionId) throw new Error('未收到有效的采用确认。'); setData(previous => ({ ...previous, records: [...previous.records.slice(0, -1), result.narrative] })); setNotice('采用已确认。宿主维护回合可能显示 blocked；这不代表故事动作失败，宿主诊断仍保留。'); await onAdopt?.(result.narrative); if (mounted.current) setTick(value => value + 1) })}>采用这个候选</button></div>
     </section>}
     <section className="rp-tool-section"><h3>生成记录与失败重试</h3>{data.presentations.map(item => <article key={item.presentationId} className="rp-receipt"><p>{item.presentationId} · {item.status}{item.errorCode ? ` · ${item.errorCode}` : ''}</p>{item.retryBlockCode && <p>{item.retryBlockCode}</p>}<div className="rp-action-row">{['failed', 'cancelled'].includes(item.status) && <button type="button" disabled={unavailable || !flags.retryPresentation || !data.retryDispatch || !item.canRetry} onClick={() => void run('retryPresentation', scoped({ presentationId: item.presentationId }), () => { setNotice('已提交受限正文重试；可能包含一次主模型调度，不会重新结算事实或选材。'); setTick(value => value + 1) })}>重试该次正文</button>}<button type="button" disabled={unavailable || !flags.material} onClick={() => void run('material', scoped({ presentationId: item.presentationId }), setMaterial)}>查看该次材料</button></div></article>)}<p className="rp-note">记录是操作档案；rendered 尚不表示已进入正式历史。重试资格由所属插件再次检查。</p></section>
     {material && <Material value={material} />}

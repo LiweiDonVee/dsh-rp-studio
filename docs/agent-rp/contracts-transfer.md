@@ -155,3 +155,21 @@ restoreSavedStory reruns all available identity/content/dependency preflight bef
 SavedStory.pluginState.context is explicitly null when Context was absent from the source story/export environment. Do not fabricate an empty owner payload. Omission in unreleased fixtures normalizes to null; new exports write null. If Context existed (even disabled), export its real versioned state.
 
 For null, no Context restoreState call or requirement is manufactured. If destination has Context, preserve the no-Context behavior for restored sessions through its normal owner configure(enabled:false) API before activation; this is explicit destination configuration recorded in restore journal, not invented source state. Do not alter unrelated sessions. If destination has no Context, simply skip. Content/runtime dependencies must still allow GM stories without Context.
+
+## Amendment T9 — restore identity/error precedence [FROZEN]
+
+Each owner's restoreState follows this order:
+
+1. Validate transport/minimal envelope enough to identify restoreId, a well-formed distinct sessionIds list, expectedRevision and serializable versioned state/payload. A malformed envelope returns the existing invalid-request/payload error; no log/material lookup.
+2. Under the owner serialization/journal identity gate, check an existing pending/completed restoreId fingerprint and normalized Session set, excluding expectedRevision from payload identity. Any different payload or Session set returns RESTORE_ID_CONFLICT BEFORE deeper schema, canonical log or LastStep proof checks. An identical completed job is idempotent and does not reimport data.
+3. For a new or identical unfinished job, perform full payload schema/cross-field validation and applicable revision checks.
+4. Check required actual destination canonical sessions and owner dependencies, then semantic reference/note proof. Missing dependency returns RESTORE_REQUIREMENT_MISSING; invalid lineage returns RESTORE_PAYLOAD_INVALID.
+5. Only after these pass, atomically merge owner data and record completion. Serialize identity check with the merge so competing calls cannot change the job's payload binding.
+
+Thus same restoreId with a structurally valid changed note version reports RESTORE_ID_CONFLICT even if that version would fail proof; a changed Session set reports RESTORE_ID_CONFLICT even when those logs are absent. No new source manifest or weaker semantic validation is introduced.
+
+## Amendment T10 — one proven host header normalization [FROZEN]
+
+For current verified rc.3 cross-home/cold comparison, header.delegationDepth absent/undefined is semantically equivalent to numeric 0. This is the only newly allowed normalization, based on actual cold-prefix comparison evidence. null, string '0', nonzero values or other header changes are not equivalent.
+
+Normalize this one header field for structural identity comparison; preserve/export original observed data and let the public host API apply its own default. Original events, seqs, message IDs, sources and tool metadata remain strictly equal. The only expected resume suffix remains the verified end-seed; historical execution counters must stay zero. Do not generalize into dropping unknown/defaulted fields or accepting arbitrary host rewrites.

@@ -224,3 +224,25 @@ material() adds optional storySnapshot using the already-frozen title/character/
 adoptDraft now requires expectedDraftVersion:number in addition to draftId and expectedNarrative. It is the persisted draft version the owner actually previewed. Owner checks both draft version and narrative source inside the serialized adoption operation and immediately before canonical replacement; intervening edit of the same draft yields DRAFT_VERSION_CONFLICT (409), with no replacement. Never adopt newer text by ID alone.
 
 Studio, LastStep routes/API/UI and any narrow forwarding DTO must include the required field. Unsaved local edits must be saved/repreviewed before adoption; stale error retains local preview for explicit reload, never silently upgrades its version. This is a correction to the previously under-specified DTO, not additional draft-generation scope.
+
+## Amendment R18 — optional proof service must not lock owner controls [FROZEN]
+
+Normal read/projection does not re-require LastStep material proof for an accepted outcome that was already validated and persisted through the strict live acceptance or restore path. Reuse that stored accepted outcome, but still check the actual effective canonical presentation lineage with Context's local compatible Session reader. An assistant anchor alone remains insufficient. If its result is genuinely removed/rewound, R5/R15 returns the matching latest note pending; simply unloading LastStep does NOT undo acceptance or redeliver the note.
+
+state, authorNote and other ordinary projections remain usable without optional LastStep. Prefer available owner narrative service or use the already-required compatible local parser; never invent formal history from prose text. Do not throw PRESENTATION_NOT_ACCEPTED merely because the optional material service disappeared. This reuses validated local state; it does not authorize trusting a newly supplied consumed flag.
+
+Owner setAuthorNote (new text or empty reset) and configure(enabled:false) authorize the session, validate their own DTO/revision and perform their explicit operation independently of re-proving old note outcomes. Replacement/reset creates or clears the current owner choice, preserves past audit/frozen receipt data, and cannot be blocked by an old proof dependency. It does not weaken session authorization or stale-revision checks.
+
+New presentationOutcome acceptance still requires current canonical+frozen-material proof. Restore retains strict T3 and rejects missing LastStep material dependency. No new public note status/DTO is required, and no consumed note becomes pending merely because a plugin is unavailable.
+
+## Amendment R19 — stored finisher and legacy ambiguity [FROZEN]
+
+After strict canonical+LastStep-material validation, Context may internally persist outcomePresentationId. It is derived evidence, never trusted merely because an imported/model payload supplies it; restore validates it under T3. No public DTO expansion is required.
+
+For older outcomes without that field: resolve unambiguously from canonical lineage and frozen note triple when possible, then cache the validated ID. If LastStep is absent and multiple plausible canonical finishers remain, preserve the prior recorded consumed/claimed bookkeeping as internally unverified; do not requeue pending merely due dependency absence, pick a random finisher, or block owner reads/reset/replacement/disable. Revalidate when proof service returns. If canonical evidence definitively shows the relevant presentation/result was removed, normal R5/R15 rewind projection still applies. New acceptance/restore cannot use this legacy-read compatibility as proof.
+
+## Amendment R20 — restore before real Agent admission [FROZEN]
+
+GM.restoreState may validate binding/fact refs against authorized owner effectiveV2 and canonical source/narrative readers before a real Agent exists, and persist only restoring status. It must not manufacture an Agent or call factAccess with a fake exec context.
+
+After safe no-prompt resume supplies the actual registered Agent, activateRestored must perform remaining factAccess receipt kind, ownership, active-source and state-ref checks before clearing restoring/reservation. Failure leaves the story gated; no prompt, opening rerun or play admission. This defers only Agent-scoped checks, not validations already possible through owner services, and never reports full restore complete before activation succeeds.

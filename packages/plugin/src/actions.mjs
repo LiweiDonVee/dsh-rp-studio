@@ -23,6 +23,7 @@ const actions = {
   restoreSavedStory: spec('rpStoryKit', 'restoreSavedStory', ['snapshot', 'restoreId'], (owner, args) => owner.restoreSavedStory(args), 1),
 }
 const owners = { gm: 'rpGM', storyKit: 'rpStoryKit', database: 'rpDatabase', context: 'rpContext', lastStep: 'rpLastStep', loop: 'loopStudio' }
+const storyKitCapabilities = { exportReading: 'readingExport', exportSavedStory: 'savedStoryExport', previewSavedStory: 'savedStoryPreview', restoreSavedStory: 'savedStoryRestore' }
 const failure = (status, code, message) => Response.json({ error: { code, message } }, { status, headers: { 'cache-control': 'no-store' } })
 function validSnapshot(value) {
   const fields = ['format', 'schemaVersion', 'identityMode', 'exportedAt', 'selectedSessionId', 'sessions', 'pluginState', 'resources', 'requirements', 'loopPolicies']
@@ -62,10 +63,12 @@ export function createStudioActions({ getService, authorize }) {
     }))
     const flags = Object.fromEntries(Object.entries(actions).map(([name, entry]) => [name, supported(entry, getService(entry.service))]))
     const storyKit = getService('rpStoryKit')
-    if (typeof storyKit?.state === 'function') {
-      try { if ((await storyKit.state({ signal }))?.capabilities?.readingExport === false) flags.exportReading = false }
-      catch { flags.exportReading = false }
+    let actualStoryKitCapabilities = {}
+    if (storyKit?.apiVersion === 1 && typeof storyKit.state === 'function') {
+      try { actualStoryKitCapabilities = (await storyKit.state({ signal }))?.capabilities ?? {} }
+      catch { /* An unavailable owner cannot advertise transfer capability. */ }
     }
+    for (const [action, flag] of Object.entries(storyKitCapabilities)) flags[action] = flags[action] && actualStoryKitCapabilities[flag] === true
     flags.retryPresentation = false
     const lastStep = getService('rpLastStep')
     if (sessionId && supported(actions.retryPresentation, lastStep) && typeof lastStep.presentationSummaries === 'function') {
@@ -97,7 +100,7 @@ export function createStudioActions({ getService, authorize }) {
         const entry = actions[input.action], owner = getService(entry.service)
         if (!supported(entry, owner)) return failure(503, 'CAPABILITY_UNAVAILABLE', '所需 RP 服务或方法不可用，请检查插件版本。')
         if (input.action === 'retryPresentation' && !(await capabilities(input.sessionId, signal)).actions.retryPresentation) return failure(503, 'CAPABILITY_UNAVAILABLE', '当前会话未提供受限的正文重试执行。')
-        if (input.action === 'exportReading' && !(await capabilities(input.sessionId, signal)).actions.exportReading) return failure(503, 'CAPABILITY_UNAVAILABLE', '阅读稿导出所需服务尚未就绪。')
+        if (Object.hasOwn(storyKitCapabilities, input.action) && !(await capabilities(input.sessionId, signal)).actions[input.action]) return failure(503, 'CAPABILITY_UNAVAILABLE', 'Story Kit 所需导出或恢复能力尚未就绪。')
         const { action: _action, ...args } = input
         const result = await entry.run(owner, { ...args, signal })
         signal.throwIfAborted()
