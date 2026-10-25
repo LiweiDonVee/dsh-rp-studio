@@ -50,6 +50,19 @@ export function apply(ctx) {
       if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['action', 'sessionId', 'sessionIds', 'text', 'style', 'renderModel', 'mode'].includes(key))) throw new Error('FIXTURE_INVALID_REQUEST')
       let result
       if (input.action === 'ready') result = await ready(request.signal)
+      else if (input.action === 'witness') {
+        if (!Array.isArray(input.sessionIds) || !input.sessionIds.length || input.sessionIds.length > 16 || input.sessionIds.some(id => typeof id !== 'string' || !id.trim())) throw new Error('FIXTURE_INVALID_SESSION_SET')
+        const sessions = []
+        for (const sessionId of [...input.sessionIds].sort()) {
+          if (!await ctx.sessionPersistence.stat(sessionId, { signal: request.signal })) { sessions.push({ sessionId, exists: false }); continue }
+          const observed = await snapshot(sessionId), gm = await ctx.get('rpGM').binding({ sessionId, signal: request.signal }), database = await ctx.get('rpDatabase').effectiveV2({ sessionId, signal: request.signal }), lastStep = await ctx.get('rpLastStep').state(sessionId, request.signal)
+          sessions.push({ sessionId, exists: true, header: observed.header, events: observed.events, inheritedEventCount: observed.inheritedEventCount, live: observed.live, gm, databaseBinding: database.binding, lastStepBinding: lastStep.binding })
+        }
+        const present = sessions.filter(row => row.exists).map(row => row.sessionId), revisions = {}
+        const audit = present.length ? (await ctx.get('rpStoryKit').exportState({ sessionIds: present, signal: request.signal })).payload.journalAudit : null
+        for (const name of ['rpDatabase', 'rpContext', 'rpLastStep', 'rpGM', 'rpStoryKit']) revisions[name] = await ctx.get(name).contentRevision({ signal: request.signal })
+        const models = local.stats(); result = { sessions, revisions, audit, modelCounts: models.counts, modelTotal: models.total }
+      }
       else if (input.action === 'models') result = local.stats()
       else if (input.action === 'failWriterOnce') { local.failWriterOnce(); result = { armed: true } }
       else if (input.action === 'failAssemblyOnce') { local.failAssemblyOnce(); result = { armed: true } }
@@ -73,7 +86,7 @@ export function apply(ctx) {
       }
       else if (input.action === 'resume') {
         if (!ctx.agents.get(input.sessionId)) {
-          const handle = await ctx.agents.resume({ resumeSessionId: input.sessionId, agentOptions: { provider: 'studio-native-local', model: 'gm' }, setup: async scope => ctx.agentPresets.mount(scope, 'rp-gm'), signal: request.signal })
+          const handle = await ctx.agents.resume({ resumeSessionId: input.sessionId, agentOptions: { provider: 'studio-native-local', model: 'gm' }, setup: async scope => { await ctx.agentPresets.mount(scope, 'rp-gm') }, signal: request.signal })
           disposers.push(() => handle.dispose())
         }
         result = await snapshot(input.sessionId)
@@ -98,7 +111,7 @@ export function apply(ctx) {
         result = await invoke('prompt', { sessionId: input.sessionId, requestId: crypto.randomUUID(), mode: 'queue', content: [{ type: 'text', text: input.text }] }, request.signal)
       } else throw new Error('FIXTURE_UNKNOWN_ACTION')
       return Response.json({ ok: true, result })
-    } catch (error) { return Response.json({ ok: false, error: { code: error.code ?? 'FIXTURE_ERROR', message: String(error.message).slice(0, 600) } }, { status: 503 }) }
+    } catch (error) { console.error('STUDIO_NATIVE_PROBE_ERROR', String(error.stack ?? error.message).slice(0, 3000)); return Response.json({ ok: false, error: { code: error.code ?? 'FIXTURE_ERROR', message: String(error.message).slice(0, 600) } }, { status: 503 }) }
   } }))
   ctx.effect(() => async () => { if (metadataPause?.timer) clearTimeout(metadataPause.timer); metadataPause?.release?.(); for (const dispose of disposers.splice(0).reverse()) await dispose?.() }, 'Studio native probe')
 }

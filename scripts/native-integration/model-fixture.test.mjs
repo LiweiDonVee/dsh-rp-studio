@@ -49,8 +49,8 @@ test('material model requests search and exact reads before selecting real quali
   input.searchResults.push({ candidates: [{ key: '["world","outside"]' }] })
   assert.deepEqual(await reply(input), { readEntries: ['["world","harbor"]', '["world","outside"]'], commit: false })
   input.readEntries = [{ key: '["world","harbor"]' }, { key: '["world","outside"]' }]
-  input.history = [{ id: 'old' }, { id: 'recent' }]
-  assert.deepEqual((await reply(input)).historyOperations, [{ id: 'old', mode: 'summary' }, { id: 'recent', mode: 'full' }])
+  input.history = [{ id: 'old', mode: 'summary', content: 'Actual accepted older summary' }, { id: 'recent', mode: 'full', content: 'Actual recent prose' }]
+  assert.deepEqual((await reply(input)).historyOperations, [{ id: 'old', mode: 'summary', summary: 'Actual accepted older summary' }])
 })
 
 test('material model distinguishes automatic search from outside discovery and reads raw owner EntryRefs', async () => {
@@ -81,9 +81,12 @@ test('GM conflict recovery verifies the actual error JSON and presents the origi
   const messages = [human('STUDIO_TRANSFER_LETTER'), { role: 'assistant', content: [{ type: 'tool-call', id: 'one', name: 'rp_commit_turn', arguments: '{}' }] }, { role: 'tool', toolCallId: 'one', content: [{ type: 'text', text: '{"id":"actual-first","databaseRevision":7}' }] }]
   assert.equal(callFrom(await collect(models.stream('gm', { messages }))).name, 'rp_commit_turn')
   messages.push({ role: 'assistant', content: [{ type: 'tool-call', id: 'two', name: 'rp_commit_turn', arguments: '{}' }] }, { role: 'tool', toolCallId: 'two', isError: true, content: [{ type: 'text', text: '{"error":{"code":"TURN_ALREADY_COMMITTED","message":"This active turn already has a fact receipt","receiptId":"actual-first"}}' }] })
+  assert.equal(callFrom(await collect(models.stream('gm', { messages }))).name, 'rp_gm_state')
+  messages.push({ role: 'assistant', content: [{ type: 'tool-call', id: 'check', name: 'rp_gm_state', arguments: '{}' }] }, { role: 'tool', toolCallId: 'check', content: [{ type: 'text', text: '{"revision":7,"lastFactReceipt":{"id":"actual-first","databaseRevision":7}}' }] })
   const recovered = callFrom(await collect(models.stream('gm', { messages })))
   assert.deepEqual(JSON.parse(recovered.arguments), { factReceiptId: 'actual-first' })
-  assert.deepEqual(models.stats().conflicts[0], { isError: true, code: 'TURN_ALREADY_COMMITTED', receiptId: 'actual-first' })
+  assert.equal(models.stats().conflicts[0].postRejectedRevision, 7)
+  assert.equal(models.stats().conflicts[0].receiptId, 'actual-first')
 })
 
 test('a controlled invalid retry dispatch is distinct from the later correct selected rewrite', async () => {

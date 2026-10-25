@@ -65,7 +65,10 @@ export function createLocalModels({ maxRequests = 64, maxRecords = 64 } = {}) {
           if (error) {
             const detail = error.value?.error
             if (detail?.code !== 'TURN_ALREADY_COMMITTED' || detail.receiptId !== firstCommit.value.id) throw new Error('FIXTURE_CONFLICT_ERROR_FIELDS_MISSING')
-            conflicts.push({ isError: error.isError, code: detail.code, receiptId: detail.receiptId }); conflicting = false
+            const checked = tail.slice(tail.indexOf(error) + 1).find(result => result.name === 'rp_gm_state' && !result.isError)
+            if (!checked) { yield* tool('rp_gm_state', {}); return }
+            if (checked.value?.revision !== firstCommit.value.databaseRevision || checked.value.lastFactReceipt?.id !== firstCommit.value.id || JSON.stringify(checked.value.lastFactReceipt.stateRefs) !== JSON.stringify(firstCommit.value.stateRefs)) throw new Error('FIXTURE_CONFLICT_CHANGED_FACT_STATE')
+            conflicts.push({ isError: error.isError, code: detail.code, receiptId: detail.receiptId, firstDatabaseRevision: firstCommit.value.databaseRevision, postRejectedRevision: checked.value.revision, stateRefs: checked.value.lastFactReceipt.stateRefs, factsHash: digest(JSON.stringify(checked.value.facts ?? null)) }); conflicting = false
             yield* tool('rp_present', { factReceiptId: firstCommit.value.id }); return
           }
           if (conflictSent) throw new Error('FIXTURE_CONFLICT_NOT_REJECTED')
@@ -113,7 +116,8 @@ export function createLocalModels({ maxRequests = 64, maxRecords = 64 } = {}) {
           materialGuards.push({ code: 'FACT_OWNER_REQUIRED', workUnchanged: true }); materialGuard = null
           operations = [{ op: 'note', id: materialKey(work), text: '合法的合成选材备注。' }]
         }
-        yield* prose(JSON.stringify({ databaseOperations: operations, selectedEntries: keys, historyOperations: (input.history ?? []).map((item, index, history) => ({ id: item.id, mode: index === history.length - 1 ? 'full' : 'summary' })), notes: '仅整理已接受事实与实际材料。', commit: true })); return
+        const historyOperations = (input.history ?? []).slice(0, -1).map(item => ({ id: item.id, mode: 'summary', summary: item.mode === 'summary' ? item.content : `已发生：${item.content}` }))
+        yield* prose(JSON.stringify({ databaseOperations: operations, selectedEntries: keys, historyOperations, notes: '仅整理已接受事实与实际材料。', commit: true })); return
       }
       if (record) record.frozenInputHash = digest(JSON.stringify({ packet: input.packet, modules: input.modules, context: input.context, story: input.story, recentProse: input.recentProse }))
       if (writerFailure) { writerFailure = false; throw new Error('FIXTURE_WRITER_FAILURE') }

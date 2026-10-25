@@ -1,11 +1,16 @@
 import { join } from 'node:path'
 import { writeFile } from 'node:fs/promises'
 import { chromium } from '@playwright/test'
-import { installInputs, startHost, copyFixtureFiles, closeOwnedResources } from './host.mjs'
+import { installInputs, startHost, copyFixtureFiles, closeOwnedResources, redact } from './host.mjs'
 import { ownedRunPath } from './paths.mjs'
 import { verifyInstalled } from './inputs.mjs'
 
 const endpoints = { database: '/api/rp-database/request', context: '/api/rp-context/request', lastStep: '/api/rp-last-step/request', storyKit: '/api/rp-story-kit/request', gm: '/api/rp-gm/request', studio: '/api/rp-studio/actions' }
+export async function closeFailedContext(error, { name, installed, errors, browser, host }) {
+  const cleanupErrors = await closeOwnedResources(browser, host)
+  error.nativeStartup = { name, hostPid: host?.child?.pid, installed: installed.installed, hostVersion: installed.version, startupError: redact(error.message), browserErrors: [...errors], cleanupErrors, cleanupStatus: cleanupErrors.length ? 'failed' : 'stopped' }
+  return error
+}
 export async function openNativeContext({ workspace, run, staged, cli, browserPath, providerURL, name, existing }) {
   const home = join(run, name), fixture = join(run, 'fixture')
   const installed = existing ?? await installInputs({ staged, home, cli, workspace, log: message => console.log(`[full:${name}] ${message}`) })
@@ -14,7 +19,7 @@ export async function openNativeContext({ workspace, run, staged, cli, browserPa
   const patch = await ownedRunPath(workspace, run, join(run, `${name}.patch.yml`))
   await writeFile(patch, `- id: session-title-llm\n  disabled: true\n- id: llm-deepseek\n  disabled: true\n- id: llm-deepseek-account\n  disabled: true\n- id: llm-pi-ai\n  disabled: true\n- id: agent-default-model\n  config:\n    provider: studio-native-local\n    model: gm\n- id: tools\n  config:\n    mode: native\n- id: rp-database\n  config:\n    embedding:\n      baseURL: ${providerURL}\n      model: studio-native-embedding\n    reranking:\n      baseURL: ${providerURL}\n      model: studio-native-rerank\n- insert:\n    - id: studio-native-probe\n      name: ${JSON.stringify(join(fixture, 'fixture.mjs').replaceAll('\\', '/'))}\n    - id: studio-native-legacy\n      name: '@deepseek-ai/dsh-agent-preset'\n      config:\n        id: studio-legacy-fixture\n        name: Studio full legacy regression\n        description: Public no-model legacy fixture\n        plugins:\n          - id: rp-runtime\n            name: '@deepseek-ai/dsh-persona'\n            config:\n              prefix: Public synthetic old preset.\n`)
   let host, browser
-  const errors = []
+  const errors = [], actionProofs = []
   try {
     host = await startHost({ cli, home, patch, workspace, env: installed.env, logPath: join(run, `${name}-${Date.now()}.host.log`) })
     browser = await chromium.launch({ headless: true, ...(browserPath ? { executablePath: browserPath } : {}) })
@@ -32,10 +37,8 @@ export async function openNativeContext({ workspace, run, staged, cli, browserPa
     await preview.waitFor({ state: 'visible', timeout: 1000 }).catch(() => {}); if (await preview.isVisible()) await preview.click()
     await page.waitForFunction(() => !!window.__nativeStudioCtx)
     async function request(path, body) {
-      const value = await page.evaluate(async ({ path, body }) => {
-        const response = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(45000) })
-        return { status: response.status, body: await response.json() }
-      }, { path, body })
+      const response = await page.request.post(new URL(path, page.url()).href, { headers: { 'content-type': 'application/json' }, data: body, timeout: 45000 })
+      const value = { status: response.status(), body: await response.json() }
       if (value.status >= 400 || value.body?.error || value.body?.ok === false) throw Object.assign(new Error(`${value.status}:${JSON.stringify(value.body)}`), { status: value.status, code: value.body?.error?.code, detail: value.body })
       return value.body
     }
@@ -48,8 +51,8 @@ export async function openNativeContext({ workspace, run, staged, cli, browserPa
       await page.locator(`.dsh-rp-workspace[data-rp-session="${sessionId}"]`).waitFor()
       await page.locator('.rp-empty').waitFor({ state: 'hidden' })
     }
-    return { name, home, installed, page, hostPid: host.child.pid, errors, api, studio, probe, request, openStudio, snapshot: sessionId => probe('snapshot', { sessionId }), idle: sessionId => probe('idle', { sessionId }), close: async () => { const failures = await closeOwnedResources(browser, host); if (failures.length) throw new Error(JSON.stringify(failures)) } }
-  } catch (error) { await closeOwnedResources(browser, host); throw error }
+    return { name, home, installed, page, hostPid: host.child.pid, errors, actionProofs, api, studio, probe, request, openStudio, snapshot: sessionId => probe('snapshot', { sessionId }), idle: sessionId => probe('idle', { sessionId }), close: async () => { const failures = await closeOwnedResources(browser, host); if (failures.length) throw new Error(JSON.stringify(failures)) } }
+  } catch (error) { throw await closeFailedContext(error, { name, installed, errors, browser, host }) }
 }
 
 export async function waitForNative(read, accept, label, timeout = 45000) {
