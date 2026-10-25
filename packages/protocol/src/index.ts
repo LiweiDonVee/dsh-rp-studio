@@ -200,6 +200,8 @@ export const healthStatusSchema = z.object({
 }).strict()
 
 export const acceptedResponseSchema = z.object({ accepted: z.literal(true) }).strict()
+export const rollbackResultSchema = z.object({ accepted: z.literal(true), sessionId: z.string().min(1).optional() }).strict()
+export type RollbackResult = z.infer<typeof rollbackResultSchema>
 
 export const streamEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('connected'), sessionId: z.string() }).strict(),

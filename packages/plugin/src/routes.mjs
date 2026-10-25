@@ -10,6 +10,11 @@ export function createNativeRoutes(createRuntime) {
     return pending ??= Promise.resolve().then(createRuntime).catch(error => { pending = undefined; throw error })
   }
   return {
+    async authorize(sessionId, signal) {
+      signal?.throwIfAborted()
+      await (await runtime()).service.authorize(sessionId)
+      signal?.throwIfAborted()
+    },
     async request(request) {
       if (stopped) return failure(503, 'upstream-unavailable', 'RP Studio 已停用。')
       try {

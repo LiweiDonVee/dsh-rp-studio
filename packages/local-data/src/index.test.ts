@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, afterEach } from 'vitest'
@@ -20,7 +20,7 @@ describe('LocalDataStore', () => {
   })
 
   async function store() {
-    const directory = await mkdtemp(join(tmpdir(), 'dsh-local-data-'))
+    const directory = await mkdtemp(join(await realpath(tmpdir()), 'dsh-local-data-'))
     directories.push(directory)
     const value = await createLocalDataStore({ dataDir: directory })
     stores.push(value)
@@ -232,7 +232,7 @@ describe('LocalDataStore', () => {
 
   it('invalidates staged restore hashes across restart', async () => {
     let now = Date.parse('2026-09-08T00:00:00.000Z')
-    const directory = await mkdtemp(join(tmpdir(), 'dsh-local-data-expiry-'))
+    const directory = await mkdtemp(join(await realpath(tmpdir()), 'dsh-local-data-expiry-'))
     directories.push(directory)
     const first = await createLocalDataStore({ dataDir: directory, now: () => now, restoreTtlMs: 1_000 })
     stores.push(first)
@@ -246,7 +246,7 @@ describe('LocalDataStore', () => {
 
   it('expires a staged restore without changing data', async () => {
     let now = Date.parse('2026-09-08T00:00:00.000Z')
-    const directory = await mkdtemp(join(tmpdir(), 'dsh-local-data-expiry-'))
+    const directory = await mkdtemp(join(await realpath(tmpdir()), 'dsh-local-data-expiry-'))
     directories.push(directory)
     const value = await createLocalDataStore({ dataDir: directory, now: () => now, restoreTtlMs: 1_000 })
     stores.push(value)
@@ -257,7 +257,7 @@ describe('LocalDataStore', () => {
   })
 
   it('publishes session-bound notifications and requests reset after retention loss', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'dsh-local-data-notifications-'))
+    const directory = await mkdtemp(join(await realpath(tmpdir()), 'dsh-local-data-notifications-'))
     directories.push(directory)
     const value = await createLocalDataStore({ dataDir: directory, notificationRetention: 2 })
     stores.push(value)
@@ -332,7 +332,7 @@ describe('LocalDataStore', () => {
   })
 
   it('serializes concurrent writes from two handles without losing commands', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'dsh-local-data-concurrent-'))
+    const directory = await mkdtemp(join(await realpath(tmpdir()), 'dsh-local-data-concurrent-'))
     directories.push(directory)
     const [first, second] = await Promise.all([createLocalDataStore({ dataDir: directory }), createLocalDataStore({ dataDir: directory })])
     stores.push(first, second)

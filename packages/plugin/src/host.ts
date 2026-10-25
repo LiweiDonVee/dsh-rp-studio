@@ -5,6 +5,7 @@ import { ProductService } from '../../../apps/gateway/src/product-service.js'
 import { loadDefaultProductStore } from '../../../apps/gateway/src/local-data-adapter.js'
 import { createNativeTransport } from './transport.mjs'
 import { createNativeRoutes } from './routes.mjs'
+import { createStudioActions } from './actions.mjs'
 
 export const name = 'rp-studio'
 export const inject = ['connection', 'typertGateway']
@@ -15,6 +16,8 @@ export function apply(ctx) {
     const service = new SessionService({
       dsh: createDshClient({ transport }),
       isPresentationSession: sessionId => ctx.get('rpLastStep')?.isEnabled(sessionId) === true,
+      getGM: () => ctx.get('rpGM'),
+      getLastStep: () => ctx.get('rpLastStep'),
     })
     const loaded = await loadDefaultProductStore({})
     const product = new ProductService({ sessions: service, ...loaded, pairingEnabled: false })
@@ -37,7 +40,9 @@ export function apply(ctx) {
       return { app, service, close }
     } catch (error) { await close(); throw error }
   })
+  const actions = createStudioActions({ getService: name => ctx.get(name), authorize: (sessionId, signal) => routes.authorize(sessionId, signal) })
   ctx.connection.fetch.register({ path: '/api/rp-studio/request', methods: ['POST'], requestBody: 'buffered', fetch: request => routes.request(request) })
   ctx.connection.fetch.register({ path: '/api/rp-studio/events', methods: ['GET'], requestBody: 'buffered', fetch: request => routes.events(request) })
-  ctx.effect(() => () => routes.close(), 'RP Studio runtime')
+  ctx.connection.fetch.register({ path: '/api/rp-studio/actions', methods: ['POST'], requestBody: 'buffered', fetch: request => actions.request(request) })
+  ctx.effect(() => () => { actions.close(); return routes.close() }, 'RP Studio runtime')
 }

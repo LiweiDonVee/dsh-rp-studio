@@ -58,6 +58,14 @@ afterEach(async () => {
 })
 
 describe('RP Gateway v1', () => {
+  it('preserves a generic rollback child while keeping the legacy response exact', async () => {
+    const api = fakeApi(), app = buildApp({ api })
+    apps.push(app)
+    const url = '/api/v1/sessions/session-1/rollback'
+    expect((await app.inject({ method: 'POST', url })).json().data).toEqual({ accepted: true })
+    api.rollback = async () => ({ accepted: true, sessionId: 'child-session' })
+    expect((await app.inject({ method: 'POST', url })).json().data).toEqual({ accepted: true, sessionId: 'child-session' })
+  })
   it('serves the actual rc2 Remote health metadata through the strict public schema', async () => {
     const api = fakeApi()
     api.health = async () => ({ upstream: 'ready', version: 'unknown', transport: 'remote' })

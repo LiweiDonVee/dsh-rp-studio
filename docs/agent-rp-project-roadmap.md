@@ -2,7 +2,23 @@
 
 独立规划：Astra XHigh · 2026-10-25
 
-**状态：提案，尚未实现。** 本文用于讨论与立项，不代表创建仓库或开始开发。所有新仓库、接口名称和版本安排均为建议。
+**当前状态（2026-10-25）：P1–P6 已按冻结职责进入各独立仓实现。** 当前接口与使用方式见[公开合同](agent-rp/README.md)及[组合指南](agent-rp-integration.md)，实际受测包与执行结果见[验收记录](native-acceptance.md)。本节说明落地归属；下方原规划保留为历史设计依据，不作为未来待实施清单。
+
+| 项目 | 当前版本与独立仓库 | 已落地职责 |
+| --- | --- | --- |
+| P1 | [RP GM 0.1.0](https://github.com/LiweiDonVee/dsh-rp-gm) | 通用原生开局、事实回执、合法分支与回退 |
+| P2 / P6 | [Story Kit 0.1.0](https://github.com/LiweiDonVee/dsh-rp-story-kit) | 角色与身份、开场、内容包、阅读稿、精确 ID 存档协调 |
+| P3 | [RP 最后一步 0.3.0](https://github.com/LiweiDonVee/dsh-rp-last-step) | 冻结写作、受限重试、版本化候选与采用 |
+| P4 | [RP Context 0.2.0](https://github.com/LiweiDonVee/dsh-rp-context) | 实际材料、历史表示、作者注的认领与消费 |
+| P5 | [RP Database 0.2.0](https://github.com/LiweiDonVee/dsh-rp-database) | 多来源组合、事实保护、文档原件与持久索引 |
+| 消费界面 | [RP Studio 1.3.0](https://github.com/LiweiDonVee/dsh-rp-studio) | 游玩、检查、候选采用、原生 owner 入口与迁移操作 |
+| 模型路由 | [Loop Studio 0.1.0](https://github.com/LiweiDonVee/dsh-loop-studio) | 复用已有阶段路由，版本不变 |
+
+P7 / dsh-rp-media 继续暂缓，未纳入这轮实现与验收。
+
+2026-10-25 的 rev5 七包组合已在官方 rc.3 完成九场景原生闭环，包含两 home、冷重启和精确存档恢复；受测 SHA、实际计数与保留的早期失败见[验收记录](native-acceptance.md)。
+
+## 历史规划
 
 ## 一、总体判断
 

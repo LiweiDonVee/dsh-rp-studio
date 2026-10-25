@@ -19,6 +19,7 @@ import {
   type SessionSummary,
   type StreamEvent,
 } from '@dsh-rp/protocol'
+import { rollbackResultSchema, type RollbackResult } from '@dsh-rp/protocol'
 import { GatewayError } from './errors.js'
 import type { ProductService } from './product-service.js'
 import { registerProductRoutes } from './product-routes.js'
@@ -32,7 +33,7 @@ export interface SessionApi {
   prompt(sessionId: string, text: string): Promise<Record<string, unknown>>
   cancel(sessionId: string): Promise<Record<string, unknown>>
   fork(sessionId: string, atSeq?: number): Promise<SessionDetail>
-  rollback(sessionId: string): Promise<Record<string, unknown>>
+  rollback(sessionId: string): Promise<RollbackResult>
   autoplay(sessionId: string, input: { off?: boolean; rounds?: number; objective?: string }): Promise<Record<string, unknown>>
   promptSettings(sessionId: string): Promise<PromptSession>
   applyPromptSettings(sessionId: string, input: PromptPresetSelection): Promise<PromptSession>
@@ -115,7 +116,7 @@ export function buildApp(options: { api: SessionApi; product?: ProductService })
     if (atSeq !== undefined && (!Number.isInteger(atSeq) || (atSeq as number) < 0)) throw badRequest('分支事件序号无效。')
     return successEnvelope(sessionDetailSchema.parse(await options.api.fork(sessionId(request.params), atSeq as number | undefined)))
   })
-  app.post('/api/v1/sessions/:id/rollback', async request => successEnvelope(acceptedResponseSchema.parse(await options.api.rollback(sessionId(request.params)))))
+  app.post('/api/v1/sessions/:id/rollback', async request => successEnvelope(rollbackResultSchema.parse(await options.api.rollback(sessionId(request.params)))))
   app.get('/api/v1/sessions/:id/prompt-presets', async request => successEnvelope(promptSessionSchema.parse(await options.api.promptSettings(sessionId(request.params)))))
   app.put('/api/v1/sessions/:id/prompt-presets', async (request) => {
     const parsed = promptPresetSelectionSchema.safeParse(request.body)

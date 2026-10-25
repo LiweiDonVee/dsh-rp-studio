@@ -1,0 +1,40 @@
+name: Native plugin checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck native dependencies and web
+        run: pnpm -r --filter @dsh-rp/gateway --filter @dsh-rp/domain --filter @dsh-rp/protocol --filter @dsh-rp/local-data --filter @dsh-rp/web typecheck
+      - name: Test native dependencies and web
+        run: pnpm -r --filter @dsh-rp/gateway --filter @dsh-rp/domain --filter @dsh-rp/protocol --filter @dsh-rp/local-data --filter @dsh-rp/web test
+      - name: Test native host contracts
+        run: pnpm plugin:test
+      - name: Test isolated native harness
+        run: node --test scripts/native-integration/*.test.mjs
+      - name: Build native dependencies and web
+        run: pnpm -r --filter @dsh-rp/gateway --filter @dsh-rp/domain --filter @dsh-rp/protocol --filter @dsh-rp/local-data --filter @dsh-rp/web build
+      - name: Package native plugin
+        run: pnpm plugin:package

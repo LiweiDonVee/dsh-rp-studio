@@ -36,7 +36,7 @@ function toolCall(seq: number, turn: number, callId = 'present', name = 'rp_pres
 function presentation(seq: number, turn: number, callId = 'present', overrides: Record<string, unknown> = {}, sourceCallSeq = seq - 1, step = 1): RawSessionEvent {
   const result = event(seq, 'tool/result', {
     turn, step,
-    message: { id: `tool-${seq}`, role: 'tool', source: { kind: 'tool', callId }, toolCallId: callId, isError: false, content: [{ type: 'text', text: PRIVATE }] },
+    message: { id: `tool-${seq}`, role: 'tool', source: { kind: 'tool', callId }, toolCallId: callId, isError: false, content: [{ type: 'text', text: overrides.text ?? '晨光照亮了林间小路。' }] },
     meta: { rpLastStep: { schemaVersion: 1, record: {
       id: 'story-final', text: '晨光照亮了林间小路。', status: 'complete', createdAt: '2026-10-24T00:00:00.000Z',
       profileId: 'story', profileVersion: 1, profileHash: 'profile-hash', ...overrides,
@@ -167,5 +167,44 @@ describe('last-step transcript presentation', () => {
     delete result.sourceEventSeqs
     const events = [context(0), assistant(1, 1, PRIVATE, 'present'), toolCall(2, 1), result]
     expect(toTranscript(foldSurface(events), events)).toEqual([])
+  })
+
+  it('reads the effective content across two legitimate revisions instead of stale receipt text', () => {
+    const base = presentation(4, 1)
+    const first = structuredClone(base)
+    first.seq = 7
+    first.surfaceOp = { op: 'replace', startSeq: 4, endSeq: 4 }
+    first.sourceEventSeqs = [3, 4]
+    ;(first.data.message as Record<string, unknown>).content = [{ type: 'text', text: '采用稿一。' }]
+    const latest = structuredClone(first)
+    latest.seq = 10
+    latest.surfaceOp = { op: 'replace', startSeq: 7, endSeq: 7 }
+    latest.sourceEventSeqs = [3, 4, 7]
+    ;(latest.data.message as Record<string, unknown>).content = [{ type: 'text', text: '采用稿二。' }]
+    const events = [context(0), assistant(2, 1, PRIVATE, 'present'), toolCall(3, 1), base, first, latest]
+    expect(toTranscript(foldSurface(events), events)).toMatchObject([{ id: 'story-final', seq: 10, text: '采用稿二。' }])
+  })
+
+  it.each(['missing-source', 'changed-meta', 'unrelated-source', 'wrong-shadow'])('rejects an invalid revision chain (%s)', invalid => {
+    const base = presentation(4, 1)
+    const changed = structuredClone(base)
+    changed.seq = 7
+    changed.surfaceOp = { op: 'replace', startSeq: 4, endSeq: 4 }
+    changed.sourceEventSeqs = [3, 4]
+    ;(changed.data.message as Record<string, unknown>).content = [{ type: 'text', text: PRIVATE }]
+    if (invalid === 'missing-source') changed.sourceEventSeqs = [3]
+    if (invalid === 'changed-meta') changed.data.meta = { rpLastStep: { schemaVersion: 1, record: { id: 'fake', text: PRIVATE, status: 'complete' } } }
+    if (invalid === 'unrelated-source') changed.sourceEventSeqs.push(1)
+    if (invalid === 'wrong-shadow') changed.surfaceOp = { op: 'replace', startSeq: 2, endSeq: 4 }
+    const events = [context(0), assistant(2, 1, PRIVATE, 'present'), toolCall(3, 1), base, changed]
+    expect(toTranscript(foldSurface(events), events)).toEqual([])
+  })
+
+  it('preserves canonical prose through compaction and fork prefixes without resurrecting a future revision', () => {
+    const base = presentation(4, 1)
+    const compact = event(6, 'user/message', { source: { kind: 'compact-checkpoint' }, content: [{ type: 'text', text: PRIVATE }] }, { op: 'replace', startSeq: 2, endSeq: 4 })
+    const events = [context(0), assistant(2, 1, PRIVATE, 'present'), toolCall(3, 1), base, compact]
+    expect(toTranscript(foldSurface(events), events).map(item => item.text)).toEqual(['晨光照亮了林间小路。'])
+    expect(toTranscript(foldSurface(events.slice(0, 4)), events.slice(0, 4)).map(item => item.seq)).toEqual([4])
   })
 })

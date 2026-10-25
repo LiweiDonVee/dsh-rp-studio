@@ -13,10 +13,11 @@ export interface StoragePaths {
 
 export async function prepareStorage(dataDir: string): Promise<StoragePaths> {
   if (typeof dataDir !== 'string' || !dataDir || !isAbsolute(dataDir)) throw new DataValidationError('dataDir must be an absolute path')
-  await ensureDirectory(resolve(dataDir))
-  const requested = normalize(resolve(dataDir))
+  const requested = resolve(dataDir)
+  await ensureDirectory(requested)
   const canonical = await realpath(dataDir)
-  if (requested !== normalize(canonical)) throw new DataValidationError('dataDir must not traverse symbolic links')
+  // The component checks reject links; Windows realpath also expands legitimate 8.3 directory aliases.
+  if (process.platform !== 'win32' && requested !== canonical) throw new DataValidationError('dataDir must not traverse symbolic links')
   const assets = join(canonical, 'assets')
   const backups = join(canonical, 'backups')
   await ensureDirectory(assets)
@@ -135,10 +136,6 @@ async function assertMissingOrRegular(path: string, root: string): Promise<void>
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
-}
-
-function normalize(path: string): string {
-  return process.platform === 'win32' ? path.toLowerCase() : path
 }
 
 function requireSeparator(): string {
