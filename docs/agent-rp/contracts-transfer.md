@@ -239,3 +239,29 @@ Informational summary current-binding labels come only from actual LastStep bind
 Public rc.3 persistence provides no durable restore-job ownership witness atomically coupled to create+flush. If the host created/flushed a destination Session but the StoryKit createdIds checkpoint was not durably recorded before crash, matching header/prefix is NOT sufficient to claim ownership on restart. Treat this as the narrow unsupported automatic-recovery window: preserve pending/conflict state with RESTORE_ID_CONFLICT and explain that creation attribution was not recorded. No append, overwrite, automatic deletion or completion claim for that unowned existing identity.
 
 Recorded owned progress may continue under existing checks. The unrecorded window requires explicit owner resolution or an empty destination; do not add header markers, source manifests, private log edits or an invented host witness. Document this limitation honestly rather than promising unconditional crash-resumability. This does not invalidate the proven normal exact-ID restore or justify unsafe takeover of all matching sessions.
+
+## Amendment T16 — retain initial GM source references [FROZEN]
+
+For every included GM binding, SavedStory also collects initial binding.sources through the existing public GM.binding response. Merge their {databaseId,version} pairs with collectAssetDependencies' typed additionalDatabaseRefs and pass the deduplicated set to the existing Database.exportState. SourceBinding.key is launch provenance, not part of the library-version identity. No new DTO, API or manifest is introduced.
+
+This works even when an included story has selected StoryKit assets but no StoryKit launch journal. Existing reviewed launch refs remain included; do not rely on journal presence as the only way to preserve GM initial sources. After owner restore, verify the same exact initial/source library refs through Database.database before activation, alongside existing current binding, asset-default and initial profile checks. Missing explicit export refs use EXPORT_REQUIREMENT_MISSING; unavailable restored refs remain a restoration requirement.
+
+These additional initial versions are passive library content. Database's restored actual binding remains authoritative and is not extended/reset to the initial list. dependencySummary retains only its two existing roles: current-binding from actual Database, asset-default from actual asset/template defaults. An initial-only source need not appear in that nonexhaustive summary.
+
+Required focused regression: launch with source A, legally add source B while keeping GM facts/receipts, then export/restore and activate with actual sources A+B and unchanged initial GM sources A. Also cover an initial-only library version whose StoryKit launch journal is absent: the exact library is retained without being rebound. This closes the cross-owner initial/current contradiction; it is not a new migration format.
+
+## Amendment T17 — one aggregate maintenance owner [FROZEN]
+
+T11's no-nested-maintenance rule also applies to Context.exportState and every owner exportState invoked by StoryKit's withIdleSessions. StoryKit alone acquires the cross-owner Agent maintenance scopes; each provider preserves its own serialized/stable state snapshot, authorization, reference validation and before/after source/revision checks. No provider attempts a second acquisition for the same Agent, and no caller-supplied alreadyLocked flag is introduced.
+
+Minimal Context verification: an actual StoryKit-held maintenance scope reaches real Context export without a second acquisition; independent standalone export still rejects concurrent generation, source or revision changes and preserves authorization/canonical checks. Existing cold-child inheritance stays covered. Re-run the affected real seven-package SavedStory path with the corrected approved Context archive; neither a typed fixture nor omission of Context is a successful substitute.
+
+## Amendment T18 — fresh seeded Session bootstrap order [FROZEN]
+
+For the handle returned by THIS invocation's successful public sessionPersistence.create(originalHeader,{inheritedEventCount}), append the complete original contiguous events first, flush them, then invoke/persist the coordinator's onCreated checkpoint. Only afterwards read back/validate the prefix and perform the existing cold validation. Do not flush/read the incomplete empty seeded log as if it were already a valid source Session: its inherited end-seed marker is supplied by the original events.
+
+This fresh-handle path does not open or claim a preexisting identity. Preexisting unowned IDs and create collisions still reject before append; an existing recorded-owned partial path retains its existing strict header/count/prefix rules. Keep original header, event sequence/content and inheritedEventCount unchanged, including the source inherited end-seed event. No fabricated marker, Session, private file edit or format-check bypass.
+
+The onCreated checkpoint means actual successful public create + complete original append + flush, not advance reservation or proof of cold validity. A crash/error after creation and before that durable checkpoint remains T15's unattributed window: a later attempt must safely conflict if the identity exists without recorded ownership. Do not automatically delete, overwrite or recognize it by identical content. Mark imported/validated/complete only through the existing later checks, not merely onCreated.
+
+Minimal native verification uses the actual seeded child from the real source snapshot: fresh create → original events → flush → checkpoint → strict read/cold/restart succeeds, inheritedEventCount and inherited end-seed unchanged, historical execution zero. Retain ordinary root-session and occupied-ID tests. This is a correction to public persistence bootstrap ordering, not a new restore format or a broader partial-log recovery promise.

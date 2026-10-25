@@ -1,8 +1,8 @@
-# Native integration preparation
+# Native integration harness
 
-This harness installs reviewed product tgz files into a new isolated official DSH home. It does not import sibling product sources, provide fake product services, register fake `rp_present`/fact tools, or restore logs itself. The only replacement is a bounded local LLM adapter. Embedding/rerank and full scenario orchestration remain for the separately dispatched final run.
+This harness installs reviewed product tgz files into new isolated official DSH homes. It does not import sibling product sources, provide fake product services, register fake `rp_present`/fact tools, or restore logs itself. Test substitutes are limited to bounded local LLM and embedding/rerank providers and public synthetic input material.
 
-The current commands are `prepare` and `inspect`. Neither executes or reports the full ST-B acceptance chain. `inspect` reads the real installed owner interfaces and StoryKit capability flags, checks Studio health, and can exercise the unchanged legacy native layout without any model call. Missing capabilities are recorded as `deferred`; every full scenario remains `not-run`.
+`prepare` copies immutable inputs without starting a host. `inspect` reads actual owner interfaces and StoryKit capability flags, checks Studio health, and can exercise the legacy native layout without a model call. Neither reports full acceptance. `diagnose` and `full` execute the nine real-product scenarios; diagnostics always retain `finalAcceptance: false`. Missing capabilities are `deferred`, failed scenarios remain failed and later unexecuted scenarios remain `not-run`.
 
 ## Inputs
 
@@ -21,8 +21,12 @@ Supply a coordinator-reviewed manifest. Package paths are relative to the manife
 ```powershell
 node scripts/native-integration/run.mjs --manifest ./reviewed-inputs.json --mode prepare
 node scripts/native-integration/run.mjs --manifest ./reviewed-inputs.json --mode inspect --ui --browser <existing-headless-chromium>
+node scripts/native-integration/run.mjs --manifest ./reviewed-final-inputs.json --mode diagnose --browser <existing-headless-chromium>
+node scripts/native-integration/run.mjs --manifest ./reviewed-final-inputs.json --mode full --browser <existing-headless-chromium>
 node --test scripts/native-integration/*.test.mjs
 ```
+
+Both scenario modes require a complete `stage: final` manifest. Run `full` only with the coordinator's currently approved final archive list; a revoked or superseded list may be used only for an explicitly authorized diagnostic. A manifest's stage alone does not establish approval.
 
 Use `--cli` or `DSH_BIN` for a nondefault official launcher. The actual `--version` must equal `0.2.1-rc.3`. Before writing, the harness resolves the canonical checkout, physical `.runtime`, existing ancestors and target ownership; outward junction/reparse paths are rejected. Inspection creates its home exclusively: any existing `home-a` path is rejected, even without a root package manifest. `prepare` can still reuse verified immutable inputs. No production profile or default user sessions are read or changed.
 
@@ -32,10 +36,14 @@ Windows launcher argv containing literal `%` is currently rejected with `CLI_PER
 
 Each source archive is read and hashed once, then written exclusively as `name-version-SHA.tgz`. Existing immutable bytes must still match. Installation uses this SHA-bearing file URL, not the mutable original path: DSH/pnpm can otherwise treat a same-version repack at the same URL as already installed.
 
-After installation, the resolved actual package directory, package manifest, host entry, client entry and patch bytes are checked against the immutable archive. A new host process then reads the real service API/methods. `inspection.json` retains each archive hash and installed file hash, actual rc.3, fresh host PID, observed capabilities, zero-model-call counter, browser errors and optional sidebar/full/narrow metrics. Launch tokens are redacted from `host.log`.
+After installation, the resolved actual package directory, package manifest, host entry, client entry and patch bytes are checked against the immutable archive. A new host process then reads the real service API/methods. Inspection records these in `inspection.json`. Scenario runs record each process segment, installed hashes, individual scenario status, provider counters, raw evidence and cleanup in `full-result.json`; `full-progress.json` preserves the last scenario checkpoint. Launch tokens are redacted from host logs.
 
-The model fixture recognizes actual user/user-rpc sources, never runtime-context as player input. It records only bounded metadata/snippets, caps total requests and does not clone expanding histories. Its output is normal model text/tool-call blocks; the installed GM/Database/Context/LastStep must perform every real action and canonical acceptance. No model fixture result is proof that a native product workflow passed.
+The model fixture recognizes actual user/user-rpc sources, never runtime-context as player input. Each host caps model requests at 192 and retained metadata records at 96; local HTTP requests are separately bounded. It does not clone expanding histories. Its output is normal model text/tool-call blocks; installed product owners must perform every real action and canonical acceptance. No fixture unit test is proof that a native product workflow passed.
 
-## Remaining final acceptance
+## Scenario evidence
 
-After accepted final inputs arrive, the separately dispatched full driver must execute PNG/worldbook/persona/opening, factual commits, active Context search/history/note, frozen failure retry, versioned drafts/adoption, next turn/branch/cold restart, document caching, content-pack launch and exact-ID second-home restoration. Restore completion must come from real StoryKit and all real state owners; pending/deferred Loop validation is never a pass. No script may substitute fake owner success to fill a missing capability.
+The driver executes PNG/worldbook/persona/opening, factual commits and actual SDK error recovery, active Context search/history/note, pre-freeze and frozen failure retry, versioned drafts/adoption, next turn/branch/cold restart, persistent document caching, content-pack launch and exact-ID second-home restoration. It uses actual UI clicks for player actions, retry, manual adoption, branch, launch and archive entry actions. Read-only checks and fixture setup use authenticated owner endpoints.
+
+For the pending restore case, a public AbortSignal interrupts a real restore after created ownership and owner restoration, while the local provider's model-metadata request waits before actual Loop validation and activation. The wait has a watchdog and cleanup releases it. The same snapshot/job resumes in a new process through actual Loop inspection, policy restoration and GM activation. This proves cold continuation with deferred Loop checks; it does not claim that an incompatible graph was repaired. The harness never replaces a Loop method or its result.
+
+Restore completion must come from real StoryKit and all real state owners; pending/deferred Loop validation is never a pass. Final reports must distinguish the actual run's coverage from any separately accepted evidence for the exact same product hashes.

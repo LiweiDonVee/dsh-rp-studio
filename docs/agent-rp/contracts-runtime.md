@@ -258,3 +258,19 @@ StoryBinding.profile remains the immutable launch-time profile reference; keep i
 GM restore validates that the initial referenced version exists as retained library provenance, but must NOT require current LastStep binding to equal that initial ref. Actual current/prefix-effective profile and overlay belong to LastStep. During activation require the real LastStep binding to exist, be ready/usable for this story and satisfy its own ownership/native checks. Missing current binding is a restoration error, not permission to silently bind the initial profile.
 
 Owner UI/current style queries use LastStep's public binding response. GM launch profile is displayed only as launch information. Ordinary presentation already uses LastStep's actual bound profile; preserve that authority during restore and fork.
+
+## Amendment R23 — initial sources versus current Database composition [FROZEN]
+
+StoryBinding.sources, like StoryBinding.profile, records the immutable reviewed launch configuration. Database binding.sources is the sole current source composition. A legal owner bindSources that retains fact state and adds/removes compatible source slots must not make the GM story unexportable or unrestorable. Do not copy a second mutable current composition into GM or silently revert Database to the initial list.
+
+GM export/restore and activateRestored must validate the actual Database v2 binding, exact registered factEntryRefs, required state entries, actual receipt ownership/state versions and canonical sources. They must NOT compare the actual source list for equality with initial StoryBinding.sources. Required current sources are validated by the Database owner. Initial source versions are retained library provenance: resolve them through the existing Database.database({databaseId,version,signal}) owner method when validating initial references, analogous to the existing initial profile read. Missing exact initial refs remain an explicit requirement, never latest substitution or automatic binding.
+
+Story UI and documentation label GM.sources as initial sources; use public Database effectiveV2 for current composition. Fork uses the Database owner's existing effective/causal inheritance, not a GM rewrite of the initial list. This amendment does not add a new source-binding timeline or change existing Database mutation/rollback rules. T16 defines the small saved-library closure supplement.
+
+## Amendment R24 — Context export does not nest host maintenance [FROZEN]
+
+Context.exportState follows the same owner responsibility as GM export in R21/T11. StoryKit owns the aggregate public Agent.runMaintenance scope. Context.exportState must not acquire Agent.runMaintenance again, including through a shared idleSessions helper. A coordinator-held maintenance scope is not story generation.
+
+Preserve authorized public Session reads, actual live-idle/generation checks before and after capture, required cold-child inheritance, canonical reference/note-state projection and proof, an atomic Context-owned store snapshot, and the final contentRevision plus canonical source stability comparison. Concurrent generation or relevant source/state changes reject EXPORT_CHANGED; a standalone export is a checked owner-local snapshot, not a claim of cross-owner atomicity. Network/model work is not added to the snapshot.
+
+No alreadyLocked/trusted-lock flag, browser override, fake Agent, new host API or skipped Context payload. Limit this fix to export coordination; do not remove restore's existing idle/proof checks merely because export currently shares their helper. T17 applies the aggregate-lock rule consistently across providers.

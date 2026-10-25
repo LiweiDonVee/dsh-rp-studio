@@ -7,19 +7,26 @@ import { stageInputs } from './inputs.mjs'
 import { assessServices } from './requirements.mjs'
 import { assertRunDirectory, defaultCli, installInputs, startHost, copyFixtureFiles, redact, closeOwnedResources } from './host.mjs'
 import { ownedRunPath } from './paths.mjs'
+import { executeFullNative } from './full-run.mjs'
 
 const { values } = parseArgs({ options: { manifest: { type: 'string' }, mode: { type: 'string', default: 'prepare' }, run: { type: 'string' }, cli: { type: 'string' }, browser: { type: 'string' }, ui: { type: 'boolean', default: false }, help: { type: 'boolean' } } })
-if (values.help) { console.log('node scripts/native-integration/run.mjs --manifest <reviewed-inputs.json> --mode prepare|inspect [--ui] [--run <workspace/.runtime/run>] [--cli <dsh>] [--browser <chromium>]\nInspection never claims the full native acceptance chain.'); process.exit(0) }
-if (!values.manifest || !['prepare', 'inspect'].includes(values.mode)) throw new Error('Use an explicit reviewed manifest and prepare|inspect mode; full acceptance is not dispatched by this preparation runner.')
+if (values.help) { console.log('node scripts/native-integration/run.mjs --manifest <reviewed-inputs.json> --mode prepare|inspect|diagnose|full [--ui] [--run <workspace/.runtime/run>] [--cli <dsh>] [--browser <chromium>]\nFull requires coordinator-approved final inputs. Diagnose can never produce finalAcceptance:true.'); process.exit(0) }
+if (!values.manifest || !['prepare', 'inspect', 'diagnose', 'full'].includes(values.mode)) throw new Error('Use an explicit reviewed manifest and supported mode.')
 const workspace = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const run = await assertRunDirectory(workspace, resolve(values.run ?? join(workspace, '.runtime', `studio-native-${Date.now()}`)))
 const manifestPath = resolve(values.manifest), input = JSON.parse(await readFile(manifestPath, 'utf8'))
 input.packages = input.packages?.map(item => ({ ...item, path: resolve(dirname(manifestPath), item.path) }))
+if (['diagnose', 'full'].includes(values.mode) && input.stage !== 'final') throw new Error('FULL_REQUIRES_APPROVED_FINAL_INPUTS')
 await mkdir(run, { recursive: true })
 const marker = await ownedRunPath(workspace, run, join(run, 'owner.json'))
 try { const previous = JSON.parse(await readFile(marker, 'utf8')); if (previous.workspace !== workspace) throw new Error('RUN_DIRECTORY_NOT_OWNED') }
 catch (error) { if (error.code !== 'ENOENT') throw error; await writeFile(marker, JSON.stringify({ workspace, purpose: 'studio-native-isolated-test' }) + '\n', { flag: 'wx' }) }
 const staged = await stageInputs(input, run, workspace)
+if (['diagnose', 'full'].includes(values.mode)) {
+  const result = await executeFullNative({ workspace, run, staged, cli: values.cli ?? defaultCli(), browserPath: values.browser ?? process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH, diagnostic: values.mode === 'diagnose' })
+  console.log(JSON.stringify({ run, mode: values.mode, fullChain: result.fullChain, scenarios: result.scenarios.map(row => ({ id: row.id, status: row.status })), error: result.error }))
+  process.exit(result.fullChain.status === 'passed' || result.fullChain.status === 'diagnostic-complete' ? 0 : result.fullChain.status === 'deferred' ? 2 : 1)
+}
 const log = message => console.log(`[native-preparation] ${message}`)
 const report = { schemaVersion: 1, scope: 'ST-B preparation; actual installed product interfaces, not full-chain acceptance', run, mode: values.mode, inputStage: staged.stage, fullChain: { status: 'not-run', reason: 'Final accepted inputs and separately dispatched full scenario execution are required.' }, packages: staged.packages.map(({ name, version, sha256, archive }) => ({ name, version, sha256, archive })) }
 let host, browser

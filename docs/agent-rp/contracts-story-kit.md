@@ -127,3 +127,30 @@ mappings.databases[JSON.stringify([oldDatabaseId,oldVersion])] = {
 ```
 
 Never flatten document maps globally: two exported versions of one database may reference the same old document/version yet import into distinct new databases/documents. The provider already remaps its own entries/extraction refs. SourceBinding remap explicitly selects {key:oldBinding.key,databaseId:mapping.databaseId,version:mapping.version}; never spread documentMappings/sourceId into SourceBinding. Original SourcePayload/provenance remains unchanged audit data.
+
+## Amendment SK7 — SavedStory assets retain usable defaults [FROZEN]
+
+Follow transfer T12. SavedStory coordinator collects typed default database/profile refs of included pinned assets/templates and passes additionalDatabaseRefs/additionalProfileRefs to the corresponding owner exportState services. Keep these separate from actual launch sources/profile; explicit overrides remain unchanged. Do not turn dangling Character defaults into unspecified audit-only requirements or manufacture provider payloads.
+
+## Amendment SK8 — dependency display only
+
+Use transfer T14's optional SavedStory dependencySummary or fixed labels over the same public typed refs. Do not read Database/LastStep private payloads. Current binding and pinned default are different roles; an unused default stays a passive restored library dependency. Missing historical summary is shown as not recorded, never reconstructed by guessing.
+
+## Amendment SK9 — restored initial/current profile distinction
+
+SavedStory gathers GM initial profile refs via public binding and requests them as additional LastStep library dependencies. Actual runtime style remains LastStep-owned. current-binding summary must not be populated from the GM launch reference when a later rebind is active. Follow T15 for the unrecorded host-creation crash window; matching source data is not ownership evidence.
+
+## Amendment SK10 — launch configuration is not an asset default [FROZEN]
+
+A launch journal's reviewed request is startup configuration under SK6, not an included StoryTemplate asset merely because the user reviewed it. Its request.sources/profile must not, on that basis alone, produce dependencySummary uses:'asset-default'. This clarifies T14/T15 and R22; it does not change dependency closure or introduce a new summary enum.
+
+- current-binding is derived only from the actual captured public Database/LastStep binding.
+- asset-default is derived only from explicit typed default references in the included pinned assets or actual included StoryTemplate records. A stored launch request is not such a record.
+- Required launch configuration and initial GM profile references remain in owner-requested export/restore closure as passive library dependencies. If they have neither existing summary role, omit them from this nonexhaustive summary and show them only as initial/reviewed launch configuration when that view is present. Omission from summary does not authorize omitting the dependency itself.
+- Deduplicate by exact ID/version and assign roles by actual occurrences. An initial profile may also receive asset-default if the same exact ref really occurs in an included asset default, or current-binding if it really is current; never infer either role from its launch-journal presence.
+
+Example: Character default Style, explicit launch Initial, later LastStep rebind Current. Preserve all required exact refs. Display Style as asset-default, Current as current-binding, and Initial only as initial configuration (unless it independently has another real role). No new manifest, enum or restore authority is added. A label-only mismatch with complete correct closure is a presentation defect, not a reason to reopen the core restore contract.
+
+## Amendment SK11 — initial source closure
+
+Follow R23/T16: collect included GM binding.sources through the public binding DTO in addition to own asset/template/launch refs, export exact versions through existing additionalDatabaseRefs, and verify them after restore. Keep actual Database bindings and summary roles unchanged. No new store, field or owner API.

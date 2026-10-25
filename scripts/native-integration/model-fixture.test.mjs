@@ -53,6 +53,20 @@ test('material model requests search and exact reads before selecting real quali
   assert.deepEqual((await reply(input)).historyOperations, [{ id: 'old', mode: 'summary' }, { id: 'recent', mode: 'full' }])
 })
 
+test('material model distinguishes automatic search from outside discovery and reads raw owner EntryRefs', async () => {
+  const models = createLocalModels(), input = { candidates: [{ key: '["world","0"]' }, { key: '["card","0"]' }], searchResults: [{ query: 'player action', candidates: [{ key: '["world","0"]' }] }], readEntries: [], history: [], database: { binding: { factEntryRefs: [{ sourceKey: '@session', entryId: 'gm.facts' }] } } }
+  const reply = async () => JSON.parse((await collect(models.stream('prepare', { messages: [{ role: 'user', content: [{ type: 'text', text: JSON.stringify(input) }] }] }))).find(event => event.type === 'block-end').block.text)
+  assert.deepEqual(await reply(), { search: ['buried-observatory'], commit: false })
+  input.candidates.push({ key: '["world","outside"]' })
+  input.searchResults = []
+  input.readEntries = ['world/0', 'card/0', 'world/outside'].map(value => { const [sourceKey, entryId] = value.split('/'); return { ref: { sourceKey, entryId }, content: 'Actual selected body' } })
+  models.armMaterialGuard()
+  const decision = await reply()
+  assert.equal(decision.databaseOperations[0].id, '["world","0"]')
+  assert.equal(decision.databaseOperations[1].id, '["@session","gm.facts"]')
+  assert.ok(models.stats().requests.at(-1).readKeys.includes('["card","0"]'))
+})
+
 test('writer failure can be injected once without inventing token usage or canonical product events', async () => {
   const models = createLocalModels(), options = { messages: [{ role: 'user', content: [{ type: 'text', text: '{"packet":{"playerAction":"等待","visibleConsequences":["雨仍在下。"]}}' }] }] }
   models.failWriterOnce()
@@ -60,4 +74,22 @@ test('writer failure can be injected once without inventing token usage or canon
   const events = await collect(models.stream('writer', options))
   assert.ok(events.some(event => event.type === 'text-delta' && event.text.includes('雨仍在下。')))
   assert.ok(events.every(event => !['usage', 'tool/result', 'session/event'].includes(event.type)))
+})
+
+test('GM conflict recovery verifies the actual error JSON and presents the original owned receipt', async () => {
+  const models = createLocalModels(); models.armConflict()
+  const messages = [human('STUDIO_TRANSFER_LETTER'), { role: 'assistant', content: [{ type: 'tool-call', id: 'one', name: 'rp_commit_turn', arguments: '{}' }] }, { role: 'tool', toolCallId: 'one', content: [{ type: 'text', text: '{"id":"actual-first","databaseRevision":7}' }] }]
+  assert.equal(callFrom(await collect(models.stream('gm', { messages }))).name, 'rp_commit_turn')
+  messages.push({ role: 'assistant', content: [{ type: 'tool-call', id: 'two', name: 'rp_commit_turn', arguments: '{}' }] }, { role: 'tool', toolCallId: 'two', isError: true, content: [{ type: 'text', text: '{"error":{"code":"TURN_ALREADY_COMMITTED","message":"This active turn already has a fact receipt","receiptId":"actual-first"}}' }] })
+  const recovered = callFrom(await collect(models.stream('gm', { messages })))
+  assert.deepEqual(JSON.parse(recovered.arguments), { factReceiptId: 'actual-first' })
+  assert.deepEqual(models.stats().conflicts[0], { isError: true, code: 'TURN_ALREADY_COMMITTED', receiptId: 'actual-first' })
+})
+
+test('a controlled invalid retry dispatch is distinct from the later correct selected rewrite', async () => {
+  const models = createLocalModels(), options = { messages: [human('仅重试已冻结正文：{"rewriteOf":"chosen"}')] }
+  models.retryMode('wrong')
+  assert.notEqual(JSON.parse(callFrom(await collect(models.stream('gm', options))).arguments).rewriteOf, 'chosen')
+  models.retryMode('proper')
+  assert.equal(JSON.parse(callFrom(await collect(models.stream('gm', options))).arguments).rewriteOf, 'chosen')
 })
