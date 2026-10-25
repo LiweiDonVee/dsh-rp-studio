@@ -9,8 +9,10 @@ DSH 0.2.1-rc.2 内置角色扮演工作区。点击会话顶部的 **RP** 打开
 | **RP Studio（本仓库）** | 原生故事阅读、角色状态、故事档案 | [v1.2.0](https://github.com/LiweiDonVee/dsh-rp-studio/releases/tag/v1.2.0) |
 | [Loop Studio](https://github.com/LiweiDonVee/dsh-loop-studio) | 通用执行图、节点模型选择 | [Releases](https://github.com/LiweiDonVee/dsh-loop-studio/releases/latest) |
 | [RP 最后一步](https://github.com/LiweiDonVee/dsh-rp-last-step) | ST 预设迁移、模块热组装、最终正文 | [Releases](https://github.com/LiweiDonVee/dsh-rp-last-step/releases/latest) |
+| [RP Database](https://github.com/LiweiDonVee/dsh-rp-database) | 资料条目、来源版本、会话覆盖与检索 | [Releases](https://github.com/LiweiDonVee/dsh-rp-database/releases/latest) |
+| [RP Context](https://github.com/LiweiDonVee/dsh-rp-context) | 中间 GM 选材、历史摘要与主动展开/折叠 | [Releases](https://github.com/LiweiDonVee/dsh-rp-context/releases/latest) |
 
-三个项目可独立安装；需要完整 RP 联动时，把三个包安装到同一个 DSH profile。新插件的主仓库、独立构建和问题跟踪已迁至上表对应项目。本仓库保留 `packages/loop-plugin`、`packages/rp-last-step` 和迁移 skill 的已验证集成快照，供联合回归使用；它们的后续开发和正式发布以独立仓库为准。
+这些项目可独立安装；需要组合联动时，把所需包安装到同一个 DSH profile。新插件的主仓库、独立构建和问题跟踪位于上表对应项目。本仓库保留 `packages/loop-plugin`、`packages/rp-last-step` 和迁移 skill 的历史集成快照；后续开发、当前验收与正式发布以独立仓库为准。
 
 [原生使用指南](docs/native-usage.md) · [更新记录](CHANGELOG.md) · [最后一步联动验收](docs/rp-last-step-acceptance.md)
 
@@ -38,7 +40,9 @@ DSH 0.2.1-rc.2 内置角色扮演工作区。点击会话顶部的 **RP** 打开
 
 插件自带原生预设编辑器和已提交稿件记录，可单独安装。配合 RP Studio 1.2 可在故事页管理预设、流式阅读正文；配合 Loop Studio 可分别给迁移、热组装和写作选择模型。三个包互相独立，不要求同时安装。第一版终止呈现需要原生工具模式，纯 PTC 会话仍可迁移、编辑和预览。
 
-安装包：`dsh-rp-last-step-0.1.0.tgz`，从其 [Releases](https://github.com/LiweiDonVee/dsh-rp-last-step/releases/latest) 下载。安装方式同下，将包名替换即可。源码构建与迁移 skill 见 [独立仓库](https://github.com/LiweiDonVee/dsh-rp-last-step)。本仓库的 `pnpm rp:package`、`pnpm rp:smoke` 针对集成快照，历史验收见 [记录](docs/rp-last-step-acceptance.md)。
+安装包：`dsh-rp-last-step-0.2.0.tgz`，从其 [Releases](https://github.com/LiweiDonVee/dsh-rp-last-step/releases/latest) 下载。0.2 可选接入 Database 与 Context：GM 主动搜索、选择及编辑允许的会话条目，展开或折叠有效叙事，再将冻结材料交给 writer。失败正文可基于冻结材料只重试写作。当前窗口作用于中间 GM 与正文，主循环压缩仍由 DSH／对应版本验证的 ACP 管理。
+
+安装方式同下，将包名替换即可。源码、迁移 skill 与当前组合验收见 [独立仓库](https://github.com/LiweiDonVee/dsh-rp-last-step)。本仓库的 `pnpm rp:package`、`pnpm rp:smoke` 针对旧集成快照，历史验收见 [记录](docs/rp-last-step-acceptance.md)。
 
 ## 安装原生插件（推荐）
 
