@@ -174,7 +174,14 @@ export async function executeFullNative({ workspace, run, staged, cli, browserPa
       assert.ok(material.contextPreparation.materials.entries.some(row => row.ref.sourceKey === 'card' && row.ref.entryId === '0'))
       assert.ok(material.contextPreparation.materials.entries.some(row => row.ref.sourceKey === 'world' && row.ref.entryId === 'readonly'))
       assert.ok(!JSON.stringify(material).includes('DISABLED_NATIVE_PROVIDER_SENTINEL'))
-      await write('context-material.json', { material, effective, models }); return { outsideSearch: true, qualifiedCollision: true, atomicFactDenial: true }
+      let readOnlyRejection
+      await assert.rejects(source.probe('readOnlyAttempt', { sessionId: primaryId }), error => { readOnlyRejection = { code: error.code, message: error.detail?.error?.message }; return error.code === 'READ_ONLY' })
+      const afterReadOnly = await source.api('database', 'effectiveV2', { sessionId: primaryId }); assert.deepEqual(afterReadOnly, effective)
+      await source.probe('editWorking', { sessionId: primaryId, text: effective.entries.find(row => row.ref.sourceKey === 'world' && row.ref.entryId === '0').content + '\nREAD_ONLY_DENIAL_VALID_WORK' })
+      const afterLegal = await source.api('database', 'effectiveV2', { sessionId: primaryId })
+      assert.ok(afterLegal.revision > afterReadOnly.revision); assert.ok(afterLegal.entries.find(row => row.ref.sourceKey === 'world' && row.ref.entryId === '0').content.includes('READ_ONLY_DENIAL_VALID_WORK'))
+      assert.deepEqual(afterLegal.entries.find(row => row.ref.sourceKey === 'world' && row.ref.entryId === 'readonly'), effective.entries.find(row => row.ref.sourceKey === 'world' && row.ref.entryId === 'readonly'))
+      await write('context-material.json', { material, effective, models, readOnlyRejection, afterReadOnly, afterLegal }); return { outsideSearch: true, qualifiedCollision: true, atomicFactDenial: true, actualReadOnlyDenial: readOnlyRejection.code, laterWorkingWrite: true }
     })
     await cases.run(SCENARIOS[3], async () => {
       const settings = await source.api('context', 'state', { sessionId: primaryId })

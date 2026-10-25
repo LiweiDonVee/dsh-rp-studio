@@ -4,7 +4,7 @@
 
 The current native verification uses seven immutable product archives, exclusive source/destination homes, and actual installed entry hashes. Only the bounded local model and embedding/rerank providers are test substitutes. The nine-scenario driver covers generic launch, factual tools, Context material, restricted retry, drafts/adoption, branch/cold continuation, document indexing, content packs and exact-ID saved stories.
 
-Final seven-package acceptance is **not yet complete**. The rev3 run reached pending saved-story continuation after real process restart and was correctly blocked by a Context preflight conflict. Its failed result remains preserved. Proof assertions are being tightened against the independent source review; a later approved archive set must execute the complete chain before a passing result is recorded. Unit tests and interface inspection are separate evidence.
+Final seven-package acceptance is **not yet complete**. The rev3 run reached pending saved-story continuation after real process restart and was blocked by a Context preflight conflict. The rev4 run used stricter success assertions and found that rollback retained an earlier queued input, causing two factual actions after one new prompt. Both failed results remain preserved. The next approved GM package must pass the same strict count, prefix and action assertions; no old work is absorbed into a success baseline. Unit tests and interface inspection are separate evidence.
 
 Reproduction and artifact formats are documented in the [native harness guide](../scripts/native-integration/README.md). This record will identify the final package hashes, command, per-process counters, UI screenshots and cleanup outcome after that run.
 

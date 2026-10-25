@@ -96,9 +96,9 @@ export function apply(ctx) {
         result = {}
         for (const name of ['rpDatabase', 'rpContext', 'rpLastStep', 'rpGM', 'rpStoryKit']) result[name] = await ctx.get(name).contentRevision({ signal: request.signal })
       }
-      else if (input.action === 'editWorking') {
+      else if (input.action === 'editWorking' || input.action === 'readOnlyAttempt') {
         const database = ctx.get('rpDatabase'), before = await database.effectiveV2({ sessionId: input.sessionId, signal: request.signal })
-        result = await database.patchV2({ sessionId: input.sessionId, agent: ctx.agents.get(input.sessionId), expectedRevision: before.revision, operations: [{ op: 'update', ref: { sourceKey: 'world', entryId: '0' }, patch: { content: input.text } }], signal: request.signal })
+        result = await database.patchV2({ sessionId: input.sessionId, agent: ctx.agents.get(input.sessionId), expectedRevision: before.revision, operations: [{ op: 'update', ref: { sourceKey: 'world', entryId: input.action === 'readOnlyAttempt' ? 'readonly' : '0' }, patch: { content: input.action === 'readOnlyAttempt' ? 'READ_ONLY_MUST_NOT_CHANGE' : input.text } }], signal: request.signal })
       }
       else if (input.action === 'armMetadataPause') { metadataPause = { sessionId: input.sessionId, entered: false, timedOut: false }; result = { armed: true } }
       else if (input.action === 'metadataPause') result = metadataPause ? { sessionId: metadataPause.sessionId, entered: metadataPause.entered, timedOut: metadataPause.timedOut, bindingStatus: metadataPause.bindingStatus, actualAgentId: metadataPause.actualAgentId } : null

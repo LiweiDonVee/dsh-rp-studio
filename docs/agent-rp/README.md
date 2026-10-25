@@ -9,6 +9,7 @@
 - [Story Kit 与内容包](contracts-story-kit.md)
 - [文档、完整存档与恢复](contracts-transfer.md)
 - [Studio 固定操作、能力和原生页签](contracts-studio.md)
+- [Pending、冲突与回退冷继续的验收边界](acceptance-boundaries.md)
 - [Studio 1.3 使用与验证边界](../agent-rp-integration.md)
 
 每个 owner 负责自己的存储、授权、修订冲突和因果投影。Studio 仅消费这些合同。公开副本保留方法签名、字段、错误码、版本、所有权和验收边界；产品能力必须按实际实现检测。
