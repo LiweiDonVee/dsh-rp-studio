@@ -173,3 +173,13 @@ Thus same restoreId with a structurally valid changed note version reports RESTO
 For current verified rc.3 cross-home/cold comparison, header.delegationDepth absent/undefined is semantically equivalent to numeric 0. This is the only newly allowed normalization, based on actual cold-prefix comparison evidence. null, string '0', nonzero values or other header changes are not equivalent.
 
 Normalize this one header field for structural identity comparison; preserve/export original observed data and let the public host API apply its own default. Original events, seqs, message IDs, sources and tool metadata remain strictly equal. The only expected resume suffix remains the verified end-seed; historical execution counters must stay zero. Do not generalize into dropping unknown/defaulted fields or accepting arbitrary host rewrites.
+
+## Amendment T11 — GM restore atomicity and export lock ownership [FROZEN]
+
+GM.restoreState does NOT persist a new pending identity journal or increment its contentRevision before canonical proof. The coordinator's durable restore journal and the already-defined GM.reserveRestore execution reservation supply recovery/gating; do not add another proof-before-write exception.
+
+Within GM's existing owner serialization queue: validate minimal envelope and existing restore identity (T9), validate full schema/revision, perform the available owner/canonical proof, then merge binding metadata and record restore result in one atomic state write. A proof failure leaves GM.restoreState's data/revision unchanged. Existing reserveRestore metadata is not erased. Proof code must not recursively enter the same GM store queue; use its captured state and the frozen owner-readable services. Agent-only checks remain deferred to activation as R20 already specifies.
+
+StoryKit owns cross-component public Agent.runMaintenance coordination for export. GM.exportState must not nest another maintenance acquisition for the same Agent. It takes its own atomic store snapshot, checks that involved live Agents are not generating and checks relevant revision/source stability before/after; coordinator-held maintenance is not itself story generation. Changed state rejects EXPORT_CHANGED. Cold data is read through public owner readers without fabricating an Agent.
+
+exportState is an owner-local snapshot method, not a promise of cross-plugin atomicity when called alone. StoryKit's orchestrator supplies the aggregate maintenance scope and final consistency checks. No browser/model-controlled 'alreadyLocked' flag, new Database API, or source manifest is introduced.

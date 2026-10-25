@@ -246,3 +246,7 @@ For older outcomes without that field: resolve unambiguously from canonical line
 GM.restoreState may validate binding/fact refs against authorized owner effectiveV2 and canonical source/narrative readers before a real Agent exists, and persist only restoring status. It must not manufacture an Agent or call factAccess with a fake exec context.
 
 After safe no-prompt resume supplies the actual registered Agent, activateRestored must perform remaining factAccess receipt kind, ownership, active-source and state-ref checks before clearing restoring/reservation. Failure leaves the story gated; no prompt, opening rerun or play admission. This defers only Agent-scoped checks, not validations already possible through owner services, and never reports full restore complete before activation succeeds.
+
+## Amendment R21 — GM provider lock/restore clarification [FROZEN]
+
+Follow transfer T11: GM.restoreState writes once only after available proof under its existing queue, retaining restoring status for R20 activation checks. Do not persist an extra pre-proof pending journal/revision bump. GM.exportState does not recursively acquire the coordinator-held Agent maintenance lock.
