@@ -1,3 +1,5 @@
+import { validDependencySummary } from './dependency-summary.mjs'
+
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const id = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 256
 const revision = value => Number.isSafeInteger(value) && value >= 0
@@ -26,13 +28,14 @@ const owners = { gm: 'rpGM', storyKit: 'rpStoryKit', database: 'rpDatabase', con
 const storyKitCapabilities = { exportReading: 'readingExport', exportSavedStory: 'savedStoryExport', previewSavedStory: 'savedStoryPreview', restoreSavedStory: 'savedStoryRestore' }
 const failure = (status, code, message) => Response.json({ error: { code, message } }, { status, headers: { 'cache-control': 'no-store' } })
 function validSnapshot(value) {
-  const fields = ['format', 'schemaVersion', 'identityMode', 'exportedAt', 'selectedSessionId', 'sessions', 'pluginState', 'resources', 'requirements', 'loopPolicies']
+  const fields = ['format', 'schemaVersion', 'identityMode', 'exportedAt', 'selectedSessionId', 'sessions', 'pluginState', 'resources', 'requirements', 'loopPolicies', 'dependencySummary']
   return object(value) && Object.keys(value).every(key => fields.includes(key)) && value.format === 'dsh-rp-saved-story' && value.schemaVersion === 1 && value.identityMode === 'preserve'
     && typeof value.exportedAt === 'string' && id(value.selectedSessionId) && Array.isArray(value.sessions) && value.sessions.length > 0
     && value.sessions.every(session => object(session) && Object.keys(session).every(key => ['header', 'events', 'inheritedEventCount'].includes(key)) && object(session.header) && Array.isArray(session.events) && session.events.every(object) && revision(session.inheritedEventCount) && session.inheritedEventCount <= session.events.length)
     && object(value.pluginState) && ['database', 'lastStep', 'gm', 'storyKit'].every(key => Object.hasOwn(value.pluginState, key))
     && Object.keys(value.pluginState).every(key => ['database', 'context', 'lastStep', 'gm', 'storyKit'].includes(key))
     && Array.isArray(value.resources) && Array.isArray(value.requirements) && value.requirements.every(item => typeof item === 'string')
+    && (value.dependencySummary === undefined || validDependencySummary(value.dependencySummary))
     && (value.loopPolicies === undefined || Array.isArray(value.loopPolicies) && value.loopPolicies.every(item => object(item) && Object.keys(item).every(key => ['sessionId', 'policy'].includes(key)) && id(item.sessionId) && object(item.policy)))
 }
 function valid(input) {

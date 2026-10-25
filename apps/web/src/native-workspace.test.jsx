@@ -1,5 +1,5 @@
 import React from 'react'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Workspace } from '../../../packages/plugin/src/Workspace.jsx'
 import { apply as applyNativeClient } from '../../../packages/plugin/src/client.jsx'
@@ -454,6 +454,56 @@ describe('unified owner operations', () => {
     expect(await screen.findByText(/支持条件暂存；目标实际路由尚未完成验证/u)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '暂存并验证目标路由' }))
     expect(await screen.findByText(/恢复尚未完成/u)).toBeTruthy()
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('displays recorded public dependency use with fixed labels when exporting a save', async () => {
+    const h = ecosystem(), action = h.api.action
+    const dependencySummary = { databases: [{ databaseId: 'world-default', version: 2, uses: ['asset-default'] }], profiles: [{ profileId: 'style-current', version: 3, uses: ['current-binding'] }] }
+    h.api.action = (name, input, signal) => name === 'exportSavedStory' ? Promise.resolve({ snapshot: { ...savedStory, dependencySummary } }) : action(name, input, signal)
+    render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
+    await screen.findByText('山间驿站')
+    fireEvent.click(screen.getByRole('button', { name: '故事档案' }))
+    const button = await screen.findByRole('button', { name: '导出完整存档' })
+    await waitFor(() => expect(button).not.toBeDisabled()); fireEvent.click(button)
+    const summary = await screen.findByRole('region', { name: '记录的依赖用途' })
+    expect(within(summary).getByText('world-default · v2')).toBeTruthy()
+    expect(within(summary).getByText('style-current · v3')).toBeTruthy()
+    expect(within(summary).getByText('资产默认来源')).toBeTruthy()
+    expect(within(summary).getByText('所选故事当前绑定')).toBeTruthy()
+    expect(within(summary).getByText(/不表示历史从未使用/u)).toBeTruthy()
+  })
+
+  it('marks legacy dependency use as unrecorded instead of inspecting private plugin payloads', async () => {
+    const h = ecosystem(), action = h.api.action
+    const snapshot = structuredClone(savedStory)
+    snapshot.pluginState.lastStep.payload = { profiles: [{ id: 'PRIVATE_PAYLOAD_SHOULD_NOT_BE_INFERRED', version: 1 }] }
+    h.api.action = (name, input, signal) => name === 'exportSavedStory' ? Promise.resolve({ snapshot }) : action(name, input, signal)
+    render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
+    await screen.findByText('山间驿站')
+    fireEvent.click(screen.getByRole('button', { name: '故事档案' }))
+    const button = await screen.findByRole('button', { name: '导出完整存档' })
+    await waitFor(() => expect(button).not.toBeDisabled()); fireEvent.click(button)
+    expect(await screen.findByText('依赖用途：未记录')).toBeTruthy()
+    expect(screen.queryByText(/PRIVATE_PAYLOAD_SHOULD_NOT_BE_INFERRED/u)).toBeNull()
+  })
+
+  it('uses only the owner preview summary for display and does not enable a denied restoration', async () => {
+    const h = ecosystem(), action = h.api.action, open = vi.fn()
+    const dependencySummary = { databases: [], profiles: [{ profileId: 'owner-current', version: 3, uses: ['current-binding'] }] }
+    h.api.action = (name, input, signal) => name === 'previewSavedStory' ? Promise.resolve({ supported: false, identityMode: 'preserve', conflicts: [{ code: 'RESTORE_ID_CONFLICT', id: 'restored' }], requirements: [], dependencySummary }) : action(name, input, signal)
+    render(<Workspace sessionId="a" openSession={open} client={h.api} />)
+    await screen.findByText('山间驿站')
+    fireEvent.click(screen.getByRole('button', { name: '故事档案' }))
+    const upload = await screen.findByLabelText('完整存档文件')
+    await waitFor(() => expect(upload).not.toBeDisabled())
+    const snapshot = { ...savedStory, dependencySummary: { databases: [], profiles: [{ profileId: 'file-only', version: 1, uses: ['asset-default'] }] } }
+    fireEvent.change(upload, { target: { files: [new File([JSON.stringify(snapshot)], 'with-info.json', { type: 'application/json' })] } })
+    const summary = await screen.findByRole('region', { name: '记录的依赖用途' })
+    expect(within(summary).getByText('owner-current · v3')).toBeTruthy()
+    expect(within(summary).queryByText(/file-only/u)).toBeNull()
+    expect(screen.getByRole('button', { name: '恢复完整存档' })).toBeDisabled()
+    expect(h.calls.some(call => call.action === 'restoreSavedStory')).toBe(false)
     expect(open).not.toHaveBeenCalled()
   })
 })

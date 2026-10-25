@@ -28,7 +28,12 @@ const services = {
     material: async ({ presentationId }) => ({ presentationId, packet: { playerAction: '推开门' }, storySnapshot: { title: '码头来信', character: { assetId: 'guide', version: 1, name: '港口向导', description: '仅用于合成合同测试的固定来源。' }, persona: { assetId: 'traveler', version: 1, name: '旅人', description: '来访者。' }, examples: '' }, contextPreparation: { candidates: [{ ref: { sourceKey: 'world', entryId: '0' }, title: '港口' }] }, compiled: { text: '公开合成冻结模块。' }, models: { render: { provider: 'synthetic', model: 'contract-only' } }, status: 'complete' }),
   },
   rpContext: { authorNote: async () => ({ id: 'note', version: 1, text: '多一些停顿。', status: 'pending' }) },
-  rpStoryKit: { apiVersion: 1, state: async () => ({ capabilities: { readingExport: true, savedStoryExport: false, savedStoryPreview: false, savedStoryRestore: false } }), exportReading: async () => ({ fileName: 'reading.md', mimeType: 'text/markdown', text: `# 阅读稿\n${current.text}` }) },
+  rpStoryKit: {
+    apiVersion: 1,
+    state: async () => ({ capabilities: { readingExport: true, savedStoryExport: true, savedStoryPreview: false, savedStoryRestore: false } }),
+    exportReading: async () => ({ fileName: 'reading.md', mimeType: 'text/markdown', text: `# 阅读稿\n${current.text}` }),
+    exportSavedStory: async ({ sessionId }) => ({ snapshot: { format: 'dsh-rp-saved-story', schemaVersion: 1, identityMode: 'preserve', exportedAt: '2026-10-25T00:00:00Z', selectedSessionId: sessionId, sessions: [{ header: { id: sessionId }, events: [], inheritedEventCount: 0 }], pluginState: { database: { schemaVersion: 1, revision: 0, payload: {} }, context: null, lastStep: { schemaVersion: 1, revision: 0, payload: {} }, gm: { schemaVersion: 1, revision: 0, payload: {} }, storyKit: { schemaVersion: 1, revision: 0, payload: {} } }, resources: [], requirements: [], dependencySummary: { databases: [{ databaseId: 'fixture-asset-default-library-with-a-long-opaque-identity', version: 2, uses: ['asset-default'] }], profiles: [{ profileId: 'fixture-current-style', version: 3, uses: ['current-binding'] }] } } }),
+  },
   rpDatabase: { apiVersion: 2 },
 }
 const actions = createStudioActions({ getService: name => services[name], authorize: async id => { if (!sessions.includes(id)) throw Object.assign(new Error('无权访问故事。'), { code: 'FORBIDDEN', status: 403 }) } })
@@ -87,10 +92,16 @@ try {
     metrics.push({ name, ...size })
     await page.screenshot({ path: resolve(evidence, `${name}.png`) })
   }
+  await page.getByRole('button', { name: '导出完整存档', exact: true }).click()
+  const recordedUse = page.getByRole('region', { name: '记录的依赖用途', exact: true })
+  await expect(recordedUse).toContainText('资产默认来源'); await expect(recordedUse).toContainText('所选故事当前绑定')
+  await recordedUse.scrollIntoViewIfNeeded()
+  expect(await recordedUse.evaluate(element => element.scrollWidth > element.clientWidth + 1)).toBe(false)
+  await page.screenshot({ path: resolve(evidence, 'dependency-use-narrow.png') })
   await page.getByRole('button', { name: '回退', exact: true }).click()
   await page.getByRole('heading', { name: '回退子故事', exact: true }).first().waitFor()
   expect(errors).toEqual([])
-  const report = { scope: 'ST-A real Studio UI + actual action adapter with synthetic owner services; not native-host whole-stack evidence', metrics, browserErrors: errors, checks: ['keyboard summary toggle', 'manual editor focus', 'save/adopt/refresh', 'preserved host maintenance notice', 'current frozen material', 'generic autoplay unavailable', 'rollback child navigation'], evidence }
+  const report = { scope: 'ST-A real Studio UI + actual action adapter with synthetic owner services; not native-host whole-stack evidence', metrics, browserErrors: errors, checks: ['keyboard summary toggle', 'manual editor focus', 'save/adopt/refresh', 'preserved host maintenance notice', 'current frozen material', 'generic autoplay unavailable', 'recorded dependency-use narrow display', 'rollback child navigation'], evidence }
   await writeFile(resolve(evidence, 'result.json'), jsonReport(report))
   console.log(JSON.stringify(report))
 } finally {

@@ -109,3 +109,25 @@ test('saved-story preview preserves authoritative inherited count and deferred c
   delete invalid.sessions[0].inheritedEventCount
   assert.equal((await route.request(post({ action: 'previewSavedStory', snapshot: invalid }))).status, 400)
 })
+
+test('optional dependency use is passed unchanged and never upgrades the owner preview decision', async () => {
+  const snapshot = { format: 'dsh-rp-saved-story', schemaVersion: 1, identityMode: 'preserve', exportedAt: '2026-10-25T00:00:00Z', selectedSessionId: 's', sessions: [{ header: { id: 's' }, events: [], inheritedEventCount: 0 }], pluginState: { database: {}, context: null, lastStep: {}, gm: {}, storyKit: {} }, resources: [], requirements: [] }
+  const dependencySummary = { databases: [{ databaseId: 'world', version: 2, uses: ['asset-default'] }], profiles: [{ profileId: 'style', version: 3, uses: ['current-binding', 'asset-default'] }] }
+  const captured = []
+  const route = createStudioActions({ getService: name => name === 'rpStoryKit' ? { apiVersion: 1, state: async () => ({ capabilities: { savedStoryPreview: true } }), previewSavedStory: async input => { captured.push(input.snapshot); return { supported: false, conflicts: [{ code: 'RESTORE_ID_CONFLICT', id: 's' }], requirements: [], identityMode: 'preserve' } } } : undefined, authorize: async () => {} })
+  for (const value of [snapshot, { ...snapshot, dependencySummary }]) {
+    const response = await route.request(post({ action: 'previewSavedStory', snapshot: value }))
+    assert.equal(response.status, 200)
+    assert.deepEqual(captured.at(-1), value)
+    assert.equal((await response.json()).supported, false)
+  }
+})
+
+test('malformed dependency refs or use labels are rejected before the owner is invoked', async () => {
+  const snapshot = { format: 'dsh-rp-saved-story', schemaVersion: 1, identityMode: 'preserve', exportedAt: '2026-10-25T00:00:00Z', selectedSessionId: 's', sessions: [{ header: { id: 's' }, events: [], inheritedEventCount: 0 }], pluginState: { database: {}, context: null, lastStep: {}, gm: {}, storyKit: {} }, resources: [], requirements: [] }
+  let calls = 0
+  const route = createStudioActions({ getService: () => ({ apiVersion: 1, state: async () => ({ capabilities: { savedStoryPreview: true } }), previewSavedStory: async () => { calls++; return { supported: true } } }), authorize: async () => {} })
+  const invalid = [null, {}, { databases: [], profiles: [], authority: true }, { databases: [{ databaseId: '', version: 1, uses: [] }], profiles: [] }, { databases: [{ databaseId: 'world', version: 0, uses: [] }], profiles: [] }, { databases: [{ databaseId: 'world', version: 1, uses: ['initial-style'] }], profiles: [] }, { databases: [], profiles: [{ profileId: 'p', version: '1', uses: ['current-binding'] }] }, { databases: [], profiles: [{ profileId: 'p', version: 1, uses: 'asset-default' }] }, { databases: [], profiles: [{ profileId: 'p', version: 1, uses: ['asset-default'], current: true }] }]
+  for (const dependencySummary of invalid) assert.equal((await route.request(post({ action: 'previewSavedStory', snapshot: { ...snapshot, dependencySummary } }))).status, 400)
+  assert.equal(calls, 0)
+})
