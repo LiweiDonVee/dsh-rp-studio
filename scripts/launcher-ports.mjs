@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import { get } from 'node:http'
 
 function portArgument(value, fallback, label) {
   const port = Number(value ?? fallback)
@@ -16,6 +17,26 @@ function canListen(port) {
   })
 }
 
+function isExistingStudio(port) {
+  return new Promise((resolve, reject) => {
+    // The launcher accepts every valid TCP port, including browser-fetch restricted ports.
+    const request = get(`http://127.0.0.1:${port}/api/v1/health`, { signal: AbortSignal.timeout(2_000) }, async response => {
+      try {
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          response.resume()
+          resolve(false)
+          return
+        }
+        response.setEncoding('utf8')
+        let body = ''
+        for await (const chunk of response) body += chunk
+        resolve(JSON.parse(body).protocolVersion === 1)
+      } catch (error) { reject(error) }
+    })
+    request.once('error', reject)
+  })
+}
+
 async function probe() {
   const port = portArgument(process.argv[2], 4317, 'Studio')
   const dshPort = portArgument(process.argv[3], 3080, 'DSH')
@@ -28,8 +49,7 @@ async function probe() {
   })
 
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/api/v1/health`, { signal: AbortSignal.timeout(2_000) })
-    if (response.ok && (await response.json()).protocolVersion === 1) return result(port, true)
+    if (await isExistingStudio(port)) return result(port, true)
   } catch {
     // The preferred port is either free or belongs to another local process.
   }

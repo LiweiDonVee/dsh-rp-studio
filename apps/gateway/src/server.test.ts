@@ -13,10 +13,10 @@ const execFileAsync = promisify(execFile)
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 const launcherPortProbe = join(projectRoot, 'scripts', 'launcher-ports.mjs')
 
-async function listen(server: Server): Promise<number> {
+async function listen(server: Server, port = 0): Promise<number> {
   await new Promise<void>((resolveListen, reject) => {
     server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => resolveListen())
+    server.listen(port, '127.0.0.1', () => resolveListen())
   })
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('test server has no TCP port')
@@ -127,12 +127,14 @@ describe('production static app', () => {
     }
   }, 15_000)
 
-  it('reuses an existing Studio without changing launcher upstream ports', async () => {
-    const existing = createServer((_request, response) => {
+  it.each([0, 6000])('reuses an existing Studio without changing launcher upstream ports (requested port %i)', async requestedPort => {
+    const healthRequests: string[] = []
+    const existing = createServer((request, response) => {
+      healthRequests.push(request.url ?? '')
       response.setHeader('content-type', 'application/json')
       response.end(JSON.stringify({ protocolVersion: 1 }))
     })
-    const port = await listen(existing)
+    const port = await listen(existing, requestedPort)
     try {
       const { stdout } = await execFileAsync(process.execPath, [launcherPortProbe, String(port), '3082', '3093'], { cwd: projectRoot, timeout: 10_000 })
       expect(JSON.parse(stdout)).toEqual({
@@ -141,6 +143,7 @@ describe('production static app', () => {
         promptPresetsUrl: 'http://127.0.0.1:3093/prompt-presets/api',
         existing: true,
       })
+      expect(healthRequests).toEqual(['/api/v1/health'])
     } finally {
       await close(existing)
     }
