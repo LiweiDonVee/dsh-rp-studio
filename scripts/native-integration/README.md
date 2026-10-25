@@ -24,7 +24,9 @@ node scripts/native-integration/run.mjs --manifest ./reviewed-inputs.json --mode
 node --test scripts/native-integration/*.test.mjs
 ```
 
-Use `--cli` or `DSH_BIN` for a nondefault official launcher. The actual `--version` must equal `0.2.1-rc.3`. `--run` must be a child of this Studio checkout's `.runtime`; an inspection refuses an already used home. No production profile or default user sessions are read or changed.
+Use `--cli` or `DSH_BIN` for a nondefault official launcher. The actual `--version` must equal `0.2.1-rc.3`. Before writing, the harness resolves the canonical checkout, physical `.runtime`, existing ancestors and target ownership; outward junction/reparse paths are rejected. Inspection creates its home exclusively: any existing `home-a` path is rejected, even without a root package manifest. `prepare` can still reuse verified immutable inputs. No production profile or default user sessions are read or changed.
+
+Windows launcher argv containing literal `%` is currently rejected with `CLI_PERCENT_ARGUMENT_UNSUPPORTED`, rather than letting CMD expand `%VAR%` and silently change a file path. Use a checkout/run/launcher path without `%`; this is an explicit compatibility limit, not a claim to support general CMD escaping. Cleanup attempts both the owned browser and host even if one close fails, and reports cleanup errors.
 
 ## Evidence and cache correctness
 

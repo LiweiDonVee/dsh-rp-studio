@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir, realpath } from 'node:fs/promises'
 import { resolve, join, isAbsolute } from 'node:path'
 import { promisify } from 'node:util'
 import { execFile } from 'node:child_process'
+import { assertRunDirectory, ownedRunPath } from './paths.mjs'
 
 const execute = promisify(execFile)
 const hash = bytes => createHash('sha256').update(bytes).digest('hex')
@@ -31,15 +32,17 @@ function packageFile(value) {
   if (!/^[a-zA-Z0-9_./-]+$/u.test(entry) || entry.startsWith('/') || entry.split('/').some(part => part === '..' || part === '.')) fail('INPUT_PACKAGE_ENTRY_INVALID')
   return entry
 }
-export async function stageInputs(input, runDirectory) {
+export async function stageInputs(input, runDirectory, workspace) {
   validateInputs(input)
-  const directory = resolve(runDirectory, 'inputs')
+  runDirectory = await assertRunDirectory(workspace, runDirectory)
+  await mkdir(runDirectory, { recursive: true })
+  const directory = await ownedRunPath(workspace, runDirectory, resolve(runDirectory, 'inputs'))
   await mkdir(directory, { recursive: true })
   const packages = []
   for (const item of input.packages) {
     const bytes = await readFile(item.path)
     if (hash(bytes) !== item.sha256) fail('INPUT_HASH_MISMATCH')
-    const archive = join(directory, `${item.name}-${item.version}-${item.sha256}.tgz`)
+    const archive = await ownedRunPath(workspace, runDirectory, join(directory, `${item.name}-${item.version}-${item.sha256}.tgz`))
     try { await writeFile(archive, bytes, { flag: 'wx' }) }
     catch (error) { if (error.code !== 'EEXIST') throw error }
     if (hash(await readFile(archive)) !== item.sha256) fail('IMMUTABLE_INPUT_CHANGED')
@@ -51,7 +54,7 @@ export async function stageInputs(input, runDirectory) {
     packages.push({ ...item, sourcePath: item.path, archive, files })
   }
   const staged = { schemaVersion: 1, hostVersion: input.hostVersion, stage: input.stage, packages }
-  await writeFile(resolve(runDirectory, 'staged-inputs.json'), JSON.stringify(staged, null, 2) + '\n')
+  await writeFile(await ownedRunPath(workspace, runDirectory, resolve(runDirectory, 'staged-inputs.json')), JSON.stringify(staged, null, 2) + '\n')
   return staged
 }
 

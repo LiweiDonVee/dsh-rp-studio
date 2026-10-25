@@ -183,3 +183,59 @@ Within GM's existing owner serialization queue: validate minimal envelope and ex
 StoryKit owns cross-component public Agent.runMaintenance coordination for export. GM.exportState must not nest another maintenance acquisition for the same Agent. It takes its own atomic store snapshot, checks that involved live Agents are not generating and checks relevant revision/source stability before/after; coordinator-held maintenance is not itself story generation. Changed state rejects EXPORT_CHANGED. Cold data is read through public owner readers without fabricating an Agent.
 
 exportState is an owner-local snapshot method, not a promise of cross-plugin atomicity when called alone. StoryKit's orchestrator supplies the aggregate maintenance scope and final consistency checks. No browser/model-controlled 'alreadyLocked' flag, new Database API, or source manifest is introduced.
+
+## Amendment T12 — saved pinned-asset dependency closure [FROZEN]
+
+SavedStory includes the typed dependency closure of every pinned Character/Persona/template asset included in that snapshot, not only currently bound runtime libraries. A pinned Character.databaseRefs/profileRef remains an operational asset default; do not silently reclassify it as inert audit text or leave it dangling while claiming complete asset restoration.
+
+For the example Character defaults WorldV1/StyleV1 but current launch sources=[] and profile=null: export and restore WorldV1/StyleV1 as library-only content dependencies, while the restored current story still has sources=[] and its actual GM builtin profile. Never auto-bind the unused defaults, apply their policies to current runtime selection, or make them a reason to require the current story to use that style. A library-only draft profile is preserved as draft; ready-profile validation applies to actual runtime binding, not every stored asset default.
+
+Extend owner export seams additively (defaults empty):
+
+```ts
+rpDatabase.exportState({sessionIds,additionalDatabaseRefs?:[{databaseId,version}],signal?})
+rpLastStep.exportState({sessionIds,additionalProfileRefs?:[{profileId,version}],signal?})
+```
+
+Their result shape remains {schemaVersion:1,revision,payload}. StoryKit derives these explicit refs from its own selected immutable assets/templates and requests them from each owner; it must not splice fabricated entries into another owner's private payload. Owners include exact requested versions plus their ordinary source/document dependencies, deduplicate, and preserve exact IDs for SavedStory restore. Existing callers without additional refs remain unchanged.
+
+This closure covers defined typed refs only, not arbitrary strings/URLs in original provenance, scripts, or the user's entire library. If an explicit referenced version is missing at source, fail export with EXPORT_REQUIREMENT_MISSING and identify the safe ref; do not substitute latest, drop it, or mutate the pinned asset. Preview/export summary distinguishes current runtime dependencies from retained unused asset defaults.
+
+Required test: snapshot the example with explicit empty sources/builtin override, restore into a clean home, verify the Character defaults resolve to their exact original library versions AND the current story still uses its explicit empty sources/builtin. No model/tool execution is caused by adding these passive dependencies.
+
+## Amendment T13 — exact document-owner dependency, no implicit V1 [FROZEN]
+
+Document.databaseId is an ID-only owner association; it does not declare an owner database version. When requested/captured database V2 already supplies that ID, it satisfies this association. Do NOT additionally export versions[0], V1 or latest merely because a document names the database ID. T12 requires closure of explicit typed dependencies, not every historical version of an entity.
+
+Export only explicitly required runtime/additional database versions and their actual source/document dependencies. Preserve unrelated destination versions; an unrequested V1 must not become a new conflict just because V2 is restored. Genuine conflicts in a requested version or its actual immutable source/document still reject. If a different case requires an owner version not specified/satisfied by supplied refs, report the missing explicit dependency rather than guessing first/latest.
+
+Required regression: additionalDatabaseRefs requests document library V2 only; exported database versions contain V2, not unrequested V1. With V2/source/document valid, an unrelated destination V1 difference does not block preflight solely through this invented dependency.
+
+## Amendment T14 — informational dependency-use summary [FROZEN]
+
+SavedStory may add optional dependencySummary with no content or authority:
+
+```ts
+DependencySummary = {
+ databases:[{databaseId:string,version:number,uses:('current-binding'|'asset-default')[]}],
+ profiles:[{profileId:string,version:number,uses:('current-binding'|'asset-default')[]}]
+}
+```
+
+Deduplicate by ID/version and merge uses. current-binding means the SELECTED story's actual captured binding, not every historical/ancestor dependency. asset-default comes from included pinned assets/templates. An asset-default without current-binding is not used by the selected current binding; do not claim it was never used historically. This is not an exhaustive restore manifest.
+
+StoryKit constructs the summary from its own typed pinned refs plus existing PUBLIC owner binding/effective responses captured consistently with export (Database effectiveV2.binding.sources and LastStep public state binding profileId/version). Never inspect or splice foreign exportState.payload to derive it. If a list cannot be obtained through a defined public response, omit the summary or show not recorded; do not infer it from private layout.
+
+exportSavedStory keeps {snapshot}; the optional summary travels inside snapshot. previewSavedStory may return the same validated-shape dependencySummary for display. UI uses fixed labels and marks it recorded informational use. Legacy snapshots without it show not recorded. No model calls or restore mutations are needed for this display.
+
+The summary cannot authorize, add/drop dependencies, satisfy requirements, change bindings, or replace each owner's real preflight/reference validation. Restores ignore it for execution. No new provider API or source manifest is introduced.
+
+## Amendment T15 — initial style dependency and unattributed creation window [FROZEN]
+
+SavedStory closure also retains each included GM StoryBinding.profile initial reference as library-only provenance. StoryKit collects it through the public GM binding DTO and passes it in LastStep.exportState.additionalProfileRefs. LastStep independently exports actual runtime bindings and profile/receipt dependencies. Do not fabricate its payload or replace current binding with initial style.
+
+Informational summary current-binding labels come only from actual LastStep binding. asset-default labels retain their T14 meaning. An initial launch ref matching neither need not enter that nonexhaustive two-role summary; it may be shown in launch information. Do not mislabel it current or introduce a second style authority.
+
+Public rc.3 persistence provides no durable restore-job ownership witness atomically coupled to create+flush. If the host created/flushed a destination Session but the StoryKit createdIds checkpoint was not durably recorded before crash, matching header/prefix is NOT sufficient to claim ownership on restart. Treat this as the narrow unsupported automatic-recovery window: preserve pending/conflict state with RESTORE_ID_CONFLICT and explain that creation attribution was not recorded. No append, overwrite, automatic deletion or completion claim for that unowned existing identity.
+
+Recorded owned progress may continue under existing checks. The unrecorded window requires explicit owner resolution or an empty destination; do not add header markers, source manifests, private log edits or an invented host witness. Document this limitation honestly rather than promising unconditional crash-resumability. This does not invalidate the proven normal exact-ID restore or justify unsafe takeover of all matching sessions.

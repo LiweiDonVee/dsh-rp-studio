@@ -1,24 +1,25 @@
-import { readFile, writeFile, mkdir, access } from 'node:fs/promises'
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { resolve, join, dirname } from 'node:path'
 import { parseArgs } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { chromium } from '@playwright/test'
 import { stageInputs } from './inputs.mjs'
 import { assessServices } from './requirements.mjs'
-import { assertRunDirectory, defaultCli, installInputs, startHost, copyFixtureFiles, redact } from './host.mjs'
+import { assertRunDirectory, defaultCli, installInputs, startHost, copyFixtureFiles, redact, closeOwnedResources } from './host.mjs'
+import { ownedRunPath } from './paths.mjs'
 
 const { values } = parseArgs({ options: { manifest: { type: 'string' }, mode: { type: 'string', default: 'prepare' }, run: { type: 'string' }, cli: { type: 'string' }, browser: { type: 'string' }, ui: { type: 'boolean', default: false }, help: { type: 'boolean' } } })
 if (values.help) { console.log('node scripts/native-integration/run.mjs --manifest <reviewed-inputs.json> --mode prepare|inspect [--ui] [--run <workspace/.runtime/run>] [--cli <dsh>] [--browser <chromium>]\nInspection never claims the full native acceptance chain.'); process.exit(0) }
 if (!values.manifest || !['prepare', 'inspect'].includes(values.mode)) throw new Error('Use an explicit reviewed manifest and prepare|inspect mode; full acceptance is not dispatched by this preparation runner.')
 const workspace = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const run = assertRunDirectory(workspace, resolve(values.run ?? join(workspace, '.runtime', `studio-native-${Date.now()}`)))
+const run = await assertRunDirectory(workspace, resolve(values.run ?? join(workspace, '.runtime', `studio-native-${Date.now()}`)))
 const manifestPath = resolve(values.manifest), input = JSON.parse(await readFile(manifestPath, 'utf8'))
 input.packages = input.packages?.map(item => ({ ...item, path: resolve(dirname(manifestPath), item.path) }))
 await mkdir(run, { recursive: true })
-const marker = join(run, 'owner.json')
+const marker = await ownedRunPath(workspace, run, join(run, 'owner.json'))
 try { const previous = JSON.parse(await readFile(marker, 'utf8')); if (previous.workspace !== workspace) throw new Error('RUN_DIRECTORY_NOT_OWNED') }
 catch (error) { if (error.code !== 'ENOENT') throw error; await writeFile(marker, JSON.stringify({ workspace, purpose: 'studio-native-isolated-test' }) + '\n', { flag: 'wx' }) }
-const staged = await stageInputs(input, run)
+const staged = await stageInputs(input, run, workspace)
 const log = message => console.log(`[native-preparation] ${message}`)
 const report = { schemaVersion: 1, scope: 'ST-B preparation; actual installed product interfaces, not full-chain acceptance', run, mode: values.mode, inputStage: staged.stage, fullChain: { status: 'not-run', reason: 'Final accepted inputs and separately dispatched full scenario execution are required.' }, packages: staged.packages.map(({ name, version, sha256, archive }) => ({ name, version, sha256, archive })) }
 let host, browser
@@ -26,13 +27,12 @@ try {
   if (values.mode === 'prepare') { report.prepared = true; log('immutable inputs prepared; no host or product workflow was started') }
   else {
     const home = join(run, 'home-a')
-    try { await access(join(home, 'package.json')); throw new Error('INSPECTION_HOME_ALREADY_USED_USE_NEW_RUN') } catch (error) { if (error.code !== 'ENOENT') throw error }
     const installed = await installInputs({ staged, home, workspace, cli: values.cli ?? defaultCli(), log })
     report.hostVersion = installed.version; report.installed = installed.installed
     const fixture = join(run, 'fixture')
     await copyFixtureFiles(workspace, fixture)
     const patch = join(run, 'fixture.patch.yml')
-    await writeFile(patch, `- id: session-title-llm\n  disabled: true\n- id: llm-deepseek\n  disabled: true\n- id: llm-deepseek-account\n  disabled: true\n- id: llm-pi-ai\n  disabled: true\n- id: agent-default-model\n  config:\n    provider: studio-native-local\n    model: gm\n- id: tools\n  config:\n    mode: native\n- insert:\n    - id: studio-native-probe\n      name: ${JSON.stringify(join(fixture, 'fixture.mjs').replaceAll('\\', '/'))}\n    - id: studio-native-legacy\n      name: '@deepseek-ai/dsh-agent-preset'\n      config:\n        id: studio-legacy-fixture\n        name: Studio legacy inspection fixture\n        description: Public synthetic no-model fixture\n        plugins:\n          - id: rp-runtime\n            name: '@deepseek-ai/dsh-persona'\n            config:\n              prefix: Public synthetic legacy inspection. No model prompt is sent.\n`)
+    await writeFile(await ownedRunPath(workspace, run, patch), `- id: session-title-llm\n  disabled: true\n- id: llm-deepseek\n  disabled: true\n- id: llm-deepseek-account\n  disabled: true\n- id: llm-pi-ai\n  disabled: true\n- id: agent-default-model\n  config:\n    provider: studio-native-local\n    model: gm\n- id: tools\n  config:\n    mode: native\n- insert:\n    - id: studio-native-probe\n      name: ${JSON.stringify(join(fixture, 'fixture.mjs').replaceAll('\\', '/'))}\n    - id: studio-native-legacy\n      name: '@deepseek-ai/dsh-agent-preset'\n      config:\n        id: studio-legacy-fixture\n        name: Studio legacy inspection fixture\n        description: Public synthetic no-model fixture\n        plugins:\n          - id: rp-runtime\n            name: '@deepseek-ai/dsh-persona'\n            config:\n              prefix: Public synthetic legacy inspection. No model prompt is sent.\n`)
     log('starting a new official host process from verified installed bytes')
     host = await startHost({ cli: values.cli ?? defaultCli(), home, patch, workspace, env: installed.env, logPath: join(run, 'host.log') })
     report.hostPid = host.child.pid
@@ -77,7 +77,7 @@ try {
         await page.setViewportSize({ width, height: 1000 })
         const metrics = await panel.evaluate(element => ({ width: element.clientWidth, height: element.clientHeight, overflow: element.scrollWidth > element.clientWidth }))
         if (metrics.overflow || metrics.width < 250 || metrics.height < 200) throw new Error(`NATIVE_LAYOUT_FAILED:${name}`)
-        report.legacyUi.push({ name, ...metrics }); await page.screenshot({ path: join(run, `legacy-${name}.png`) })
+        report.legacyUi.push({ name, ...metrics }); await page.screenshot({ path: await ownedRunPath(workspace, run, join(run, `legacy-${name}.png`)) })
       }
     }
     report.models = (await request('/api/studio-native-probe', { action: 'models' })).result
@@ -88,5 +88,9 @@ try {
     log(`inspection complete; interfacesReady=${report.assessment.interfacesReady}; deferred=${report.assessment.deferred.length}; fullChain=not-run`)
   }
 } catch (error) { report.error = redact(error.message); process.exitCode = 1; console.error(report.error) }
-finally { await browser?.close(); await host?.close(); await writeFile(join(run, 'inspection.json'), JSON.stringify(report, null, 2) + '\n') }
+finally {
+  const cleanupErrors = await closeOwnedResources(browser, host)
+  if (cleanupErrors.length) { report.cleanupErrors = cleanupErrors; report.error ??= 'OWNED_RESOURCE_CLEANUP_FAILED'; process.exitCode = 1 }
+  await writeFile(await ownedRunPath(workspace, run, join(run, 'inspection.json')), JSON.stringify(report, null, 2) + '\n')
+}
 console.log(JSON.stringify({ run, mode: values.mode, prepared: report.prepared, inspectionCompleted: report.inspectionCompleted, deferred: report.assessment?.deferred.length, fullChain: report.fullChain.status, error: report.error }))

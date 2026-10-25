@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve, join, basename, sep } from 'node:path'
 import { promisify } from 'node:util'
@@ -28,13 +28,18 @@ async function archive(root, text) {
   await execute('tar', ['-czf', path, '-C', directory, 'package'])
   return { name: 'dsh-rp-studio', version: '1.3.0', path, sha256: sha(await readFile(path)) }
 }
+async function stage(input, root, name = 'run') {
+  const workspace = join(root, 'workspace')
+  await mkdir(workspace, { recursive: true })
+  return stageInputs(input, join(workspace, '.runtime', name), workspace)
+}
 
 test('same-version repacks get different immutable input URLs and old bytes stay unchanged', () => fixture(async root => {
   const first = await archive(root, 'export const revision = 1')
-  const a = await stageInputs({ hostVersion: '0.2.1-rc.3', stage: 'checkpoint', packages: [first] }, join(root, 'run'))
+  const a = await stage({ hostVersion: '0.2.1-rc.3', stage: 'checkpoint', packages: [first] }, root)
   const original = await readFile(a.packages[0].archive)
   const second = await archive(root, 'export const revision = 2')
-  const b = await stageInputs({ hostVersion: '0.2.1-rc.3', stage: 'checkpoint', packages: [second] }, join(root, 'run'))
+  const b = await stage({ hostVersion: '0.2.1-rc.3', stage: 'checkpoint', packages: [second] }, root)
   assert.notEqual(a.packages[0].archive, b.packages[0].archive)
   assert.ok(b.packages[0].archive.includes(second.sha256))
   assert.deepEqual(await readFile(a.packages[0].archive), original)
@@ -43,13 +48,13 @@ test('same-version repacks get different immutable input URLs and old bytes stay
 
 test('input bytes and archive manifest must match the approved metadata', () => fixture(async root => {
   const input = await archive(root, 'export const revision = 1')
-  await assert.rejects(stageInputs({ hostVersion: '0.2.1-rc.3', stage: 'checkpoint', packages: [{ ...input, sha256: '0'.repeat(64) }] }, join(root, 'bad-hash')), /INPUT_HASH_MISMATCH/u)
-  await assert.rejects(stageInputs({ hostVersion: '0.2.1-rc.3', stage: 'checkpoint', packages: [{ ...input, version: '1.2.0' }] }, join(root, 'bad-manifest')), /INPUT_MANIFEST_MISMATCH/u)
+  await assert.rejects(stage({ hostVersion: '0.2.1-rc.3', stage: 'checkpoint', packages: [{ ...input, sha256: '0'.repeat(64) }] }, root, 'bad-hash'), /INPUT_HASH_MISMATCH/u)
+  await assert.rejects(stage({ hostVersion: '0.2.1-rc.3', stage: 'checkpoint', packages: [{ ...input, version: '1.2.0' }] }, root, 'bad-manifest'), /INPUT_MANIFEST_MISMATCH/u)
 }))
 
 test('the installed entry bytes are checked even when name and version match', () => fixture(async root => {
   const input = await archive(root, 'export const revision = 1')
-  const prepared = await stageInputs({ hostVersion: '0.2.1-rc.3', stage: 'checkpoint', packages: [input] }, join(root, 'run'))
+  const prepared = await stage({ hostVersion: '0.2.1-rc.3', stage: 'checkpoint', packages: [input] }, root)
   const home = join(root, 'home'), installed = join(home, 'profiles', 'web', 'node_modules', 'dsh-rp-studio')
   await mkdir(installed, { recursive: true })
   await execute('tar', ['-xzf', input.path, '-C', installed, '--strip-components=1'])
@@ -58,6 +63,16 @@ test('the installed entry bytes are checked even when name and version match', (
   assert.equal(verified.files['dist/host.js'], prepared.packages[0].files['dist/host.js'])
   await writeFile(join(installed, 'dist', 'host.js'), 'stale cached host')
   await assert.rejects(verifyInstalled(home, prepared.packages[0]), /INSTALLED_BYTES_MISMATCH/u)
+}))
+
+test('a reused run cannot redirect immutable input writes through an outside junction', () => fixture(async root => {
+  const input = await archive(root, 'export const revision = 1'), workspace = join(root, 'workspace'), run = join(workspace, '.runtime', 'run'), outside = join(root, 'outside')
+  await mkdir(run, { recursive: true }); await mkdir(outside)
+  await symlink(outside, join(run, 'inputs'), 'junction')
+  let error
+  try { await stageInputs({ hostVersion: '0.2.1-rc.3', stage: 'checkpoint', packages: [input] }, run, workspace) } catch (cause) { error = cause }
+  assert.deepEqual(await readdir(outside), [])
+  assert.match(error?.message ?? '', /RUN_.*(?:OUTSIDE|REPARSE)/u)
 }))
 
 test('a partial checkpoint cannot be labeled as a complete final input set', () => {

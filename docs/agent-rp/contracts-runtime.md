@@ -250,3 +250,11 @@ After safe no-prompt resume supplies the actual registered Agent, activateRestor
 ## Amendment R21 — GM provider lock/restore clarification [FROZEN]
 
 Follow transfer T11: GM.restoreState writes once only after available proof under its existing queue, retaining restoring status for R20 activation checks. Do not persist an extra pre-proof pending journal/revision bump. GM.exportState does not recursively acquire the coordinator-held Agent maintenance lock.
+
+## Amendment R22 — launch profile is provenance, LastStep owns current style [FROZEN]
+
+StoryBinding.profile remains the immutable launch-time profile reference; keep its serialized field for compatibility and label it initial/launch style. It is not the current presentation binding after a legitimate LastStep owner rebind or prefix-based child inheritance. Do not synchronize another mutable current-style store into GM.
+
+GM restore validates that the initial referenced version exists as retained library provenance, but must NOT require current LastStep binding to equal that initial ref. Actual current/prefix-effective profile and overlay belong to LastStep. During activation require the real LastStep binding to exist, be ready/usable for this story and satisfy its own ownership/native checks. Missing current binding is a restoration error, not permission to silently bind the initial profile.
+
+Owner UI/current style queries use LastStep's public binding response. GM launch profile is displayed only as launch information. Ordinary presentation already uses LastStep's actual bound profile; preserve that authority during restore and fork.
