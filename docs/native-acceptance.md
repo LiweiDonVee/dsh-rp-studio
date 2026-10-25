@@ -1,4 +1,14 @@
-# Native RP Studio 1.1 acceptance
+# Native RP Studio acceptance
+
+## RP Studio 1.3 / DSH 0.2.1-rc.3
+
+The current native verification uses seven immutable product archives, exclusive source/destination homes, and actual installed entry hashes. Only the bounded local model and embedding/rerank providers are test substitutes. The nine-scenario driver covers generic launch, factual tools, Context material, restricted retry, drafts/adoption, branch/cold continuation, document indexing, content packs and exact-ID saved stories.
+
+Final seven-package acceptance is **not yet complete**. The rev3 run reached pending saved-story continuation after real process restart and was correctly blocked by a Context preflight conflict. Its failed result remains preserved. Proof assertions are being tightened against the independent source review; a later approved archive set must execute the complete chain before a passing result is recorded. Unit tests and interface inspection are separate evidence.
+
+Reproduction and artifact formats are documented in the [native harness guide](../scripts/native-integration/README.md). This record will identify the final package hashes, command, per-process counters, UI screenshots and cleanup outcome after that run.
+
+## RP Studio 1.1 historical acceptance
 
 This records the 1.1 release. For RP Studio 1.2 and the independent RP last-step plugin, see [current acceptance](rp-last-step-acceptance.md).
 
