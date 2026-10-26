@@ -227,4 +227,106 @@ describe('fact approval and separate regeneration controls (contract fixtures)',
     expect(await screen.findByRole('button', { name: '继续已批准事实的写作' })).toBeTruthy()
     expect(h.calls.some(call => ['resumeFactPresentation', 'regenerateProse'].includes(call.action))).toBe(false)
   })
+  it('rejects an older action snapshot after a newer owner snapshot without remounting human drafts', async () => {
+    const h = fixture()
+    const oldDetail = structuredClone(await h.api.session())
+    oldDetail.messages = [{ id: 'superseded-prose', seq: 3, role: 'gm', text: 'OLD_PROSE_NOW_SUPERSEDED', status: 'complete' }]
+    const nextHistory = { schemaVersion: 1, records: [], folded: [{ groupId: 'round', activeFactReceiptId: 'new-fact', selectedPresentationId: null, pendingFacts: true, versions: [{ presentationId: 'superseded-prose', resultSeq: 3 }] }], projectionKey: 'new-fact-without-prose' }
+    const nextDetail = { ...oldDetail, state: { ...oldDetail.state, extensions: { gm: { ...oldDetail.state.extensions.gm, facts: { schemaVersion: 1, items: [{ id: 'letter', text: 'NEW_CURRENT_FACT' }] } }, reader: { status: 'available', pendingFacts: true, projectionKey: nextHistory.projectionKey, folded: nextHistory.folded } } }, messages: [] }
+    let resolveOld
+    h.api.session.mockReset().mockResolvedValueOnce(oldDetail).mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve })).mockResolvedValue(nextDetail)
+    mount(h)
+    await screen.findByText('候选事实 · 尚未写入')
+    fireEvent.click(screen.getByRole('button', { name: '自定义事实' }))
+    const editor = screen.getByRole('textbox', { name: '场景地点' })
+    const playerInput = screen.getByRole('textbox', { name: '写下你的行动' })
+    fireEvent.change(editor, { target: { value: '快照前的人类草稿' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: '本故事事实审批' }))
+    await waitFor(() => expect(resolveOld).toBeTypeOf('function'))
+    fireEvent.change(editor, { target: { value: '等待响应时继续编辑的地点' } })
+    fireEvent.change(playerInput, { target: { value: '仍未发送的玩家行动' } })
+    h.setReview({ ...h.review, latestRound: { ...h.review.latestRound, version: 5, activeReceiptId: 'new-fact', pendingCandidateId: null } })
+    h.setHistory(nextHistory)
+    h.refresh()
+    await screen.findAllByText('NEW_CURRENT_FACT')
+    await act(async () => resolveOld(oldDetail))
+    expect(screen.getAllByText('NEW_CURRENT_FACT').length).toBeGreaterThan(0)
+    expect(screen.getByRole('textbox', { name: '场景地点' })).toBe(editor)
+    expect(editor).toHaveValue('等待响应时继续编辑的地点')
+    expect(screen.getByRole('textbox', { name: '写下你的行动' })).toBe(playerInput)
+    expect(playerInput).toHaveValue('仍未发送的玩家行动')
+    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    expect(await screen.findByText('当前事实已生效，等待写作。')).toBeTruthy()
+    expect(screen.queryByText('OLD_PROSE_NOW_SUPERSEDED')).toBeNull()
+  })
+  it.each([
+    [1, 'beta', { gamma: 'KEEP_ALPHA_VALUE', beta: 'KEEP_BETA_VALUE' }],
+    [2, 'alpha', { alpha: 'KEEP_ALPHA_VALUE', gamma: 'KEEP_BETA_VALUE' }],
+  ])('preserves both public variable rows when row %s temporarily has a duplicate name and rejects submission', async (index, duplicate, expected) => {
+    const h = fixture()
+    const edited = structuredClone(candidate); edited.payload.packet.variables = { alpha: 'KEEP_ALPHA_VALUE', beta: 'KEEP_BETA_VALUE' }
+    h.setReview({ ...h.review, latestRound: { ...round, candidates: [edited] } })
+    h.handlers.decideFacts = async input => ({ operationId: input.operationId, status: 'approved', roundId: 'round', factReceiptId: 'fact-2', presentation: { status: 'not-requested' } })
+    mount(h); await screen.findByText('候选事实 · 尚未写入')
+    fireEvent.click(screen.getByRole('button', { name: '自定义事实' }))
+    fireEvent.change(screen.getByRole('textbox', { name: `变量 ${index} 名称` }), { target: { value: duplicate } })
+    expect(screen.getAllByRole('textbox', { name: /^变量 \d+ 名称$/u })).toHaveLength(2)
+    expect(screen.getByRole('textbox', { name: '变量 1 内容' })).toHaveValue('KEEP_ALPHA_VALUE')
+    expect(screen.getByRole('textbox', { name: '变量 2 内容' })).toHaveValue('KEEP_BETA_VALUE')
+    expect(screen.getByRole('alert')).toHaveTextContent('公开变量名称重复')
+    fireEvent.click(screen.getByRole('button', { name: '采用自定义并继续' }))
+    expect(h.calls.some(call => call.action === 'decideFacts')).toBe(false)
+    fireEvent.change(screen.getByRole('textbox', { name: `变量 ${index} 名称` }), { target: { value: 'gamma' } })
+    expect(screen.queryByRole('alert')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '采用自定义并继续' }))
+    await waitFor(() => expect(h.calls.find(call => call.action === 'decideFacts')?.input.custom.packet.variables).toEqual(expected))
+  })
+  it('adds a public variable after removing a middle row without colliding or dropping existing values', async () => {
+    const h = fixture()
+    const edited = structuredClone(candidate); edited.payload.packet.variables = { variable1: 'One', variable2: 'Two', variable3: 'Three' }
+    h.setReview({ ...h.review, latestRound: { ...round, candidates: [edited] } })
+    h.handlers.decideFacts = async input => ({ operationId: input.operationId, status: 'approved', roundId: 'round', factReceiptId: 'fact-2', presentation: { status: 'not-requested' } })
+    mount(h); await screen.findByText('候选事实 · 尚未写入')
+    fireEvent.click(screen.getByRole('button', { name: '自定义事实' }))
+    fireEvent.click(screen.getByRole('button', { name: '移除变量 2' }))
+    fireEvent.click(screen.getByRole('button', { name: '添加公开变量' }))
+    expect(screen.getAllByRole('textbox', { name: /^变量 \d+ 名称$/u }).map(input => input.value)).toEqual(['variable1', 'variable3', 'variable2'])
+    expect(screen.getByRole('textbox', { name: '变量 1 内容' })).toHaveValue('One')
+    expect(screen.getByRole('textbox', { name: '变量 2 内容' })).toHaveValue('Three')
+    fireEvent.change(screen.getByRole('textbox', { name: '变量 3 内容' }), { target: { value: 'New' } })
+    fireEvent.click(screen.getByRole('button', { name: '采用自定义并继续' }))
+    await waitFor(() => expect(h.calls.find(call => call.action === 'decideFacts')?.input.custom.packet.variables).toEqual({ variable1: 'One', variable3: 'Three', variable2: 'New' }))
+  })
+  it('settles a cold complete generation awaiting its captured approval-off decision using the original operation only', async () => {
+    const h = fixture({ enabled: true })
+    const generated = { ...candidate, origin: 'regenerated', operationId: 'original-generation-op', generationConfirmed: true }
+    const job = { id: 'complete-job', operationId: 'original-generation-op', roundId: 'round', status: 'complete', candidateId: generated.id }
+    h.setReview({ ...h.review, latestRound: { ...round, candidates: [generated], activeReceiptId: 'old-fact', approvalRequired: false }, generation: job })
+    h.handlers.resumeFactGeneration = async () => {
+      const nextRound = { ...h.review.latestRound, version: 5, pendingCandidateId: null, activeReceiptId: 'new-fact' }
+      h.setReview({ ...h.review, latestRound: nextRound, pendingDecision: { operationId: 'mapped-decision', roundId: 'round', candidateId: generated.id, action: 'approve', requestHash: 'f'.repeat(64), status: 'applied', factReceiptId: 'new-fact', source: { sessionId: 'story', commandId: 'decision-command', runSeq: 12, requestHash: 'f'.repeat(64) } } })
+      return { job, round: nextRound, decision: { operationId: 'mapped-decision', status: 'approved', roundId: 'round', factReceiptId: 'new-fact', presentation: { status: 'not-requested' } } }
+    }
+    mount(h)
+    fireEvent.click(await screen.findByRole('button', { name: '继续候选结算（不重新生成）' }))
+    await screen.findByRole('button', { name: '继续已批准事实的写作' })
+    expect(h.calls.find(call => call.action === 'resumeFactGeneration').input).toEqual({ sessionId: 'story', operationId: 'original-generation-op' })
+    expect(h.calls.some(call => ['decideFacts', 'regenerateFacts', 'regenerateProse', 'resumeFactPresentation'].includes(call.action))).toBe(false)
+    await waitFor(() => expect(screen.queryByRole('button', { name: '继续候选结算（不重新生成）' })).toBeNull())
+  })
+  it.each(['settled', 'superseded-candidate', 'different-round', 'not-latest', 'captured-approval-on', 'reserved-decision'])('does not offer complete generation settlement for %s public state', async kind => {
+    const h = fixture()
+    const generated = { ...candidate, origin: 'regenerated', operationId: 'old-generation', generationConfirmed: true }
+    let nextRound = { ...round, candidates: [generated], activeReceiptId: 'old-fact', approvalRequired: false }
+    if (kind === 'settled') nextRound = { ...nextRound, pendingCandidateId: null, activeReceiptId: 'new-fact' }
+    if (kind === 'superseded-candidate') nextRound = { ...nextRound, pendingCandidateId: 'new-candidate', candidates: [generated, { ...generated, id: 'new-candidate', operationId: 'new-generation' }] }
+    if (kind === 'different-round') nextRound = { ...nextRound, roundId: 'new-round' }
+    if (kind === 'not-latest') nextRound = { ...nextRound, latest: false, canRegenerate: false }
+    if (kind === 'captured-approval-on') nextRound = { ...nextRound, approvalRequired: true }
+    const pendingDecision = kind === 'reserved-decision' ? { operationId: 'existing-decision', roundId: 'round', candidateId: generated.id, action: 'approve', requestHash: 'c'.repeat(64), status: 'recorded', source: { sessionId: 'story', commandId: 'decision-command', runSeq: 12, requestHash: 'c'.repeat(64) } } : null
+    h.setReview({ ...h.review, latestRound: nextRound, pendingDecision, generation: { id: 'old-job', operationId: 'old-generation', roundId: 'round', status: 'complete', candidateId: generated.id } })
+    mount(h)
+    await screen.findByText('事实生成：complete')
+    expect(screen.queryByRole('button', { name: '继续候选结算（不重新生成）' })).toBeNull()
+  })
 })

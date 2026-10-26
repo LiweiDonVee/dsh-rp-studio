@@ -14,12 +14,11 @@ function World({ value, compare }) {
   </>
 }
 
-function CustomFields({ value, onChange }) {
+function CustomFields({ value, onChange, variables, onVariables }) {
   const scene = (key, next) => onChange({ ...value, scene: { ...value.scene, [key]: next } })
   const packet = (key, next) => onChange({ ...value, packet: { ...value.packet, [key]: next } })
   const items = next => onChange({ ...value, facts: { schemaVersion: 1, items: next } })
-  const variables = Object.entries(value.packet.variables ?? {})
-  const variable = (index, key, next) => packet('variables', Object.fromEntries(variables.map((entry, at) => at === index ? key === 'name' ? [next, entry[1]] : [entry[0], next] : entry)))
+  const variable = (index, key, next) => onVariables(variables.map((entry, at) => at === index ? key === 'name' ? [next, entry[1]] : [entry[0], next] : entry))
   return <fieldset className="rp-custom-facts"><legend>自定义场景、事实与公开方向</legend>
     <label>场景标题<input aria-label="场景标题" value={value.scene.title} onChange={event => scene('title', event.target.value)} /></label>
     <label>场景地点<input aria-label="场景地点" value={value.scene.location} onChange={event => scene('location', event.target.value)} /></label>
@@ -35,8 +34,8 @@ function CustomFields({ value, onChange }) {
     <label>玩家行动<textarea aria-label="玩家行动" value={value.packet.playerAction} onChange={event => packet('playerAction', event.target.value)} rows={2} /></label>
     <label>场景方向<textarea aria-label="场景方向" value={value.packet.sceneInstruction ?? ''} onChange={event => packet('sceneInstruction', event.target.value)} rows={2} /></label>
     {Object.entries(packetLists).map(([key, label]) => <label key={key}>{label}（每行一项）<textarea aria-label={label} value={(value.packet[key] ?? []).join('\n')} onChange={event => packet(key, lines(event.target.value))} rows={2} /></label>)}
-    {variables.map(([name, text], index) => <div className="rp-variable" key={index}><label>变量 {index + 1} 名称<input aria-label={`变量 ${index + 1} 名称`} value={name} onChange={event => variable(index, 'name', event.target.value)} /></label><label>变量 {index + 1} 内容<input aria-label={`变量 ${index + 1} 内容`} value={text} onChange={event => variable(index, 'text', event.target.value)} /></label><button type="button" onClick={() => packet('variables', Object.fromEntries(variables.filter((_entry, at) => at !== index)))}>移除变量 {index + 1}</button></div>)}
-    <button type="button" onClick={() => { const next = `variable${variables.length + 1}`; if (!Object.hasOwn(value.packet.variables ?? {}, next)) packet('variables', { ...value.packet.variables, [next]: '' }) }}>添加公开变量</button>
+    {variables.map(([name, text], index) => <div className="rp-variable" key={index}><label>变量 {index + 1} 名称<input aria-label={`变量 ${index + 1} 名称`} value={name} onChange={event => variable(index, 'name', event.target.value)} /></label><label>变量 {index + 1} 内容<input aria-label={`变量 ${index + 1} 内容`} value={text} onChange={event => variable(index, 'text', event.target.value)} /></label><button type="button" onClick={() => onVariables(variables.filter((_entry, at) => at !== index))}>移除变量 {index + 1}</button></div>)}
+    <button type="button" onClick={() => { let number = 1; const used = new Set(variables.map(([name]) => name)); while (used.has(`variable${number}`)) number++; onVariables([...variables, [`variable${number}`, '']]) }}>添加公开变量</button>
     <p className="rp-note">这些字段将按你的输入校验并采用。已经执行的工具结果保持固定。</p>
   </fieldset>
 }
@@ -46,6 +45,7 @@ export function FactTools({ sessionId, client, running, currentWorld, ownerRevis
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [cancelling, setCancelling] = useState(false)
   const [tick, setTick] = useState(0), [error, setError] = useState(''), [notice, setNotice] = useState('')
   const [selected, setSelected] = useState(null), [custom, setCustom] = useState(null), [editing, setEditing] = useState(false)
+  const [variableRows, setVariableRows] = useState([])
   const [factInstruction, setFactInstruction] = useState(''), [writerInstruction, setWriterInstruction] = useState('')
   const [retained, setRetained] = useState(null), [decisionResult, setDecisionResult] = useState(null)
   const live = useRef(true), operation = useRef(null), cancelOperation = useRef(null), selection = useRef(null), editVersion = useRef(0), loadVersion = useRef(0)
@@ -73,7 +73,7 @@ export function FactTools({ sessionId, client, running, currentWorld, ownerRevis
         const round = next.review?.latestRound
         if (!selection.current && round) {
           const candidate = round.candidates.find(item => item.id === round.pendingCandidateId && item.generationConfirmed !== false)
-          if (candidate) { selection.current = candidate; setSelected(copy(candidate)); setCustom(copy(candidate.payload)) }
+          if (candidate) { selection.current = candidate; setSelected(copy(candidate)); setCustom(copy(candidate.payload)); setVariableRows(Object.entries(candidate.payload.packet.variables ?? {})) }
         }
       } catch (cause) { if (current()) setError(errorText(cause)) }
       finally { if (current()) setLoading(false) }
@@ -87,7 +87,8 @@ export function FactTools({ sessionId, client, running, currentWorld, ownerRevis
   useEffect(() => { onPause?.(blocked); return () => onPause?.(false) }, [blocked, onPause])
   if (typeof client.action !== 'function') return null
   const refresh = () => { setTick(value => value + 1); onChanged?.() }
-  function choose(candidate) { selection.current = candidate; editVersion.current++; setSelected(copy(candidate)); setCustom(copy(candidate.payload)); setEditing(false); setNotice('') }
+  function choose(candidate) { selection.current = candidate; editVersion.current++; setSelected(copy(candidate)); setCustom(copy(candidate.payload)); setVariableRows(Object.entries(candidate.payload.packet.variables ?? {})); setEditing(false); setNotice('') }
+  const variableError = new Set(variableRows.map(([name]) => name)).size !== variableRows.length ? '公开变量名称重复。请为每一行使用不同名称；各行内容已保留。' : ''
   const matches = selected && round && selected.roundId === round.roundId && selected.id === round.pendingCandidateId
   const reserved = !!intent && ['recorded', 'interrupted'].includes(intent.status)
   const unavailable = busy || loading || running || generation?.status === 'running'
@@ -115,7 +116,12 @@ export function FactTools({ sessionId, client, running, currentWorld, ownerRevis
     finally { if (operation.current === controller) operation.current = null; if (live.current) setBusy(false) }
   }
   const operationId = () => globalThis.crypto.randomUUID()
-  const decide = action => void run('decideFacts', { sessionId, roundId: round.roundId, candidateId: selected.id, action, ...(action === 'custom' ? { custom: copy(custom) } : {}), operationId: operationId(), expectedRoundVersion: round.version, expectedDatabaseRevision: review.databaseRevision }, 'decision')
+  const decide = action => {
+    if (action === 'custom' && variableError) return
+    const payload = action === 'custom' ? copy(custom) : null
+    if (payload && (payload.packet.variables !== undefined || variableRows.length > 0)) payload.packet.variables = Object.fromEntries(variableRows)
+    void run('decideFacts', { sessionId, roundId: round.roundId, candidateId: selected.id, action, ...(payload ? { custom: payload } : {}), operationId: operationId(), expectedRoundVersion: round.version, expectedDatabaseRevision: review.databaseRevision }, 'decision')
+  }
   const regenerate = () => void run('regenerateFacts', { sessionId, roundId: round.roundId, operationId: operationId(), expectedRoundVersion: round.version, ...(factInstruction ? { instruction: factInstruction } : {}) }, 'generation')
   const localApplied = decisionResult?.status === 'approved' && decisionResult.presentation.status !== 'complete' && decisionResult.roundId === round?.roundId && decisionResult.factReceiptId === round.activeReceiptId ? decisionResult : null
   const applied = intent?.status === 'applied' ? intent : localApplied
@@ -126,7 +132,12 @@ export function FactTools({ sessionId, client, running, currentWorld, ownerRevis
     catch (cause) { if (live.current && !controller.signal.aborted) setError(errorText(cause)) }
     finally { cancelOperation.current = null; if (live.current) setCancelling(false) }
   }
-  const generationResume = generation && ['interrupted', 'failed', 'cancelled'].includes(generation.status) && generation.candidateId ? generation.operationId : retained?.kind === 'generation' ? retained.input.operationId : null
+  const staged = generation && round?.candidates.find(candidate => candidate.id === generation.candidateId && candidate.roundId === generation.roundId && (candidate.operationId === undefined || candidate.operationId === generation.operationId))
+  const currentJob = staged && round.latest && round.roundId === generation.roundId && !intent
+  const unsettledJob = currentJob && (round.pendingCandidateId === staged.id || staged.generationConfirmed === false)
+  const completeNeedsDecision = generation?.status === 'complete' && unsettledJob && staged.generationConfirmed !== false && round.pendingCandidateId === staged.id && round.approvalRequired === false && round.canRegenerate
+  const recoverableJob = unsettledJob && ['interrupted', 'failed', 'cancelled'].includes(generation.status) || completeNeedsDecision
+  const generationResume = recoverableJob ? generation.operationId : !generation && retained?.kind === 'generation' ? retained.input.operationId : null
   return <section className="rp-owner-tools rp-fact-tools" aria-label="事实审批与重新生成">
     <h3>事实审批与重新生成</h3>
     {loading && <p role="status">正在读取事实审批状态…</p>}
@@ -146,7 +157,7 @@ export function FactTools({ sessionId, client, running, currentWorld, ownerRevis
       {!matches && round?.pendingCandidateId && <p role="status">候选已变化；当前选择和草稿已保留。请明确选择最新待审候选后再决定。</p>}
       <div className="rp-compare"><section><h3>当前已生效事实</h3><World value={currentWorld} /></section><section><h3>所选候选事实</h3><World value={selected.payload} compare={currentWorld} /><p>{selected.payload.summary}</p>{selected.model && <p>候选实际模型：{selected.model.provider} / {selected.model.model}</p>}</section></div>
       <div className="rp-action-row"><button type="button" disabled={!canDecide} onClick={() => decide('approve')}>通过并继续</button><button type="button" disabled={!matches || reserved} onClick={() => setEditing(value => !value)}>自定义事实</button><button type="button" disabled={!canDecide} onClick={() => decide('cancel')}>取消本次候选</button></div>
-      {editing && custom && <><CustomFields value={custom} onChange={value => { editVersion.current++; setCustom(value) }} /><button type="button" disabled={!canDecide} onClick={() => decide('custom')}>采用自定义并继续</button></>}
+      {editing && custom && <><CustomFields value={custom} onChange={value => { editVersion.current++; setCustom(value) }} variables={variableRows} onVariables={value => { editVersion.current++; setVariableRows(value) }} />{variableError && <p role="alert">{variableError}</p>}<button type="button" disabled={!canDecide || !!variableError} onClick={() => decide('custom')}>采用自定义并继续</button></>}
     </>}
     {reserved && <><button type="button" disabled={unavailable || !flags.resumeFactDecision} onClick={() => void run('resumeFactDecision', { sessionId, operationId: intent.operationId }, 'decision')}>继续审批结算</button><p>继续审批结算只处理原决定；写作需要另行点击。</p></>}
     {applied && <button type="button" disabled={unavailable || !flags.resumeFactPresentation} onClick={() => void run('resumeFactPresentation', { sessionId, roundId: applied.roundId, operationId: applied.operationId }, 'presentation')}>继续已批准事实的写作</button>}

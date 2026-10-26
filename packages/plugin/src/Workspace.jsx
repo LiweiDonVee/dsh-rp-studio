@@ -75,6 +75,7 @@ export function Workspace({ sessionId, visible = true, openSession, client = api
   const [reviewBlocked, setReviewBlocked] = useState(false)
   const alive = useRef(true)
   const scope = useRef(sessionId)
+  const refreshSnapshot = useRef(null)
   scope.current = sessionId
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   useEffect(() => { setBusy(false); setDraft(''); setNotice('') }, [sessionId, client])
@@ -82,6 +83,8 @@ export function Workspace({ sessionId, visible = true, openSession, client = api
     if (!visible) return
     const controller = new AbortController()
     let unsubscribe = () => {}
+    let snapshotController = null
+    let snapshotVersion = 0
     setLoading(true); setDetail(null); setStreaming({}); setError(''); setConnected(false)
     const load = async () => {
       try {
@@ -99,33 +102,40 @@ export function Workspace({ sessionId, visible = true, openSession, client = api
           if (event.type === 'message.completed') { setDetail(previous => previous && ({ ...previous, messages: [...previous.messages.filter(item => item.id !== event.message.id), event.message] })); setStreaming({}) }
           if (event.type === 'state.updated') setDetail(previous => previous && ({ ...previous, state: event.state }))
           if (event.type === 'session.status') setDetail(previous => previous && ({ ...previous, session: { ...previous.session, running: event.running } }))
-          if (event.type === 'session.rebased') { setOwnerRevision(value => value + 1); void resync() }
           if (event.type === 'error') { setError(event.error.message); if (event.error.upstreamCode?.startsWith('rp-last-step-')) setStreaming({}) }
         }
         const resync = async () => {
-          if (syncing) return
+          const version = ++snapshotVersion
+          snapshotController?.abort()
+          const request = new AbortController()
+          snapshotController = request
+          const current = () => !controller.signal.aborted && !request.signal.aborted && version === snapshotVersion
           syncing = true
-          try { const next = await client.session(sessionId, controller.signal); if (!controller.signal.aborted) { setDetail(next); setStreaming({}) } }
-          catch (cause) { if (!controller.signal.aborted) setError(cause.message) }
+          try { const next = await client.session(sessionId, request.signal); if (current()) { setDetail(next); setStreaming({}) } }
+          catch (cause) { if (current()) setError(cause.message) }
           finally {
-            syncing = false
-            const pending = buffered
-            buffered = []
-            if (!controller.signal.aborted) for (const event of pending) applyEvent(event)
+            if (current()) {
+              syncing = false
+              const pending = buffered
+              buffered = []
+              for (const event of pending) applyEvent(event)
+            }
           }
         }
+        refreshSnapshot.current = () => { setOwnerRevision(value => value + 1); void resync() }
         unsubscribe = client.subscribe(sessionId, event => {
           if (controller.signal.aborted) return
           // Subscribe first, then reconcile even on the first connection. Replay changes
           // received while loading so the snapshot cannot overwrite a completed turn.
           if (event.type === 'connected') { setConnected(true); void resync(); return }
+          if (event.type === 'session.rebased') { refreshSnapshot.current?.(); return }
           if (syncing) buffered.push(event)
           else applyEvent(event)
         }, () => { if (!controller.signal.aborted) setConnected(false) })
       } catch (cause) { if (!controller.signal.aborted) { setError(cause.message); setLoading(false) } }
     }
     void load()
-    return () => { controller.abort(); unsubscribe() }
+    return () => { controller.abort(); snapshotController?.abort(); refreshSnapshot.current = null; unsubscribe() }
   }, [sessionId, visible, client, revision])
 
   async function act(operation) {
@@ -155,7 +165,7 @@ export function Workspace({ sessionId, visible = true, openSession, client = api
       <section className="rp-section"><h3>旧角色预设开局</h3>{cards.length ? <div className="rp-card-grid">{cards.map(card => <button type="button" key={card.id} className="rp-card" disabled={busy} onClick={() => void act(async current => { const created = await client.create(card.id); if (current()) await open(created.session.id) })}><span className="rp-eyebrow">{card.world}</span><strong>{card.title}</strong><p>{card.description || card.protagonist}</p><span className="rp-card-action">开启故事 →</span></button>)}</div> : <p className="rp-note">旧角色预设列表为空。可安装兼容 RP 预设后刷新；通用故事也可从 Story Kit 开始，无需为每个角色编写预设。</p>}</section>
       {sessions.length > 0 && <section className="rp-section"><h3>继续旅程</h3>{sessions.map(item => <button type="button" key={item.id} className="rp-archive" disabled={busy} onClick={() => void act(() => open(item.id))}><span>{item.title}</span><small>{item.id === sessionId ? '当前故事' : item.running ? '正在演绎' : '继续 →'}</small></button>)}</section>}
     </div> : <>
-      <div className="rp-content"><div className="rp-review-scroll">{visible && <FactTools key={sessionId} sessionId={sessionId} client={client} running={detail.session.running} currentWorld={gm} ownerRevision={`${ownerRevision}:${narrativeRevision}`} onPause={setReviewBlocked} onChanged={async () => { try { const next = await client.session(sessionId); if (alive.current && scope.current === sessionId) { setDetail(next); setOwnerRevision(value => value + 1) } } catch (cause) { if (alive.current && scope.current === sessionId) setError(cause.message) } }} />}</div>{tab === 'story' ? <Story detail={detail} streaming={streaming}>{visible && <StoryTools key={sessionId} sessionId={sessionId} client={client} running={detail.session.running} narrativeRevision={`${ownerRevision}:${narrativeRevision}`} readerStatus={detail.state.extensions?.reader} factReviewPending={reviewBlocked} openOwner={openOwner} hasOwnerTab={hasOwnerTab} onOpenSession={open} onAdopt={narrative => { setNotice(`已采用正式正文版本 ${narrative.ref.resultSeq}。宿主 blocked 维护状态仍保留；采用操作已确认。`); setRevision(value => value + 1) }} />}</Story> : <div className="rp-scroll"><StateView detail={detail} /></div>}</div>
+      <div className="rp-content"><div className="rp-review-scroll">{visible && <FactTools key={sessionId} sessionId={sessionId} client={client} running={detail.session.running} currentWorld={gm} ownerRevision={`${ownerRevision}:${narrativeRevision}`} onPause={setReviewBlocked} onChanged={() => refreshSnapshot.current?.()} />}</div>{tab === 'story' ? <Story detail={detail} streaming={streaming}>{visible && <StoryTools key={sessionId} sessionId={sessionId} client={client} running={detail.session.running} narrativeRevision={`${ownerRevision}:${narrativeRevision}`} readerStatus={detail.state.extensions?.reader} factReviewPending={reviewBlocked} openOwner={openOwner} hasOwnerTab={hasOwnerTab} onOpenSession={open} onAdopt={narrative => { setNotice(`已采用正式正文版本 ${narrative.ref.resultSeq}。宿主 blocked 维护状态仍保留；采用操作已确认。`); setRevision(value => value + 1) }} />}</Story> : <div className="rp-scroll"><StateView detail={detail} /></div>}</div>
       <footer className="rp-footer"><div className="rp-tools"><span className={`rp-connection ${connected ? 'is-online' : ''}`}>{detail.session.running ? '正在演绎…' : connected ? '故事已同步' : '正在重连…'}</span><div><button type="button" disabled={busy || detail.session.running || (gm ? !gm.capabilities.rollback : !detail.state.checkpoints.canRollback)} onClick={() => void act(async current => { const result = await client.rollback(sessionId); if (!current()) return; if (result.sessionId) await open(result.sessionId); else setRevision(value => value + 1) })}>回退</button><button type="button" disabled={busy || detail.session.running || gm && !gm.capabilities.fork} onClick={() => void act(async current => { const branch = await client.fork(sessionId); if (current()) await open(branch.session.id) })}>分支</button><button type="button" disabled={busy || !!gm || detail.session.running && !detail.state.driver?.armed} aria-pressed={detail.state.driver?.armed === true} onClick={() => void act(async current => { await client.autoplay(sessionId, detail.state.driver?.armed === true); if (current()) setRevision(value => value + 1) })}>{detail.state.driver?.armed ? '停止续写' : '自动续写'}</button></div></div>
       {gm && <p className="rp-control-note">回退与分支会打开子故事，保留原故事。通用 GM 暂不支持自动续写。</p>}
       {reviewBlocked && <p className="rp-control-note">事实操作尚未结束，行动文字会保留到审批完成。</p>}
