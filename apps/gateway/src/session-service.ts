@@ -9,7 +9,7 @@ import { GatewayError } from './errors.js'
 import { EventHub } from './event-hub.js'
 import type { ProductSourceEvent, SessionApi } from './app.js'
 import { PromptPresetsClientError, type PromptPresetsClient, type PromptProfileView } from './prompt-presets-client.js'
-import { nativeTranscript, storyCard, storyPublicState, type NativeGM, type NativeLastStep, type StorySummary } from './native-stories.js'
+import { nativeReading, reviewPending, storyCard, storyPublicState, type NativeDatabase, type NativeGM, type NativeLastStep, type StorySummary } from './native-stories.js'
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -50,6 +50,7 @@ export interface SessionServiceOptions {
   isPresentationSession?: (sessionId: string) => boolean
   getGM?: () => NativeGM | undefined
   getLastStep?: () => NativeLastStep | undefined
+  getDatabase?: () => NativeDatabase | undefined
 }
 
 export class SessionService implements SessionApi {
@@ -138,7 +139,7 @@ export class SessionService implements SessionApi {
     const owner = this.genericStories.has(sessionId) ? this.gm() : undefined
     if (owner && !await owner.binding({ sessionId })) throw new GatewayError({ code: 'not-found', message: '找不到该通用故事绑定。' }, 404)
     const nativeState = owner ? await owner.storyState({ sessionId }) : undefined
-    const state = owner && nativeState ? storyPublicState({ ...nativeState, capabilities: {
+    let state = owner && nativeState ? storyPublicState({ ...nativeState, capabilities: {
       rollback: nativeState.capabilities?.rollback === true && typeof owner.rollbackStory === 'function',
       fork: nativeState.capabilities?.fork === true && typeof owner.forkStory === 'function', autoplay: false,
     } }) : projectPublicState(this.projections.get(sessionId) ?? item.projections?.values['rp-state'])
@@ -148,10 +149,24 @@ export class SessionService implements SessionApi {
       const item = record(record(record(event.data.meta)?.rpLastStep)?.record)
       return typeof item?.id === 'string' ? [item.id] : []
     })
+    const fallback = toTranscript(foldSurface(events), events, !!owner)
+    let messages: SessionDetail['messages']
+    try {
+      const reading = await nativeReading(this.options.getLastStep?.(), sessionId, fallback, canonicalIds, {
+        database: this.options.getDatabase?.(),
+        hasVersionedRecords: events.some(event => record(record(record(event.data.meta)?.rpLastStep)?.record)?.narrativeVersion !== undefined),
+      })
+      messages = reading.messages
+      if (reading.history) state = { ...state, extensions: { ...state.extensions, reader: { status: 'available', projectionKey: reading.history.projectionKey, pendingFacts: reading.history.folded.some(group => group.pendingFacts), folded: reading.history.folded } } }
+    } catch (error) {
+      if (!(error instanceof GatewayError) || error.apiError.upstreamCode !== 'EFFECTIVE_HISTORY_UNAVAILABLE') throw error
+      messages = fallback.filter(item => item.role === 'player')
+      state = { ...state, extensions: { ...state.extensions, reader: { status: 'unavailable', code: 'EFFECTIVE_HISTORY_UNAVAILABLE', message: error.message } } }
+    }
     return {
       session: { ...this.toSummary(item, card), state },
       card,
-      messages: await nativeTranscript(this.options.getLastStep?.(), sessionId, toTranscript(foldSurface(events), events, !!owner), canonicalIds),
+      messages,
       state,
       prompt,
     }
@@ -177,6 +192,15 @@ export class SessionService implements SessionApi {
   async prompt(sessionId: string, text: string): Promise<Record<string, unknown>> {
     await this.assertOwned(sessionId)
     try {
+      const owner = this.genericStories.has(sessionId) ? this.gm() : undefined
+      if (owner?.capabilities?.factReview === 1 && typeof owner.reviewState === 'function') {
+        try {
+          if (reviewPending(await owner.reviewState({ sessionId }))) throw new GatewayError({ code: 'bad-request', upstreamCode: 'FACT_REVIEW_PENDING', message: '当前事实正在等待审批或处理。请先完成该操作；行动文字已保留。' }, 409)
+        } catch (error) {
+          // New GM explicitly retains its approval-off path with an older DB.
+          if (record(error)?.code !== 'FACT_REVIEW_UNAVAILABLE') throw error
+        }
+      }
       await this.options.dsh.prompt(sessionId, text)
       return { accepted: true }
     } catch (error) {
@@ -674,7 +698,8 @@ export class SessionService implements SessionApi {
     if (cached?.some(item => item.seq === event.seq)) return
     if (cached) cached.push(event)
     this.rememberPresentationMode(frame.sessionId, event)
-    const nativeBody = event.type === 'tool/result' && record(event.data.meta)?.rpLastStep && typeof this.options.getLastStep?.()?.narratives === 'function'
+    const lastStep = this.options.getLastStep?.()
+    const nativeBody = event.type === 'tool/result' && record(event.data.meta)?.rpLastStep && (typeof lastStep?.narratives === 'function' || typeof lastStep?.storyHistory === 'function')
     if (nativeBody || this.genericStories.has(frame.sessionId) && event.type === 'tool/result') {
       this.hub.publish({ type: 'session.rebased', sessionId: frame.sessionId })
       return

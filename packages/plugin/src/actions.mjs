@@ -3,12 +3,42 @@ import { validDependencySummary } from './dependency-summary.mjs'
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const id = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 256
 const revision = value => Number.isSafeInteger(value) && value >= 0
+const keys = (value, allowed) => object(value) && Object.keys(value).every(key => allowed.includes(key))
+const strings = value => Array.isArray(value) && value.every(item => typeof item === 'string')
+const nonempty = value => typeof value === 'string' && value.trim().length > 0
+const operationToken = value => typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,256}$/u.test(value)
+function validCandidate(value) {
+  if (!keys(value, ['scene', 'facts', 'summary', 'packet']) || !nonempty(value.summary)) return false
+  const { scene, facts, packet } = value
+  return keys(scene, ['schemaVersion', 'title', 'location', 'time', 'presentActorIds']) && scene.schemaVersion === 1 && nonempty(scene.title) && nonempty(scene.location)
+    && (scene.time === undefined || typeof scene.time === 'string') && strings(scene.presentActorIds) && scene.presentActorIds.every(nonempty) && new Set(scene.presentActorIds).size === scene.presentActorIds.length
+    && keys(facts, ['schemaVersion', 'items']) && facts.schemaVersion === 1 && Array.isArray(facts.items) && facts.items.every(item => keys(item, ['id', 'text']) && nonempty(item.id) && nonempty(item.text)) && new Set(facts.items.map(item => item.id)).size === facts.items.length
+    && keys(packet, ['playerAction', 'sceneInstruction', 'resolvedChanges', 'visibleConsequences', 'openHooks', 'proseConstraints', 'publicFactRefs', 'variables']) && nonempty(packet.playerAction)
+    && (packet.sceneInstruction === undefined || typeof packet.sceneInstruction === 'string') && ['resolvedChanges', 'visibleConsequences', 'openHooks', 'proseConstraints', 'publicFactRefs'].every(key => packet[key] === undefined || strings(packet[key]))
+    && (packet.variables === undefined || object(packet.variables) && Object.values(packet.variables).every(item => typeof item === 'string'))
+}
+function validDecision(value) {
+  return keys(value, ['sessionId', 'roundId', 'candidateId', 'action', 'custom', 'operationId', 'expectedRoundVersion', 'expectedDatabaseRevision'])
+    && ['sessionId', 'roundId', 'candidateId'].every(key => id(value[key])) && operationToken(value.operationId)
+    && ['approve', 'custom', 'cancel'].includes(value.action) && revision(value.expectedRoundVersion) && revision(value.expectedDatabaseRevision)
+    && (value.action === 'custom' ? validCandidate(value.custom) : value.custom === undefined)
+}
 const refFields = ['sessionId', 'presentationId', 'assistantMessageId', 'callSeq', 'baseResultSeq', 'resultSeq']
 const validRef = value => object(value) && Object.keys(value).length === refFields.length && refFields.every(key => key.endsWith('Seq') ? revision(value[key]) : id(value[key])) && value.callSeq < value.baseResultSeq && value.baseResultSeq <= value.resultSeq
-const spec = (service, method, fields, run, apiVersion) => ({ service, method, fields, run, apiVersion })
+const spec = (service, method, fields, run, apiVersion, capability) => ({ service, method, fields, run, apiVersion, capability })
 // Each closure names its owner method. Browser JSON never supplies a target.
 const actions = {
   gmState: spec('rpGM', 'storyState', ['sessionId'], (owner, args) => owner.storyState(args), 1),
+  reviewState: spec('rpGM', 'reviewState', ['sessionId'], (owner, args) => owner.reviewState(args), 1, 'factReview'),
+  configureReview: spec('rpGM', 'configureReview', ['sessionId', 'enabled', 'expectedRevision'], (owner, args) => owner.configureReview(args), 1, 'factReview'),
+  decideFacts: spec('rpGM', 'decideFacts', ['decision'], (owner, args) => owner.decideFacts({ ...args.decision, signal: args.signal }), 1, 'factReview'),
+  resumeFactDecision: spec('rpGM', 'resumeFactDecision', ['sessionId', 'operationId'], (owner, args) => owner.resumeFactDecision(args), 1, 'factReview'),
+  regenerateFacts: spec('rpGM', 'regenerateFacts', ['sessionId', 'roundId', 'operationId', 'expectedRoundVersion', 'instruction'], (owner, args) => owner.regenerateFacts(args), 1, 'factRegeneration'),
+  cancelFactGeneration: spec('rpGM', 'cancelFactGeneration', ['sessionId', 'jobId'], (owner, args) => owner.cancelFactGeneration(args), 1, 'factRegeneration'),
+  resumeFactGeneration: spec('rpGM', 'resumeFactGeneration', ['sessionId', 'operationId'], (owner, args) => owner.resumeFactGeneration(args), 1, 'factRegeneration'),
+  resumeFactPresentation: spec('rpGM', 'resumeFactPresentation', ['sessionId', 'roundId', 'operationId'], (owner, args) => owner.resumeFactPresentation(args), 1, 'factReview'),
+  regenerateProse: spec('rpLastStep', 'regenerateProse', ['sessionId', 'basedOn', 'operationId', 'instruction'], (owner, args) => owner.regenerateProse(args), 1, 'narrativeRevisions'),
+  storyHistory: spec('rpLastStep', 'storyHistory', ['sessionId'], (owner, args) => owner.storyHistory(args), 1, 'narrativeRevisions'),
   narratives: spec('rpLastStep', 'narratives', ['sessionId'], (owner, args) => owner.narratives(args)),
   presentationSummaries: spec('rpLastStep', 'presentationSummaries', ['sessionId'], (owner, args) => owner.presentationSummaries(args)),
   drafts: spec('rpLastStep', 'drafts', ['sessionId'], (owner, args) => owner.drafts(args)),
@@ -43,7 +73,10 @@ function valid(input) {
   if (input.action === 'capabilities') return Object.keys(input).every(key => ['action', 'sessionId'].includes(key)) && (input.sessionId === undefined || id(input.sessionId))
   const entry = Object.hasOwn(actions, input.action) && actions[input.action]
   if (!entry || Object.keys(input).some(key => key !== 'action' && !entry.fields.includes(key))) return false
+  if (input.action === 'decideFacts') return validDecision(input.decision)
   if (entry.fields.includes('sessionId') && !id(input.sessionId)) return false
+  for (const key of ['operationId', 'roundId', 'jobId']) if (entry.fields.includes(key) && !id(input[key])) return false
+  if (entry.fields.includes('operationId') && !operationToken(input.operationId)) return false
   if (entry.fields.includes('presentationId') && !id(input.presentationId)) return false
   if (entry.fields.includes('draftId') && !id(input.draftId)) return false
   if (entry.fields.includes('restoreId') && !id(input.restoreId)) return false
@@ -53,12 +86,16 @@ function valid(input) {
   if (input.action === 'adoptDraft' && (!validRef(input.expectedNarrative) || input.expectedNarrative.sessionId !== input.sessionId || !revision(input.expectedDraftVersion) || input.expectedDraftVersion < 1)) return false
   if (input.action === 'editDraft' && (!revision(input.expectedDraftVersion) || input.expectedDraftVersion < 1 || typeof input.text !== 'string' || !input.text.trim())) return false
   if (input.action === 'setAuthorNote' && (!revision(input.expectedRevision) || typeof input.text !== 'string')) return false
+  if (input.action === 'configureReview' && (typeof input.enabled !== 'boolean' || !revision(input.expectedRevision))) return false
+  if (input.action === 'regenerateFacts' && !revision(input.expectedRoundVersion)) return false
+  if (['regenerateFacts', 'regenerateProse'].includes(input.action) && input.instruction !== undefined && typeof input.instruction !== 'string') return false
+  if (input.action === 'regenerateProse' && (!validRef(input.basedOn) || input.basedOn.sessionId !== input.sessionId)) return false
   return input.action !== 'exportReading' || ['markdown', 'text'].includes(input.format)
 }
 
 export function createStudioActions({ getService, authorize }) {
   const lifetime = new AbortController()
-  const supported = (entry, owner) => !!owner && (entry.apiVersion === undefined || owner.apiVersion === entry.apiVersion) && typeof owner[entry.method] === 'function' && owner.capabilities?.[entry.method] !== false
+  const supported = (entry, owner) => !!owner && (entry.apiVersion === undefined || owner.apiVersion === entry.apiVersion) && typeof owner[entry.method] === 'function' && owner.capabilities?.[entry.method] !== false && (!entry.capability || owner.capabilities?.[entry.capability] === 1)
   async function capabilities(sessionId, signal) {
     const services = Object.fromEntries(Object.entries(owners).map(([key, name]) => {
       const owner = getService(name)
@@ -98,7 +135,8 @@ export function createStudioActions({ getService, authorize }) {
       const signal = AbortSignal.any([request.signal, lifetime.signal])
       try {
         signal.throwIfAborted()
-        if (input.sessionId) await authorize(input.sessionId, signal)
+        const sessionId = input.action === 'decideFacts' ? input.decision.sessionId : input.sessionId
+        if (sessionId) await authorize(sessionId, signal)
         if (input.action === 'capabilities') return Response.json(await capabilities(input.sessionId, signal), { headers: { 'cache-control': 'no-store' } })
         const entry = actions[input.action], owner = getService(entry.service)
         if (!supported(entry, owner)) return failure(503, 'CAPABILITY_UNAVAILABLE', '所需 RP 服务或方法不可用，请检查插件版本。')

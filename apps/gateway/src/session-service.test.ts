@@ -139,6 +139,37 @@ describe('generic native story services', () => {
     expect((await h.service.session('session-1')).messages.map(message => [message.role, message.text])).toEqual([['player', '靠岸。'], ['gm', '有效采用稿。']])
   })
 
+  it('keeps facts and controls available while explicitly withholding unavailable effective prose', async () => {
+    const h = await fixture(async () => [assistantEvent(1, 'OLD_BODY')], undefined, undefined, undefined, undefined, {
+      getGM: () => gm(),
+      getLastStep: () => ({ narratives: async () => ({ records: [] }) }),
+      getDatabase: () => ({ capabilities: { factReview: 1 }, factReviewProjection: async () => ({ schemaVersion: 1, latestRoundId: 'round', groups: [{ roundId: 'round', activeReceiptId: 'new-fact', pendingCandidateId: null, factRevision: 2 }] }) }),
+    })
+    services.push(h.service)
+    const current = await h.service.session('session-1')
+    expect(current.messages).toEqual([])
+    expect(current.state.extensions).toMatchObject({ gm: { facts }, reader: { status: 'unavailable', code: 'EFFECTIVE_HISTORY_UNAVAILABLE' } })
+  })
+
+  it('blocks ordinary Studio send on actual owner pending state before submitting a host prompt', async () => {
+    const prompt = vi.fn(async () => ({ accepted: true }))
+    const h = await fixture(async () => [], prompt, undefined, undefined, undefined, {
+      getGM: () => ({ ...gm(), capabilities: { factReview: 1 }, reviewState: async () => ({ latestRound: { pendingCandidateId: 'candidate' }, pendingDecision: null, generation: null }) }),
+    })
+    services.push(h.service)
+    await expect(h.service.prompt('session-1', '继续')).rejects.toMatchObject({ apiError: { upstreamCode: 'FACT_REVIEW_PENDING' } })
+    expect(prompt).not.toHaveBeenCalled()
+  })
+  it('keeps the legacy approval-off prompt path when GM explicitly reports an older Database', async () => {
+    const prompt = vi.fn(async () => ({ accepted: true }))
+    const h = await fixture(async () => [], prompt, undefined, undefined, undefined, {
+      getGM: () => ({ ...gm(), capabilities: { factReview: 1 }, reviewState: async () => { throw Object.assign(new Error('Install Database with fact review support'), { code: 'FACT_REVIEW_UNAVAILABLE' }) } }),
+    })
+    services.push(h.service)
+    expect(await h.service.prompt('session-1', '继续')).toEqual({ accepted: true })
+    expect(prompt).toHaveBeenCalledWith('session-1', '继续')
+  })
+
   it('delegates generic branch controls and refuses legacy autoplay commands', async () => {
     const owner = gm(), prompt = vi.fn(async () => ({ accepted: true }))
     let listed = ['session-1']

@@ -1,6 +1,6 @@
 # DSH RP Studio
 
-RP Studio 1.3.0 是面向 DSH 0.2.1-rc.3 的原生角色扮演工作区。在会话顶部点击 RP 打开右侧页签，支持宿主的拖动宽度、全屏和关闭操作。
+RP Studio 1.4.0（开发候选） 是面向 DSH 0.2.1-rc.3 的原生角色扮演工作区。在会话顶部点击 RP 打开右侧页签，支持宿主的拖动宽度、全屏和关闭操作。
 
 - 角色与剧情：通用 GM 的当前场景与事实，以及旧预设的关系、任务、物品和记忆。
 - 沉浸阅读：玩家行动、正式正文、候选手改与采用、冻结材料、失败重试和作者注入口。
@@ -8,14 +8,18 @@ RP Studio 1.3.0 是面向 DSH 0.2.1-rc.3 的原生角色扮演工作区。在会
 
 可与独立的 [RP 最后一步 0.3](https://github.com/LiweiDonVee/dsh-rp-last-step) 联用：读取已确认的有效正文并接收原生正文流，候选采用不会重复事实结算。失败重试可能包含一次主模型受限调度及一次正文请求，沿用原冻结材料。旧故事及普通预设保留原有阅读方式。[Loop Studio 0.1](https://github.com/LiweiDonVee/dsh-loop-studio) 配置各阶段的实际模型。
 
-通用开局使用 [RP GM 0.1](https://github.com/LiweiDonVee/dsh-rp-gm)、[Story Kit 0.1](https://github.com/LiweiDonVee/dsh-rp-story-kit)、[Database 0.2](https://github.com/LiweiDonVee/dsh-rp-database) 和最后一步；[Context 0.2](https://github.com/LiweiDonVee/dsh-rp-context) 管理选材、历史表示及下一轮作者注。资产、多库策略、作者注编辑与内容包组合使用各自原生面板，能力缺失只禁用对应操作。[1.3 使用与边界](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/agent-rp-integration.md) · [验证记录](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/native-acceptance.md)。
+通用开局使用 [RP GM 0.1](https://github.com/LiweiDonVee/dsh-rp-gm)、[Story Kit 0.1](https://github.com/LiweiDonVee/dsh-rp-story-kit)、[Database 0.2](https://github.com/LiweiDonVee/dsh-rp-database) 和最后一步；[Context 0.2](https://github.com/LiweiDonVee/dsh-rp-context) 管理选材、历史表示及下一轮作者注。资产、多库策略、作者注编辑与内容包组合使用各自原生面板，能力缺失只禁用对应操作。[使用与边界](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/agent-rp-integration.md) · [验证记录](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/native-acceptance.md)。
 
 ## 安装
 
-从 [1.3.0 发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases/tag/v1.3.0) 下载 `dsh-rp-studio-1.3.0.tgz` 后，先完全退出 dsh，再在终端执行：
+1.4 新增每故事事实审批（默认关闭）、事实重生和只重新写作。新入口要求 GM 0.2、Database 0.3、RP 最后一步 0.4 的实际能力；Context 0.3 和 Story Kit 0.2 分别消费有效材料与阅读导出。旧版插件和预设路径继续按原能力提供。当前构建仍在组件/契约审查阶段，七包原生验收尚未完成。
+
+等待审批时先检查候选与当前事实，再选择通过、自定义、重试事实或取消。自定义精确采用场景、事实和公开方向，不调用模型改写。事实生效后的写作失败可独立继续；旧正文在审计中展开，不会代替新事实的待写作状态。只重新写作沿用原冻结材料，成功后追加新正文；阅读稿仍交给 Story Kit 导出。
+
+从 [发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases) 下载 `dsh-rp-studio-1.4.0.tgz` 后，先完全退出 dsh，再在终端执行：
 
 ```powershell
-dsh plugin --profile desktop add ./dsh-rp-studio-1.3.0.tgz
+dsh plugin --profile desktop add ./dsh-rp-studio-1.4.0.tgz
 ```
 
 Web 模式请把 `desktop` 改为 `web`。重新打开 dsh，进入任一会话，点击会话顶部的 RP 按钮。新故事沿用 dsh 自己的模型、权限审批和登录状态。
@@ -26,7 +30,7 @@ Windows 找不到 `dsh` 命令时，可使用默认官方启动器：
 
 ```powershell
 $dshCli = Join-Path $env:LOCALAPPDATA 'Programs/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd'
-& $dshCli plugin --profile desktop add ./dsh-rp-studio-1.3.0.tgz
+& $dshCli plugin --profile desktop add ./dsh-rp-studio-1.4.0.tgz
 ```
 
 发布页附 SHA256SUMS。完整使用、角色预设和三插件配置见 [原生指南](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/native-usage.md)。

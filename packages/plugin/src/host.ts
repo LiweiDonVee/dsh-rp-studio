@@ -18,6 +18,7 @@ export function apply(ctx) {
       isPresentationSession: sessionId => ctx.get('rpLastStep')?.isEnabled(sessionId) === true,
       getGM: () => ctx.get('rpGM'),
       getLastStep: () => ctx.get('rpLastStep'),
+      getDatabase: () => ctx.get('rpDatabase'),
     })
     const loaded = await loadDefaultProductStore({})
     const product = new ProductService({ sessions: service, ...loaded, pairingEnabled: false })
