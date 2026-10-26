@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { verifyAction, verifyColdBeforeAction } from './action-proof.mjs'
+import * as proof from './action-proof.mjs'
+const { verifyAction, verifyColdBeforeAction, verifyRetryGuard } = proof
 
 function sample() {
   const before = { gm: { facts: { items: [{ id: 'letter-holder', text: 'held by Lin' }] }, lastFactReceipt: { id: 'old' } }, narratives: [], snapshot: { events: [{ seq: 1, type: 'turn/end' }] }, models: { counts: { gm: 0, writer: 0, 'writer-alt': 0, assembly: 0 } } }
@@ -36,4 +37,32 @@ test('accepted action proof checks real result content and dispatch/render incre
   assert.equal(verifyAction(before, after, { text: 'continue' }).receiptId, 'new')
   after.snapshot.events.at(-1).data.message.content[0].text = 'Old metadata text'
   assert.throws(() => verifyAction(before, after, { text: 'continue' }))
+})
+
+const oldGuard = 'Only rp_present with the selected failed presentation rewriteOf is permitted for this retry request'
+const currentGuard = 'Only the exact selected rp_present operation is permitted for this owner request'
+function retryRejection(text = currentGuard) {
+  return { attempt: { seq: 8, type: 'tool/call', data: { name: 'rp_present', callId: 'wrong-rewrite-call', arguments: '{"rewriteOf":"not-the-selected-failed-presentation"}' } }, rejection: { seq: 9, type: 'tool/result', sourceEventSeqs: [8], data: { message: { source: { kind: 'tool', callId: 'wrong-rewrite-call' }, toolCallId: 'wrong-rewrite-call', isError: true, content: [{ type: 'text', text: `Error: ${text}` }] } } } }
+}
+for (const text of [oldGuard, currentGuard]) test(`invalid retry proof accepts the exact reviewed executor guard wording: ${text}`, () => {
+  assert.equal(typeof verifyRetryGuard, 'function')
+  const { attempt, rejection } = retryRejection(text)
+  const proof = verifyRetryGuard(attempt, rejection, 'selected-failed-id')
+  assert.equal(proof.callSeq, 8)
+  assert.equal(proof.resultSeq, 9)
+})
+test('invalid retry proof cannot use another tool, the selected ID, a foreign result or an unrelated failure', () => {
+  assert.equal(typeof verifyRetryGuard, 'function')
+  for (const mutate of [
+    value => { value.attempt.data.name = 'rp_gm_state' },
+    value => { value.attempt.data.arguments = '{"rewriteOf":"selected-failed-id"}' },
+    value => { value.rejection.data.message.source.callId = 'another-call' },
+    value => { value.rejection.sourceEventSeqs = [] },
+    value => { value.rejection.data.message.isError = false },
+    value => { value.rejection.data.message.content[0].text = 'READ_ONLY: entry is locked' },
+    value => { value.rejection.data.message.content[0].text = 'Only another operation is permitted' },
+  ]) {
+    const value = retryRejection(); mutate(value)
+    assert.throws(() => verifyRetryGuard(value.attempt, value.rejection, 'selected-failed-id'))
+  }
 })

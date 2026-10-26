@@ -5,6 +5,18 @@ const successfulFacts = events => {
   const calls = new Map(events.filter(event => event.type === 'tool/call').map(event => [event.data.callId, event.data.name]))
   return events.filter(event => event.type === 'tool/result' && event.data.message?.isError !== true && calls.get(event.data.message?.toolCallId) === 'rp_commit_turn').length
 }
+export function verifyRetryGuard(attempt, rejection, selectedId) {
+  assert.equal(attempt?.type, 'tool/call'); assert.equal(attempt.data.name, 'rp_present')
+  const args = JSON.parse(attempt.data.arguments)
+  assert.deepEqual(args, { rewriteOf: 'not-the-selected-failed-presentation' }); assert.notEqual(args.rewriteOf, selectedId)
+  assert.equal(rejection?.type, 'tool/result'); assert.ok(rejection.seq > attempt.seq)
+  const message = rejection.data.message
+  assert.equal(message.toolCallId, attempt.data.callId); assert.equal(message.source?.kind, 'tool'); assert.equal(message.source.callId, attempt.data.callId)
+  assert.deepEqual(rejection.sourceEventSeqs, [attempt.seq]); assert.equal(message.isError, true)
+  const text = textOf(message)
+  assert.match(text, /^(?:Error: )?(?:Only rp_present with the selected failed presentation rewriteOf is permitted for this retry request|Only the exact selected rp_present operation is permitted for this owner request)$/u)
+  return { callSeq: attempt.seq, resultSeq: rejection.seq, selectedId, wrongRewriteOf: args.rewriteOf, guardMessage: text }
+}
 export function verifyColdBeforeAction(before, baseline) {
   assert.equal(before.models.total, 0)
   for (const stage of ['gm', 'prepare', 'summarize', 'assembly', 'writer', 'writer-alt']) assert.equal(before.models.counts[stage], 0, `historical ${stage} work ran before click`)

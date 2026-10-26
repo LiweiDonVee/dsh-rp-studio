@@ -10,14 +10,13 @@ import { SCENARIOS, assessServices } from './requirements.mjs'
 import { openNativeContext, waitForNative } from './contexts.mjs'
 import { ownedRunPath } from './paths.mjs'
 import { redact } from './host.mjs'
-import { verifyAction, verifyColdBeforeAction } from './action-proof.mjs'
+import { verifyAction, verifyColdBeforeAction, verifyRetryGuard } from './action-proof.mjs'
 import { verifyDocumentCache } from './document-proof.mjs'
 import { verifyUnchanged } from './witness-proof.mjs'
 
 const hash = text => createHash('sha256').update(text).digest('hex')
 const frozen = value => Object.fromEntries(['packet', 'contextPreparation', 'compiled', 'storySnapshot', 'factReceiptRef'].map(key => [key, value[key] ?? null]))
 const header = value => ({ ...value, delegationDepth: value.delegationDepth === undefined ? 0 : value.delegationDepth })
-const body = message => (message?.content ?? []).filter(block => block.type === 'text').map(block => block.text).join('\n')
 const successfulFacts = events => {
   const calls = new Map(events.filter(event => event.type === 'tool/call').map(event => [event.data.callId, event.data.name]))
   return events.filter(event => event.type === 'tool/result' && event.data.message?.isError !== true && calls.get(event.data.message?.toolCallId) === 'rp_commit_turn')
@@ -217,7 +216,7 @@ export async function executeFullNative({ workspace, run, staged, cli, browserPa
       const deniedSnapshot = await source.snapshot(primaryId), attempt = deniedSnapshot.events.find(event => event.seq > beforeDenial.events.at(-1).seq && event.type === 'tool/call' && event.data.name === 'rp_present')
       assert.ok(attempt); assert.deepEqual(JSON.parse(attempt.data.arguments), { rewriteOf: 'not-the-selected-failed-presentation' })
       const rejection = deniedSnapshot.events.find(event => event.type === 'tool/result' && event.data.message?.toolCallId === attempt.data.callId)
-      assert.equal(rejection?.data.message.isError, true); assert.match(body(rejection.data.message), /Only rp_present with the selected failed presentation rewriteOf is permitted for this retry request/u)
+      verifyRetryGuard(attempt, rejection, failure.presentationId)
       assert.match(denied.result.text, /^RETRY_DISPATCH_FAILED:/u)
       assert.deepEqual((await source.api('database', 'effectiveV2', { sessionId: primaryId })).entries, dbBefore.entries)
       await source.probe('retryMode', { mode: 'proper' }); await storyView(source, primaryId)
