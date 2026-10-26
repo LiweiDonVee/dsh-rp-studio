@@ -41,6 +41,18 @@ test('restricted retry model emits only the exact owner rewriteOf request', asyn
   assert.deepEqual(JSON.parse(call.arguments), { rewriteOf: 'failed-owner-id' })
 })
 
+for (const mode of ['proper', 'wrong']) for (const request of [
+  '仅执行本次 owner 正文请求：单独调用 rp_present({"rewriteOf":"failed-owner-id"})。不运行事实、其他工具或其他正文模式；写作指导由 owner 请求独立捕获。',
+  '执行已选择的正文请求 rp_present({"rewriteOf":"failed-owner-id"})。',
+]) test(`restricted retry extracts the selected rewriteOf without an owner prose prefix (${mode}, ${request.slice(0, 12)})`, async () => {
+  const models = createLocalModels()
+  models.retryMode(mode)
+  const call = callFrom(await collect(models.stream('gm', { messages: [human(request)] })))
+  assert.equal(call.name, 'rp_present')
+  assert.deepEqual(JSON.parse(call.arguments), { rewriteOf: mode === 'wrong' ? 'not-the-selected-failed-presentation' : 'failed-owner-id' })
+  assert.equal(models.stats().counts.gm, 1)
+})
+
 test('material model requests search and exact reads before selecting real qualified keys', async () => {
   const models = createLocalModels(), input = { candidates: [{ key: '["world","harbor"]' }], searchResults: [], readEntries: [], history: [] }
   const options = value => ({ messages: [{ role: 'user', content: [{ type: 'text', text: JSON.stringify(value) }] }] })
