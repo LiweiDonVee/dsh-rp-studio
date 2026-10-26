@@ -17,6 +17,7 @@ import { verifyUnchanged } from './witness-proof.mjs'
 const hash = text => createHash('sha256').update(text).digest('hex')
 const frozen = value => Object.fromEntries(['packet', 'contextPreparation', 'compiled', 'storySnapshot', 'factReceiptRef'].map(key => [key, value[key] ?? null]))
 const header = value => ({ ...value, delegationDepth: value.delegationDepth === undefined ? 0 : value.delegationDepth })
+const body = message => (message?.content ?? []).filter(block => block.type === 'text').map(block => block.text).join('\n')
 const successfulFacts = events => {
   const calls = new Map(events.filter(event => event.type === 'tool/call').map(event => [event.data.callId, event.data.name]))
   return events.filter(event => event.type === 'tool/result' && event.data.message?.isError !== true && calls.get(event.data.message?.toolCallId) === 'rp_commit_turn')
