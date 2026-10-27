@@ -444,7 +444,11 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
           const body = view.history.records.find(row => row.ref.presentationId === revisedEvidence.body.ref.presentationId)
           assert.equal(body?.text, revisedEvidence.body.text); assert.equal(body.factReceiptId, selectedReceipt.id); assert.equal(view.review.pendingDecision, null)
         }
-        forks.push({ ...cut, created, view, prefix })
+        const reader = await source.studio('GET', `/api/v1/sessions/${created.sessionId}`), selectedTexts = new Set(view.history.records.map(row => row.text))
+        for (const record of view.history.records) assert.ok(reader.messages.some(row => row.text === record.text), 'fork native reader omitted selected prefix prose')
+        for (const record of parentBefore.canonical.records.filter(row => !selectedTexts.has(row.text))) assert.equal(reader.messages.some(row => row.text === record.text), false, 'fork native reader exposed superseded or future prose')
+        const afterReader = await source.snapshot(created.sessionId); forkPrefix(afterReader, parentBefore.snapshot, cut.atSeq)
+        forks.push({ ...cut, created, view, prefix, reader, afterReader })
       }
       const afterForks = await capture(source, sessionId); zeroModels(modelDeltas(parentBefore.models, afterForks.models))
       assert.deepEqual(durablePending(afterForks), durablePending(parentBefore)); assert.deepEqual(afterForks.snapshot.events, parentBefore.snapshot.events); assert.deepEqual(afterForks.gm.lastFactReceipt, parentBefore.gm.lastFactReceipt)
