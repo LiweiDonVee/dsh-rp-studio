@@ -129,3 +129,15 @@ export function approvedWithoutPresentation(before, after, result, operationId) 
   assert.equal(after.history.records.some(row => row.factReceiptId === prior.id || row.factReceiptId === receipt.id), false, 'superseded or unwritten body selected')
   return { receipt, intent, deltas: modelDeltas(before.models, after.models) }
 }
+export function stagedGeneration(before, after, { operationId, instruction, marker }) {
+  const round = after.review.latestRound, original = before.review.latestRound, job = after.review.generation, deltas = modelDeltas(before.models, after.models)
+  assert.equal(deltas.revise, 1); assert.equal(round.roundId, original.roundId); assert.deepEqual(round.base, original.base); assert.deepEqual(round.capture, original.capture); assert.deepEqual(round.source, original.source)
+  for (const candidate of original.candidates) assert.deepEqual(round.candidates.find(row => row.id === candidate.id), candidate)
+  const candidate = round.candidates.find(row => row.operationId === operationId)
+  assert.ok(candidate, 'no public staged candidate for the original generation'); assert.equal(job?.operationId, operationId); assert.equal(job.roundId, round.roundId); assert.equal(job.candidateId, candidate.id)
+  assert.ok(candidate.payload.facts.items.some(row => row.id === 'native-marker' && row.text === marker))
+  const requests = after.models.requests.slice(before.models.requests.length).filter(row => row.model === 'revise'); assert.equal(requests.length, 1)
+  const request = requests[0]; assert.deepEqual(request.tools, []); assert.deepEqual(request.input.base, original.base); assert.deepEqual(request.input.capture, original.capture); assert.equal(request.input.instruction, instruction)
+  assert.ok(after.snapshot.events.slice(before.snapshot.events.length).filter(row => row.type === 'tool/call').every(row => row.data.name === 'rp_present'), 'generation repeated fact/evidence tools')
+  return { candidate, job, request, deltas }
+}

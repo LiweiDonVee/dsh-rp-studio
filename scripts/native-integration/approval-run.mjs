@@ -9,7 +9,7 @@ import { scenarioState } from './scenario-state.mjs'
 import { openNativeContext, finishNativeContext, restartNativeContext } from './contexts.mjs'
 import { ownedRunPath } from './paths.mjs'
 import { redact } from './host.mjs'
-import { modelDeltas, zeroModels, pendingWorld, durablePending, assertReceiptProjection, successfulToolResults, terminalProposal, acceptedProse, preservePrefix, commandProof, generatedCandidate, approvedWithoutPresentation, ownerRequestHash, textOf } from './approval-proof.mjs'
+import { modelDeltas, zeroModels, pendingWorld, durablePending, assertReceiptProjection, successfulToolResults, terminalProposal, acceptedProse, preservePrefix, commandProof, generatedCandidate, approvedWithoutPresentation, stagedGeneration, ownerRequestHash, textOf } from './approval-proof.mjs'
 
 export const APPROVAL_SCENARIOS = ['default-off-pending-cold', 'custom-regeneration-decision-resume', 'policy-off-generation-resume', 'effective-writer-scope', 'fork-saved-story-cold']
 export async function clickOwner(context, action, click, matches = () => true) {
@@ -56,7 +56,7 @@ async function screenshots(context, run, label, write) {
 }
 export async function executeApprovalNative({ workspace, run, staged, cli, browserPath }) {
   assert.equal(staged.stage, 'final')
-  const provider = await startRetrievalProvider(), report = { schemaVersion: 1, scope: 'A029 installed-owner approval native scenarios; checkpoint 2 of 5', packages: staged.packages, scenarios: [], segments: [], actions: [], limitations: [], fullChain: { status: 'not-run', finalAcceptance: false } }
+  const provider = await startRetrievalProvider(), report = { schemaVersion: 1, scope: 'A029 installed-owner approval native scenarios; checkpoint 3 of 5', packages: staged.packages, scenarios: [], segments: [], actions: [], limitations: [], fullChain: { status: 'not-run', finalAcceptance: false } }
   const write = async (name, value) => writeFile(await ownedRunPath(workspace, run, join(run, name)), JSON.stringify(value, null, 2) + '\n')
   const cases = scenarioState(APPROVAL_SCENARIOS, async rows => { report.scenarios = structuredClone(rows); await write('approval-progress.json', report) })
   const active = new Set(), finalized = new Map()
@@ -268,7 +268,81 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       report.actions.push({ name: 'pending fact retry', deltas: retryEvidence.deltas }, { name: 'custom approval', deltas: customDeltas }, { name: 'fact regeneration ON', deltas: generateEvidence.deltas }, { name: 'decision completion interruption attempt', deltas: abortDeltas }, { name: 'decision settlement resume', deltas: settleDeltas }, { name: 'decision settlement replay', deltas: replayDeltas }, ...(presentationDeltas ? [{ name: 'explicit fact presentation', deltas: presentationDeltas }] : []))
       return { sessionId, roundId: round.roundId, originalOperationId: decision.operationId, factReceiptId: resumed.factReceiptId, customReceiptId: approved.factReceiptId, interruption: { status: nativeBoundary ? 'passed' : 'NOT NATIVELY VERIFIED', attemptCount: 1 }, presentation: body.ref, evidence: 'custom-decision-resume.json' }
     })
-    report.fullChain = { status: report.limitations.length ? 'checkpoint-passed-with-limitations' : 'checkpoint-passed', finalAcceptance: false, reason: 'Groups 1–2 are implemented in this review checkpoint; groups 3–5 remain not-run. Public fault scheduling limitations are listed separately.' }
+    await cases.run(APPROVAL_SCENARIOS[2], async () => {
+      await source.idle(sessionId)
+      const presentedBefore = await capture(source, sessionId), oldBody = acceptedProse(presentedBefore, presentedBefore.gm.lastFactReceipt.id)
+      assert.equal(presentedBefore.review.pendingDecision, null); assert.equal(presentedBefore.review.latestRound.pendingCandidateId, null)
+      const configuration = await configureApproval(source, sessionId, false), before = await capture(source, sessionId)
+      zeroModels(modelDeltas(presentedBefore.models, before.models)); assert.equal(before.review.enabled, false)
+      const round = before.review.latestRound, operationId = randomUUID(), instruction = 'FACT_REVISION_B'
+      const interrupted = await source.probe('abortFactGeneration', { sessionId, roundId: round.roundId, operationId, expectedRoundVersion: round.version, instruction })
+      await source.idle(sessionId)
+      const afterAbort = await capture(source, sessionId), generationEvidence = stagedGeneration(before, afterAbort, { operationId, instruction, marker: 'FACT_REVISION_B' })
+      const generationCommand = commandProof(afterAbort.snapshot.events, operationId, 'rp-gm-fact-regenerate'), output = JSON.parse(generationCommand.done.data.text)
+      assert.equal(output.candidateId, generationEvidence.candidate.id); assert.equal(output.payloadHash, generationEvidence.candidate.payloadHash)
+      assert.equal(generationCommand.run.data.args.trim().split(/\s+/u)[1], ownerRequestHash({ schemaVersion: 1, sessionId, roundId: round.roundId, operationId, expectedRoundVersion: round.version, instruction, approvalRequired: false }))
+      const needsApplication = afterAbort.gm.lastFactReceipt.id === before.gm.lastFactReceipt.id
+      const nativeBoundary = interrupted.boundary.aborted && generationEvidence.candidate.generationConfirmed === false && needsApplication
+      if (nativeBoundary) {
+        assert.deepEqual(interrupted.boundary, { run: generationCommand.run, done: generationCommand.done, aborted: true })
+        zeroModels({ ...generationEvidence.deltas, revise: 0 }); assert.deepEqual(pendingWorld(afterAbort.database), pendingWorld(before.database)); assert.deepEqual(afterAbort.history.records, before.history.records)
+        assert.equal(afterAbort.review.latestRound.pendingCandidateId, before.review.latestRound.pendingCandidateId)
+        assert.deepEqual(afterAbort.factReview.decisions, before.factReview.decisions)
+      } else {
+        assert.equal(generationEvidence.candidate.generationConfirmed, true, 'fault boundary missed without an actual confirmed candidate')
+        if (needsApplication) { assert.equal(afterAbort.review.latestRound.pendingCandidateId, generationEvidence.candidate.id); assert.deepEqual(pendingWorld(afterAbort.database), pendingWorld(before.database)) }
+        else assert.equal(afterAbort.gm.lastFactReceipt.candidateId, generationEvidence.candidate.id)
+        const gm = staged.packages.find(row => row.name === 'dsh-rp-gm'), database = staged.packages.find(row => row.name === 'dsh-rp-database')
+        assert.equal(gm.sha256, 'b4738a787e6f30ce2e00c81e11307a0e5c65071bbb2799acb1b51ff66de4b38a'); assert.equal(database.sha256, '3bfe66001889d373ded28a312f3f55613b94828f4506f9e11727fd64bdb01f77')
+        report.limitations.push({ code: 'GENERATION_PRE_CONFIRMATION_NOT_NATIVELY_VERIFIED', status: 'NOT NATIVELY VERIFIED', operationId, attemptCount: 1, boundary: interrupted.boundary, actualJob: generationEvidence.job, actualCandidate: generationEvidence.candidate, regressions: [
+          { package: gm, commit: '20d3ab1fe9e1bbec6f0cdbba0acbf684bd147d22', file: 'tests/fact-generation.test.mjs', test: 'successful generation done lost before confirmation is reused without command or model replay' },
+          { package: database, commit: '93853ccbff8b4ad7997471a72fe7e62cc24c2eae', file: 'tests/fact-review.test.mjs', test: 'cold provisional generation resumes by its exact immutable operation and confirms without a new candidate' },
+        ] })
+      }
+      const uiInstruction = 'UI_MUST_NOT_REBUILD_THE_DURABLE_GENERATION'
+      await source.page.getByRole('textbox', { name: '事实重生要求', exact: true }).fill(uiInstruction)
+      const resumed = await source.api('studio', 'resumeFactGeneration', { sessionId, operationId }); await source.idle(sessionId)
+      const settled = await capture(source, sessionId), settleDeltas = modelDeltas(afterAbort.models, settled.models)
+      zeroModels(settleDeltas); assert.equal(resumed.job.operationId, operationId); assert.equal(resumed.job.status, 'complete'); assert.equal(resumed.job.candidateId, generationEvidence.candidate.id)
+      assert.equal(resumed.decision?.status, 'approved'); assert.equal(resumed.decision.factReceiptId, settled.gm.lastFactReceipt.id)
+      const decisionOperationId = resumed.decision.operationId
+      assert.ok(decisionOperationId); assert.notEqual(decisionOperationId, operationId)
+      if (needsApplication) approvedWithoutPresentation(afterAbort, settled, resumed.decision, decisionOperationId)
+      else { assert.equal(settled.gm.lastFactReceipt.id, afterAbort.gm.lastFactReceipt.id); assert.deepEqual(pendingWorld(settled.database), pendingWorld(afterAbort.database)) }
+      const settledCandidate = settled.review.latestRound.candidates.find(row => row.id === generationEvidence.candidate.id)
+      assert.equal(settledCandidate.generationConfirmed, true); assert.deepEqual(settledCandidate.payload, generationEvidence.candidate.payload); assert.equal(settledCandidate.payloadHash, generationEvidence.candidate.payloadHash); assert.equal(settledCandidate.operationId, operationId)
+      assert.equal(settled.review.latestRound.candidates.length, afterAbort.review.latestRound.candidates.length)
+      assert.equal(settled.gm.lastFactReceipt.factRevision, before.gm.lastFactReceipt.factRevision + 1)
+      const decisionCommand = commandProof(settled.snapshot.events, decisionOperationId, 'rp-gm-fact-decision')
+      assert.ok(decisionCommand.run.seq > generationCommand.done.seq, 'OFF acceptance must use a separate real decision after generation done')
+      assert.equal(settled.gm.lastFactReceipt.decisionSource.commandId, decisionCommand.run.data.commandId); assert.equal(settled.gm.lastFactReceipt.decisionSource.doneSeq, decisionCommand.done.seq)
+      assert.equal(settled.snapshot.events.slice(afterAbort.snapshot.events.length).filter(row => row.type === 'tool/call').length, 0)
+      const replay = await source.api('studio', 'resumeFactGeneration', { sessionId, operationId }); await source.idle(sessionId)
+      const replayed = await capture(source, sessionId), replayDeltas = modelDeltas(settled.models, replayed.models)
+      zeroModels(replayDeltas); assert.equal(replay.job.operationId, operationId); assert.equal(replay.decision.operationId, decisionOperationId); assert.equal(replay.decision.factReceiptId, resumed.decision.factReceiptId)
+      assert.deepEqual(pendingWorld(replayed.database), pendingWorld(settled.database)); assert.deepEqual(replayed.gm.lastFactReceipt, settled.gm.lastFactReceipt); assert.deepEqual(replayed.factReview.rounds, settled.factReview.rounds); assert.deepEqual(replayed.factReview.decisions, settled.factReview.decisions)
+      let written, presentationDeltas
+      if (replayed.review.pendingDecision?.status === 'applied') {
+        assert.equal(replayed.review.pendingDecision.operationId, decisionOperationId)
+        await source.page.getByRole('button', { name: '刷新事实与写作状态', exact: true }).click()
+        written = await clickOwner(source, 'resumeFactPresentation', () => source.page.getByRole('button', { name: '继续已批准事实的写作', exact: true }).click(), row => row.sessionId === sessionId && row.operationId === decisionOperationId && row.roundId === round.roundId)
+        await source.idle(sessionId)
+        const presented = await capture(source, sessionId); presentationDeltas = modelDeltas(replayed.models, presented.models)
+        assert.equal(written.presentation.status, 'complete'); assert.equal(written.factReceiptId, resumed.decision.factReceiptId); assert.equal(presentationDeltas.revise, 0); assert.equal(presentationDeltas.writer, 1); assert.ok(presentationDeltas.gm > 0)
+        assert.deepEqual(presented.snapshot.events.slice(replayed.snapshot.events.length).filter(row => row.type === 'tool/call').map(row => row.data.name), ['rp_present'])
+      } else { assert.equal(nativeBoundary, false); acceptedProse(replayed, resumed.decision.factReceiptId) }
+      const presented = await capture(source, sessionId), body = acceptedProse(presented, resumed.decision.factReceiptId)
+      assert.equal(presented.review.pendingDecision, null); assert.deepEqual(pendingWorld(presented.database), pendingWorld(replayed.database)); assert.deepEqual(presented.database.notes, before.database.notes); assert.deepEqual(presented.database.binding, before.database.binding)
+      assert.deepEqual(presented.database.entries.filter(row => row.ref.sourceKey !== '@session'), before.database.entries.filter(row => row.ref.sourceKey !== '@session'))
+      assert.equal(presented.history.records.some(row => row.factReceiptId === oldBody.factReceiptId), false)
+      assert.ok(presented.gm.facts.items.some(row => row.id === 'native-marker' && row.text === 'FACT_REVISION_B'))
+      preservePrefix(presented.snapshot, before.snapshot)
+      await source.page.screenshot({ path: join(run, 'policy-off-generation-presented.png') })
+      await write('policy-off-generation-resume.json', { sessionId, configuration, before, operationId, instruction, interrupted, afterAbort, generationEvidence, generationCommand, nativeBoundary, needsApplication, uiInstruction, resumed, settled, settleDeltas, decisionOperationId, decisionCommand, replay, replayed, replayDeltas, written, presentationDeltas, presented, body })
+      report.actions.push({ name: 'disable fact approval', deltas: modelDeltas(presentedBefore.models, before.models) }, { name: 'OFF generation completion interruption attempt', deltas: generationEvidence.deltas }, { name: 'OFF generation settlement resume', deltas: settleDeltas }, { name: 'OFF generation settlement replay', deltas: replayDeltas }, ...(presentationDeltas ? [{ name: 'explicit OFF fact presentation', deltas: presentationDeltas }] : []))
+      return { sessionId, roundId: round.roundId, originalGenerationOperationId: operationId, mappedDecisionOperationId: decisionOperationId, candidateId: generationEvidence.candidate.id, factReceiptId: resumed.decision.factReceiptId, interruption: { status: nativeBoundary ? 'passed' : 'NOT NATIVELY VERIFIED', attemptCount: 1 }, presentation: body.ref, evidence: 'policy-off-generation-resume.json' }
+    })
+    report.fullChain = { status: report.limitations.length ? 'checkpoint-passed-with-limitations' : 'checkpoint-passed', finalAcceptance: false, reason: 'Groups 1–3 are implemented in this review checkpoint; groups 4–5 remain not-run. Public fault scheduling limitations are listed separately.' }
   } catch (error) {
     report.error = redact(error.stack ?? error.message).slice(0, 12000); report.fullChain = { status: 'failed', finalAcceptance: false }
     if (source) {

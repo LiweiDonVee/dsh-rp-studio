@@ -74,6 +74,19 @@ test('settlement proof requires original applied identity, a new receipt and fol
   }
   assert.throws(() => proof.approvedWithoutPresentation(before, after, { ...result, presentation: { status: 'complete' } }, 'original'))
 })
+test('generation interruption evidence requires the staged candidate and original public durable job, without pretending it is confirmed', () => {
+  assert.equal(typeof proof.stagedGeneration, 'function')
+  const counts = Object.fromEntries(proof.MODEL_STAGES.map(stage => [stage, 0])), round = { roundId: 'round', source: { callSeq: 2 }, base: { scene: { title: 'Frozen base' }, facts: { items: [] } }, capture: { playerInput: { text: 'Original action' } }, candidates: [] }
+  const before = { review: { latestRound: round }, snapshot: { events: [] }, models: { counts, requests: [] } }, after = structuredClone(before)
+  const candidate = { id: 'staged', operationId: 'original-generation', generationConfirmed: false, payloadHash: 'c'.repeat(64), payload: { facts: { items: [{ id: 'native-marker', text: 'STAGED_FACTS' }] } } }
+  after.review.latestRound.candidates.push(candidate); after.review.generation = { operationId: 'original-generation', roundId: 'round', candidateId: 'staged', status: 'interrupted' }
+  after.models.counts.revise = 1; after.models.requests.push({ model: 'revise', tools: [], input: { base: round.base, capture: round.capture, instruction: 'STAGED_FACTS' } })
+  assert.equal(proof.stagedGeneration(before, after, { operationId: 'original-generation', instruction: 'STAGED_FACTS', marker: 'STAGED_FACTS' }).candidate.generationConfirmed, false)
+  for (const mutate of [value => value.review.generation.operationId = 'invented', value => value.review.generation.candidateId = 'other', value => value.review.latestRound.candidates[0].operationId = 'other', value => value.models.requests[0].input.base.scene.title = 'Current UI state', value => value.snapshot.events.push({ type: 'tool/call', data: { name: 'rp_db_read' } })]) {
+    const changed = structuredClone(after); mutate(changed)
+    assert.throws(() => proof.stagedGeneration(before, changed, { operationId: 'original-generation', instruction: 'STAGED_FACTS', marker: 'STAGED_FACTS' }))
+  }
+})
 test('zero model recovery rejects an omitted stage and every real nonzero stage', () => {
   assert.equal(typeof proof.modelDeltas, 'function')
   const counts = { gm: 2, revise: 1, prepare: 1, summarize: 0, assembly: 1, writer: 1, 'writer-alt': 0 }
