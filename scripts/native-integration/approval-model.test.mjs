@@ -23,3 +23,11 @@ test('fact revise uses only captured base and evidence and returns no operations
   assert.equal(model.stats().requests.at(-1).input.capture.observations[0].text, 'ACTUAL_TOOL_EVIDENCE')
   assert.ok(events.every(event => !['tool/result', 'session/event'].includes(event.type)))
 })
+test('a failed main request after a terminal proposal is recorded even before it emits assistant output', async () => {
+  const model = fixture.createApprovalModels()
+  const messages = [human('NATIVE_APPROVAL_PENDING'), { role: 'assistant', content: [{ type: 'tool-call', id: 'proposal', name: 'rp_propose_turn', arguments: '{}' }] }, { role: 'tool', toolCallId: 'proposal', content: [{ type: 'text', text: '{"candidateId":"candidate"}' }] }]
+  await assert.rejects(collect(model.stream('gm', { messages })), /MAIN_RAN_AFTER_TERMINAL_PROPOSAL/u)
+  assert.equal(model.stats().counts.gm, 1)
+  assert.equal(model.stats().requests[0].index, 1)
+  assert.match(model.stats().requests[0].error, /MAIN_RAN_AFTER_TERMINAL_PROPOSAL/u)
+})

@@ -6,6 +6,21 @@ import { ownedRunPath } from './paths.mjs'
 import { verifyInstalled } from './inputs.mjs'
 
 const endpoints = { database: '/api/rp-database/request', context: '/api/rp-context/request', lastStep: '/api/rp-last-step/request', storyKit: '/api/rp-story-kit/request', gm: '/api/rp-gm/request', studio: '/api/rp-studio/actions' }
+export function observeHttpError(response) {
+  if (response.status() < 400) return null
+  const request = response.request(); let input = null, inputError
+  if (request.method() === 'POST') try { input = request.postDataJSON() } catch (error) { inputError = String(error.message).slice(0, 300) }
+  return { time: new Date().toISOString(), url: response.url().replace(/([?&]token=)[^&]+/gu, '$1[REDACTED]'), status: response.status(), method: request.method(), input, ...(inputError ? { inputError } : {}) }
+}
+export async function finishNativeContext(context, segment) {
+  const errors = []
+  try { segment.models = await context.probe('models'); segment.modelStatus = 'recorded' }
+  catch (error) { segment.modelStatus = 'failed'; segment.counterError = redact(error.message); errors.push(error) }
+  try { await context.close(); segment.cleanupStatus = 'stopped' }
+  catch (error) { segment.cleanupStatus = 'failed'; segment.cleanupError = redact(error.message); errors.push(error) }
+  if (errors.length) { segment.finalizationErrors ??= []; segment.finalizationErrors.push(...errors.map(error => redact(error.message))); throw new AggregateError(errors, 'Native context finalization failed') }
+}
+export async function restartNativeContext(context, finish, open) { await finish(context); return open(context.name, context.installed) }
 export async function closeFailedContext(error, { name, installed, errors, browser, host }) {
   const cleanupErrors = await closeOwnedResources(browser, host)
   error.nativeStartup = { name, hostPid: host?.child?.pid, installed: installed.installed, hostVersion: installed.version, startupError: redact(error.message), browserErrors: [...errors], cleanupErrors, cleanupStatus: cleanupErrors.length ? 'failed' : 'stopped' }
@@ -26,7 +41,7 @@ export async function openNativeContext({ workspace, run, staged, cli, browserPa
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
     page.setDefaultTimeout(15000)
     page.on('pageerror', error => errors.push(error.message)); page.on('console', message => { if (['error', 'warn'].includes(message.type())) errors.push(message.text()) })
-    page.on('response', response => { if (response.status() >= 400) httpErrors.push({ time: new Date().toISOString(), url: response.url().replace(/([?&]token=)[^&]+/gu, '$1[REDACTED]'), status: response.status(), method: response.request().method(), input: response.request().method() === 'POST' ? response.request().postDataJSON() : null }) })
+    page.on('response', response => { const observation = observeHttpError(response); if (observation) httpErrors.push(observation) })
     await page.addInitScript(() => { Object.defineProperty(window, '__ModuleLoader__', { configurable: true, set(target) {
       Object.defineProperty(window, '__ModuleLoader__', { configurable: true, writable: true, value: target })
       let load = target.load.bind(target)

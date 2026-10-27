@@ -33,6 +33,29 @@ export function zeroModels(deltas) { for (const stage of MODEL_STAGES) assert.eq
 export function factWorld(database) {
   return database.entries.filter(entry => entry.ref?.sourceKey === '@session' && ['gm.scene', 'gm.facts'].includes(entry.ref.entryId)).map(entry => ({ ref: entry.ref, content: entry.content, version: entry.version }))
 }
+export const pendingWorld = database => ({ binding: database.binding, entries: database.entries, notes: database.notes })
+export function durablePending(view) {
+  const round = view.review.latestRound
+  return { enabled: view.review.enabled, round: round && Object.fromEntries(['roundId', 'version', 'sessionId', 'turnKey', 'source', 'base', 'capture', 'candidates', 'pendingCandidateId', 'activeReceiptId', 'approvalRequired'].map(key => [key, round[key]])), pendingDecision: view.review.pendingDecision, receipt: view.gm.lastFactReceipt, world: pendingWorld(view.database), history: view.history }
+}
+export function successfulToolResults(events, name, afterSeq = -1) {
+  const calls = new Map(events.filter(event => event.type === 'tool/call' && event.data.name === name).map(event => [event.data.callId, event]))
+  return events.filter(event => event.seq > afterSeq && event.type === 'tool/result' && event.data.message?.isError === false && calls.has(event.data.message.toolCallId)).map(result => ({ result, call: calls.get(result.data.message.toolCallId) }))
+}
+export function terminalProposal(view, afterSeq) {
+  const round = view.review.latestRound, proposals = successfulToolResults(view.snapshot.events, 'rp_propose_turn', afterSeq)
+  assert.equal(proposals.length, 1, 'pending must have one successful proposal result')
+  const { call, result } = proposals[0]
+  assert.equal(round.source.callSeq, call.seq); assert.equal(round.source.callId, call.data.callId)
+  assert.equal(result.data.message.source?.kind, 'tool'); assert.equal(result.data.message.source.callId, call.data.callId); assert.deepEqual(result.sourceEventSeqs, [call.seq])
+  assert.equal(JSON.parse(textOf(result.data.message)).candidateId, round.pendingCandidateId)
+  const request = view.models.requests.find(row => row.model === 'gm' && row.emitted?.callId === call.data.callId)
+  assert.ok(request, 'proposal has no recorded real GM stream start')
+  assert.equal(view.models.requests.filter(row => row.model === 'gm' && row.index > request.index).length, 0, 'main stream started after terminal proposal, including failed starts')
+  assert.equal(view.snapshot.events.filter(row => row.seq > result.seq && row.type === 'request/header').length, 0, 'native request header after terminal result')
+  assert.equal(view.snapshot.events.filter(row => row.seq > result.seq && row.type === 'assistant/message' && row.data.message?.source?.kind === 'model').length, 0)
+  return { call, result, request, returned: JSON.parse(textOf(result.data.message)) }
+}
 export function acceptedProse(view, receiptId) {
   const narrative = view.history.records.findLast(record => record.factReceiptId === receiptId)
   assert.ok(narrative?.text?.trim(), 'no actual selected accepted prose for current fact receipt')
@@ -46,7 +69,7 @@ export function acceptedProse(view, receiptId) {
   return narrative
 }
 export function preservePrefix(actual, expected, { fork = false } = {}) {
-  if (!fork) { const header = value => ({ ...value, delegationDepth: value.delegationDepth ?? 0 }); assert.deepEqual(header(actual.header), header(expected.header)); assert.equal(actual.inheritedEventCount, expected.inheritedEventCount) }
+  if (!fork) { const header = value => ({ ...value, delegationDepth: value.delegationDepth === undefined ? 0 : value.delegationDepth }); assert.deepEqual(header(actual.header), header(expected.header)); assert.equal(actual.inheritedEventCount, expected.inheritedEventCount) }
   assert.deepEqual(actual.events.slice(0, expected.events.length), expected.events)
   return { events: expected.events.length, sha256: sha(expected.events), inheritedEventCount: actual.inheritedEventCount }
 }

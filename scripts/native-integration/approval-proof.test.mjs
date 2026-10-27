@@ -37,3 +37,41 @@ test('a dispatched or failed presentation cannot substitute for canonical accept
   assert.throws(() => proof.acceptedProse({ snapshot: { events: [] }, history: { records: [] } }, 'receipt'))
   assert.throws(() => proof.acceptedProse({ snapshot: { events: [] }, history: { records: [{ factReceiptId: 'receipt', text: 'fake status', ref: { callSeq: 2, resultSeq: 3 } }] } }, 'receipt'))
 })
+test('cold prefix permits only absent depth and numeric zero equivalence, rejecting null and strings', () => {
+  const base = { header: { id: 'story' }, events: [{ seq: 1 }], inheritedEventCount: 0 }
+  assert.doesNotThrow(() => proof.preservePrefix({ ...base, header: { id: 'story', delegationDepth: 0 } }, base))
+  for (const delegationDepth of [null, '0', 1]) assert.throws(() => proof.preservePrefix({ ...base, header: { id: 'story', delegationDepth } }, base))
+})
+test('pending world proof includes writable entries and bindings as well as registered fact entries', () => {
+  assert.equal(typeof proof.pendingWorld, 'function')
+  const database = { revision: 2, entries: [{ ref: { sourceKey: '@session', entryId: 'gm.facts' }, content: 'facts', version: 1 }, { ref: { sourceKey: 'world', entryId: '0' }, content: 'work', version: 1 }], notes: [], binding: { sources: [{ key: 'world' }] } }
+  for (const mutate of [next => next.entries[1].content = 'changed', next => next.entries[1].version++, next => next.binding.sources = [], next => next.notes.push('fixed work')]) {
+    const changed = structuredClone(database); mutate(changed)
+    assert.notDeepEqual(proof.pendingWorld(changed), proof.pendingWorld(database))
+  }
+  assert.deepEqual(proof.pendingWorld({ ...database, revision: 3 }), proof.pendingWorld(database))
+})
+test('terminal proof rejects a real extra request/header even without another assistant', () => {
+  assert.equal(typeof proof.terminalProposal, 'function')
+  const call = { seq: 3, type: 'tool/call', data: { callId: 'propose-call', name: 'rp_propose_turn', turn: 1 } }, result = { seq: 4, type: 'tool/result', sourceEventSeqs: [3], data: { message: { toolCallId: 'propose-call', source: { kind: 'tool', callId: 'propose-call' }, isError: false, content: [{ type: 'text', text: '{"candidateId":"candidate"}' }] } } }
+  const view = { snapshot: { events: [call, result, { seq: 5, type: 'request/header', data: { header: { config: { model: 'gm' } } } }, { seq: 6, type: 'turn/end', data: { turn: 1 } }] }, review: { latestRound: { source: { callSeq: 3, callId: 'propose-call' }, pendingCandidateId: 'candidate' } }, models: { requests: [{ model: 'gm', index: 1, emitted: { callId: 'propose-call' } }] } }
+  assert.throws(() => proof.terminalProposal(view, -1))
+  view.snapshot.events.splice(2, 1)
+  view.models.requests.push({ model: 'gm', index: 2, error: 'MAIN_RAN_AFTER_TERMINAL_PROPOSAL' })
+  assert.throws(() => proof.terminalProposal(view, -1))
+  view.models.requests.pop()
+  assert.equal(proof.terminalProposal(view, -1).result.seq, 4)
+})
+test('cold durable proof detects same-ID candidate payload or captured evidence changes', () => {
+  const view = { review: { enabled: true, latestRound: { roundId: 'round', pendingCandidateId: 'candidate', candidates: [{ id: 'candidate', payload: { facts: 'exact' } }], base: { facts: 'base' }, capture: { playerInput: 'real input' } }, pendingDecision: null }, gm: { lastFactReceipt: { id: 'receipt' } }, database: { entries: [], notes: [], binding: { sources: [] } }, history: { records: [{ id: 'selected' }] } }
+  for (const mutate of [value => value.review.latestRound.candidates[0].payload.facts = 'lost edit', value => value.review.latestRound.capture.playerInput = 'different', value => value.gm.lastFactReceipt.id = 'other', value => value.history.records = []]) {
+    const changed = structuredClone(view); mutate(changed)
+    assert.notDeepEqual(proof.durablePending(changed), proof.durablePending(view))
+  }
+})
+test('baseline suffix counting retains every actual successful commit, excluding error results and earlier calls', () => {
+  const events = [{ seq: 1, type: 'tool/call', data: { name: 'rp_commit_turn', callId: 'old' } }, { seq: 2, type: 'tool/result', data: { message: { toolCallId: 'old', isError: false } } }, { seq: 3, type: 'tool/call', data: { name: 'rp_commit_turn', callId: 'first' } }, { seq: 4, type: 'tool/result', data: { message: { toolCallId: 'first', isError: false } } }, { seq: 5, type: 'tool/call', data: { name: 'rp_commit_turn', callId: 'second' } }, { seq: 6, type: 'tool/result', data: { message: { toolCallId: 'second', isError: false } } }]
+  assert.equal(proof.successfulToolResults(events, 'rp_commit_turn', 2).length, 2)
+  events.at(-1).data.message.isError = true
+  assert.equal(proof.successfulToolResults(events, 'rp_commit_turn', 2).length, 1)
+})

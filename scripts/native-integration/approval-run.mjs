@@ -6,10 +6,10 @@ import { expect } from '@playwright/test'
 import { syntheticStoryData } from './data-fixtures.mjs'
 import { startRetrievalProvider } from './retrieval-provider.mjs'
 import { scenarioState } from './scenario-state.mjs'
-import { openNativeContext } from './contexts.mjs'
+import { openNativeContext, finishNativeContext, restartNativeContext } from './contexts.mjs'
 import { ownedRunPath } from './paths.mjs'
 import { redact } from './host.mjs'
-import { modelDeltas, zeroModels, factWorld, acceptedProse, preservePrefix, textOf } from './approval-proof.mjs'
+import { modelDeltas, zeroModels, pendingWorld, durablePending, successfulToolResults, terminalProposal, acceptedProse, preservePrefix } from './approval-proof.mjs'
 
 export const APPROVAL_SCENARIOS = ['default-off-pending-cold', 'custom-regeneration-decision-resume', 'policy-off-generation-resume', 'effective-writer-scope', 'fork-saved-story-cold']
 export async function clickOwner(context, action, click) {
@@ -50,16 +50,15 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       active.add(context); return context
     } catch (error) { if (error.nativeStartup) report.segments.push({ ...error.nativeStartup, startupFailed: true }); throw error }
   }
-  const finish = context => {
-    if (finalized.has(context)) return finalized.get(context)
+  const finish = (context, retry = false) => {
+    if (!retry && finalized.has(context)) return finalized.get(context)
     const task = (async () => {
       const segment = report.segments.find(row => row.hostPid === context.hostPid)
-      try { segment.models = await context.probe('models'); segment.modelStatus = 'recorded' }
-      catch (error) { segment.modelStatus = 'failed'; segment.counterError = redact(error.message) }
-      finally { try { await context.close(); segment.cleanupStatus = 'stopped' } catch (error) { segment.cleanupStatus = 'failed'; segment.cleanupError = redact(error.message) } active.delete(context) }
+      try { await finishNativeContext(context, segment) }
+      finally { if (segment.cleanupStatus === 'stopped') active.delete(context) }
     })(); finalized.set(context, task); return task
   }
-  const restart = async context => { const { name, installed } = context; await finish(context); return open(name, installed) }
+  const restart = context => restartNativeContext(context, finish, open)
   let source, sessionId, pendingSnapshot
   try {
     source = await open('approval-source')
@@ -83,6 +82,15 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       assert.equal(baselineDeltas.revise, 0); assert.equal(baselineDeltas.writer, 1)
       const baselineBody = acceptedProse(baseline, baseline.gm.lastFactReceipt.id)
       assert.notEqual(baseline.gm.lastFactReceipt.id, initial.gm.lastFactReceipt.id)
+      const commits = successfulToolResults(baseline.snapshot.events, 'rp_commit_turn', initial.snapshot.events.at(-1)?.seq ?? -1)
+      const presentations = successfulToolResults(baseline.snapshot.events, 'rp_present', initial.snapshot.events.at(-1)?.seq ?? -1)
+      assert.equal(commits.length, 1); assert.equal(presentations.length, 1)
+      assert.equal(JSON.parse(commits[0].result.data.message.content[0].text).id, baseline.gm.lastFactReceipt.id)
+      assert.equal(baselineBody.ref.resultSeq, presentations[0].result.seq)
+      assert.equal(baseline.history.records.length, initial.history.records.length + 1)
+      assert.ok(baseline.gm.facts.items.some(row => row.id === 'native-marker' && row.text === 'FACT_BASELINE'))
+      assert.deepEqual(baseline.gm.facts.items.filter(row => row.id !== 'native-marker'), initial.gm.facts.items)
+      for (const ref of baseline.gm.lastFactReceipt.stateRefs) assert.equal(baseline.database.entries.find(entry => entry.ref.sourceKey === ref.sourceKey && entry.ref.entryId === ref.entryId)?.version, ref.version)
       assert.equal(baseline.review.latestRound.approvalRequired, false)
       await clickOwner(source, 'configureReview', () => toggle.check()); await expect(toggle).toBeChecked()
       await setNote(source, sessionId, 'NATIVE_OLD_NOTE_CONSUMED_ON_CUSTOM')
@@ -90,13 +98,13 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       await sendPlayer(source, sessionId, 'NATIVE_APPROVAL_PENDING')
       const pending = await capture(source, sessionId), pendingDeltas = modelDeltas(before.models, pending.models)
       assert.ok(pendingDeltas.gm > 0); zeroModels({ ...pendingDeltas, gm: 0 })
-      assert.deepEqual(factWorld(pending.database), factWorld(before.database)); assert.deepEqual(pending.database.notes, before.database.notes)
+      assert.deepEqual(pendingWorld(pending.database), pendingWorld(before.database)); assert.deepEqual(pending.gm.lastFactReceipt, before.gm.lastFactReceipt)
       assert.deepEqual(pending.history.records, before.history.records)
       const round = pending.review.latestRound, candidateId = round.pendingCandidateId; assert.ok(candidateId); assert.equal(round.approvalRequired, true)
       const added = pending.snapshot.events.slice(before.snapshot.events.length), call = added.find(row => row.type === 'tool/call' && row.data.name === 'rp_propose_turn')
       assert.ok(call); assert.ok(added.some(row => row.type === 'tool/call' && row.data.name === 'rp_db_read'))
       assert.equal(added.filter(row => row.type === 'tool/call' && ['rp_commit_turn', 'rp_present'].includes(row.data.name)).length, 0)
-      const result = added.find(row => row.type === 'tool/result' && row.data.message?.toolCallId === call.data.callId); assert.equal(result?.data.message.isError, false)
+      const proposal = terminalProposal(pending, before.snapshot.events.at(-1)?.seq ?? -1), result = proposal.result
       assert.ok(added.some(row => row.type === 'turn/end' && row.data.turn === call.data.turn))
       assert.equal(added.filter(row => row.seq > result.seq && row.type === 'assistant/message' && row.data.message?.source?.kind === 'model').length, 0)
       assert.equal((await source.api('studio', 'authorNote', { sessionId })).status, 'pending')
@@ -108,13 +116,19 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       const layouts = await screenshots(source, run, 'pending', write)
       pendingSnapshot = (await source.api('studio', 'exportSavedStory', { sessionId })).snapshot
       await source.probe('flush')
-      const saved = await capture(source, sessionId); source = await restart(source)
+      const saved = await capture(source, sessionId), selectedSaved = pendingSnapshot.sessions.find(row => row.header.id === sessionId)
+      assert.equal(pendingSnapshot.selectedSessionId, sessionId); assert.ok(selectedSaved)
+      preservePrefix(selectedSaved, saved.snapshot); assert.deepEqual(selectedSaved.events, saved.snapshot.events)
+      source = await restart(source)
       const coldBefore = await source.probe('models'); zeroModels(modelDeltas(coldBefore, coldBefore)); assert.equal(coldBefore.total, 0)
       const cold = await capture(source, sessionId); assert.equal(cold.models.total, 0); assert.equal(cold.review.enabled, true); assert.equal(cold.review.latestRound.pendingCandidateId, candidateId)
+      assert.deepEqual(durablePending(cold), durablePending(saved)); zeroModels(cold.models.counts)
       const prefix = preservePrefix(cold.snapshot, saved.snapshot); assert.ok(cold.snapshot.events.slice(saved.snapshot.events.length).every(row => row.type === 'session/end-seed'))
       await source.openStudio(sessionId); await expect(source.page.getByText('候选事实 · 尚未写入', { exact: true })).toBeVisible()
-      assert.equal((await source.probe('models')).total, 0)
-      await write('pending-cold.json', { sessionId, initial, baseline, baselineBody, baselineDeltas, before, pending, pendingDeltas, proposal: { call, result, returned: JSON.parse(textOf(result.data.message)) }, saved, cold, prefix, pendingSnapshot, layouts })
+      const afterColdUi = await capture(source, sessionId)
+      assert.equal(afterColdUi.models.total, 0); zeroModels(afterColdUi.models.counts); assert.deepEqual(durablePending(afterColdUi), durablePending(saved))
+      preservePrefix(afterColdUi.snapshot, saved.snapshot); assert.ok(afterColdUi.snapshot.events.slice(saved.snapshot.events.length).every(row => row.type === 'session/end-seed'))
+      await write('pending-cold.json', { sessionId, initial, baseline, baselineBody, baselineDeltas, commits, presentations, before, pending, pendingDeltas, proposal, saved, cold, afterColdUi, prefix, pendingSnapshot, layouts })
       report.actions.push({ name: 'default-off ordinary', deltas: baselineDeltas }, { name: 'terminal pending', deltas: pendingDeltas }, { name: 'cold pending observation', models: cold.models.counts })
       return { sessionId, candidateId, baselineReceiptId: baseline.gm.lastFactReceipt.id, proposalCallSeq: call.seq, proposalResultSeq: result.seq, pendingWorldUnchanged: true, coldHistoricalModels: 0, prefix, layouts }
     })
@@ -126,10 +140,14 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       catch (cause) { report.evidenceErrors = [redact(cause.message)] }
     }
   } finally {
-    await Promise.all([...active].map(finish)); await provider.close()
-    report.scenarios = cases.snapshot(); report.retrieval = provider.stats()
+    const resources = [...active].map(context => ({ resource: `${context.name}:${context.hostPid}`, close: () => finish(context, true) }))
+    resources.push({ resource: 'retrieval', close: () => provider.close() })
+    const cleanup = await Promise.allSettled(resources.map(row => row.close()))
+    report.cleanup = cleanup.map((result, index) => ({ resource: resources[index].resource, status: result.status, ...(result.status === 'rejected' ? { error: redact(result.reason?.message ?? result.reason) } : {}) }))
+    report.scenarios = cases.snapshot()
+    try { report.retrieval = provider.stats() } catch (error) { report.retrievalError = redact(error.message) }
     report.models = { total: report.segments.reduce((sum, row) => sum + (row.models?.total ?? 0), 0), counts: Object.fromEntries(['gm', 'revise', 'prepare', 'summarize', 'assembly', 'writer', 'writer-alt'].map(stage => [stage, report.segments.reduce((sum, row) => sum + (row.models?.counts[stage] ?? 0), 0)])) }
-    if (report.segments.some(row => row.modelStatus !== 'recorded' || row.cleanupStatus !== 'stopped' || row.browserErrors.length)) report.fullChain = { status: 'failed', finalAcceptance: false }
+    if (cleanup.some(row => row.status === 'rejected') || report.retrievalError || report.segments.some(row => row.modelStatus !== 'recorded' || row.cleanupStatus !== 'stopped' || row.browserErrors.length || row.finalizationErrors?.length)) report.fullChain = { status: 'failed', finalAcceptance: false }
     await write('approval-result.json', report)
   }
   return report
