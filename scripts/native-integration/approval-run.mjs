@@ -9,7 +9,7 @@ import { scenarioState } from './scenario-state.mjs'
 import { openNativeContext, finishNativeContext, restartNativeContext } from './contexts.mjs'
 import { ownedRunPath } from './paths.mjs'
 import { redact } from './host.mjs'
-import { modelDeltas, zeroModels, pendingWorld, durablePending, assertReceiptProjection, successfulToolResults, terminalProposal, acceptedProse, preservePrefix, commandProof, generatedCandidate, approvedWithoutPresentation, stagedGeneration, ownerRequestHash, textOf } from './approval-proof.mjs'
+import { modelDeltas, zeroModels, pendingWorld, durablePending, assertReceiptProjection, successfulToolResults, terminalProposal, acceptedProse, preservePrefix, commandProof, generatedCandidate, approvedWithoutPresentation, stagedGeneration, fixedOperationAudit, assertFixedOperationRetained, ownerRequestHash, textOf } from './approval-proof.mjs'
 
 export const APPROVAL_SCENARIOS = ['default-off-pending-cold', 'custom-regeneration-decision-resume', 'policy-off-generation-resume', 'effective-writer-scope', 'fork-saved-story-cold']
 export async function clickOwner(context, action, click, matches = () => true) {
@@ -76,7 +76,7 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
     })(); finalized.set(context, task); return task
   }
   const restart = context => restartNativeContext(context, finish, open)
-  let source, sessionId, pendingSnapshot, worldSourceId
+  let source, sessionId, pendingSnapshot, worldSourceId, fixedWorkAudit
   try {
     source = await open('approval-source')
     const data = syntheticStoryData()
@@ -187,13 +187,13 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       const storedCustom = customView.review.latestRound.candidates.find(row => row.id === customView.gm.lastFactReceipt.candidateId)
       assert.equal(storedCustom.origin, 'owner'); assert.deepEqual(storedCustom.payload, custom)
       assert.equal(customView.review.latestRound.activeReceiptId, approved.factReceiptId); assert.equal(customView.review.latestRound.pendingCandidateId, null)
-      const fixedCount = view => JSON.stringify(view.database.notes).split('NATIVE_FIXED_ONCE').length - 1
-      assert.equal(fixedCount(customView) - fixedCount(preCustom), 1)
+      const customCommand = commandProof(customView.snapshot.events, approved.operationId, 'rp-gm-fact-decision')
+      fixedWorkAudit = fixedOperationAudit(preCustom, customView, customCommand)
       assert.deepEqual(customView.database.binding, preCustom.database.binding)
       assert.deepEqual(customView.database.entries.filter(row => row.ref.sourceKey !== '@session'), preCustom.database.entries.filter(row => row.ref.sourceKey !== '@session'))
       assert.deepEqual((await source.api('database', 'source', { sourceId: worldSourceId })).source, originalSource.source)
       assert.equal((await source.api('studio', 'authorNote', { sessionId })).status, 'consumed')
-      const customBody = acceptedProse(customView, approved.factReceiptId), customCommand = commandProof(customView.snapshot.events, approved.operationId, 'rp-gm-fact-decision')
+      const customBody = acceptedProse(customView, approved.factReceiptId)
       assert.equal(customView.gm.lastFactReceipt.decisionSource.commandId, customCommand.run.data.commandId)
       assert.equal(customView.gm.lastFactReceipt.decisionSource.doneSeq, customCommand.done.seq)
       assert.equal(successfulToolResults(customView.snapshot.events, 'rp_present', preCustom.snapshot.events.at(-1)?.seq ?? -1).length, 1)
@@ -203,6 +203,7 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       const generated = await clickOwner(source, 'regenerateFacts', () => source.page.getByRole('button', { name: '重新生成事实', exact: true }).click(), row => row.sessionId === sessionId && row.roundId === customView.review.latestRound.roundId && row.instruction === 'FACT_REVISION_A')
       await source.idle(sessionId)
       const pending = await capture(source, sessionId), generateEvidence = generatedCandidate(customView, pending, { operationId: generated.job.operationId, instruction: 'FACT_REVISION_A', marker: 'FACT_REVISION_A' })
+      assertFixedOperationRetained(customView, pending, fixedWorkAudit)
       assert.equal(pending.review.latestRound.approvalRequired, true)
       const generateCommand = commandProof(pending.snapshot.events, generated.job.operationId, 'rp-gm-fact-regenerate')
       assert.equal(JSON.parse(generateCommand.done.data.text).candidateId, generateEvidence.candidate.id); assert.equal(JSON.parse(generateCommand.done.data.text).payloadHash, generateEvidence.candidate.payloadHash)
@@ -220,6 +221,7 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       const decision = { sessionId, roundId: round.roundId, candidateId: round.pendingCandidateId, action: 'approve', operationId: randomUUID(), expectedRoundVersion: round.version, expectedDatabaseRevision: preAbort.review.databaseRevision }
       const interrupted = await source.probe('abortFactDecision', { decision }); await source.idle(sessionId)
       const afterAbort = await capture(source, sessionId), command = commandProof(afterAbort.snapshot.events, decision.operationId, 'rp-gm-fact-decision')
+      assertFixedOperationRetained(preAbort, afterAbort, fixedWorkAudit)
       const abortDeltas = modelDeltas(preAbort.models, afterAbort.models)
       const intent = afterAbort.factReview.decisions.find(row => row.operationId === decision.operationId)
       assert.ok(intent); assert.equal(intent.source.commandId, command.run.data.commandId); assert.equal(intent.source.runSeq, command.run.seq); assert.equal(intent.requestHash, command.run.data.args.trim().split(/\s+/u)[1])
@@ -240,11 +242,13 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
         ] })
       }
       const resumed = await source.api('studio', 'resumeFactDecision', { sessionId, operationId: decision.operationId }), settled = await capture(source, sessionId), settleDeltas = modelDeltas(afterAbort.models, settled.models)
+      assertFixedOperationRetained(afterAbort, settled, fixedWorkAudit)
       zeroModels(settleDeltas); assert.equal(resumed.status, 'approved'); assert.equal(resumed.operationId, decision.operationId)
       if (nativeBoundary) approvedWithoutPresentation(afterAbort, settled, resumed, decision.operationId)
       else { assert.equal(resumed.factReceiptId, afterAbort.gm.lastFactReceipt.id); assert.deepEqual(pendingWorld(settled.database), pendingWorld(afterAbort.database)) }
       assert.equal(settled.gm.lastFactReceipt.factRevision, customView.gm.lastFactReceipt.factRevision + 1)
       const replay = await source.api('studio', 'resumeFactDecision', { sessionId, operationId: decision.operationId }), replayed = await capture(source, sessionId), replayDeltas = modelDeltas(settled.models, replayed.models)
+      assertFixedOperationRetained(settled, replayed, fixedWorkAudit)
       zeroModels(replayDeltas); assert.equal(replay.factReceiptId, resumed.factReceiptId); assert.deepEqual(pendingWorld(replayed.database), pendingWorld(settled.database)); assert.deepEqual(replayed.gm.lastFactReceipt, settled.gm.lastFactReceipt)
       assert.deepEqual(replayed.factReview.rounds, settled.factReview.rounds); assert.deepEqual(replayed.factReview.decisions, settled.factReview.decisions)
       let written, presentationDeltas
@@ -258,13 +262,13 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
         assert.deepEqual(presented.snapshot.events.slice(replayed.snapshot.events.length).filter(row => row.type === 'tool/call').map(row => row.data.name), ['rp_present'])
       } else { assert.equal(nativeBoundary, false); acceptedProse(replayed, resumed.factReceiptId) }
       const presented = await capture(source, sessionId), body = acceptedProse(presented, resumed.factReceiptId)
-      assert.equal(presented.review.pendingDecision, null); assert.deepEqual(pendingWorld(presented.database), pendingWorld(replayed.database)); assert.equal(fixedCount(presented), fixedCount(customView))
+      assert.equal(presented.review.pendingDecision, null); assert.deepEqual(pendingWorld(presented.database), pendingWorld(replayed.database)); assertFixedOperationRetained(replayed, presented, fixedWorkAudit)
       assert.ok(presented.gm.facts.items.some(row => row.id === 'native-marker' && row.text === 'FACT_REVISION_A'))
       assert.equal(presented.history.records.some(row => row.factReceiptId === customBody.factReceiptId), false)
       preservePrefix(presented.snapshot, customView.snapshot)
       assert.deepEqual((await source.api('database', 'source', { sourceId: worldSourceId })).source, originalSource.source)
       await source.page.screenshot({ path: join(run, 'custom-decision-presented.png') })
-      await write('custom-decision-resume.json', { sessionId, before, originalSource, retry, retried, retryEvidence, retryCommand, customRequest, custom, preCustom, approved, customView, customDeltas, customCommand, customBody, generated, pending, generateEvidence, generateCommand, preAbort, decision, interrupted, afterAbort, abortDeltas, command, intent, nativeBoundary, resumed, settled, settleDeltas, replay, replayed, replayDeltas, written, presentationDeltas, presented, body })
+      await write('custom-decision-resume.json', { sessionId, before, originalSource, retry, retried, retryEvidence, retryCommand, customRequest, custom, preCustom, approved, customView, customDeltas, customCommand, customBody, fixedWorkAudit, generated, pending, generateEvidence, generateCommand, preAbort, decision, interrupted, afterAbort, abortDeltas, command, intent, nativeBoundary, resumed, settled, settleDeltas, replay, replayed, replayDeltas, written, presentationDeltas, presented, body })
       report.actions.push({ name: 'pending fact retry', deltas: retryEvidence.deltas }, { name: 'custom approval', deltas: customDeltas }, { name: 'fact regeneration ON', deltas: generateEvidence.deltas }, { name: 'decision completion interruption attempt', deltas: abortDeltas }, { name: 'decision settlement resume', deltas: settleDeltas }, { name: 'decision settlement replay', deltas: replayDeltas }, ...(presentationDeltas ? [{ name: 'explicit fact presentation', deltas: presentationDeltas }] : []))
       return { sessionId, roundId: round.roundId, originalOperationId: decision.operationId, factReceiptId: resumed.factReceiptId, customReceiptId: approved.factReceiptId, interruption: { status: nativeBoundary ? 'passed' : 'NOT NATIVELY VERIFIED', attemptCount: 1 }, presentation: body.ref, evidence: 'custom-decision-resume.json' }
     })
@@ -278,6 +282,7 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       const interrupted = await source.probe('abortFactGeneration', { sessionId, roundId: round.roundId, operationId, expectedRoundVersion: round.version, instruction })
       await source.idle(sessionId)
       const afterAbort = await capture(source, sessionId), generationEvidence = stagedGeneration(before, afterAbort, { operationId, instruction, marker: 'FACT_REVISION_B' })
+      assertFixedOperationRetained(before, afterAbort, fixedWorkAudit)
       const generationCommand = commandProof(afterAbort.snapshot.events, operationId, 'rp-gm-fact-regenerate'), output = JSON.parse(generationCommand.done.data.text)
       assert.equal(output.candidateId, generationEvidence.candidate.id); assert.equal(output.payloadHash, generationEvidence.candidate.payloadHash)
       assert.equal(generationCommand.run.data.args.trim().split(/\s+/u)[1], ownerRequestHash({ schemaVersion: 1, sessionId, roundId: round.roundId, operationId, expectedRoundVersion: round.version, instruction, approvalRequired: false }))
@@ -303,6 +308,7 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       await source.page.getByRole('textbox', { name: '事实重生要求', exact: true }).fill(uiInstruction)
       const resumed = await source.api('studio', 'resumeFactGeneration', { sessionId, operationId }); await source.idle(sessionId)
       const settled = await capture(source, sessionId), settleDeltas = modelDeltas(afterAbort.models, settled.models)
+      assertFixedOperationRetained(afterAbort, settled, fixedWorkAudit)
       zeroModels(settleDeltas); assert.equal(resumed.job.operationId, operationId); assert.equal(resumed.job.status, 'complete'); assert.equal(resumed.job.candidateId, generationEvidence.candidate.id)
       assert.equal(resumed.decision?.status, 'approved'); assert.equal(resumed.decision.factReceiptId, settled.gm.lastFactReceipt.id)
       const decisionOperationId = resumed.decision.operationId
@@ -319,6 +325,7 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       assert.equal(settled.snapshot.events.slice(afterAbort.snapshot.events.length).filter(row => row.type === 'tool/call').length, 0)
       const replay = await source.api('studio', 'resumeFactGeneration', { sessionId, operationId }); await source.idle(sessionId)
       const replayed = await capture(source, sessionId), replayDeltas = modelDeltas(settled.models, replayed.models)
+      assertFixedOperationRetained(settled, replayed, fixedWorkAudit)
       zeroModels(replayDeltas); assert.equal(replay.job.operationId, operationId); assert.equal(replay.decision.operationId, decisionOperationId); assert.equal(replay.decision.factReceiptId, resumed.decision.factReceiptId)
       assert.deepEqual(pendingWorld(replayed.database), pendingWorld(settled.database)); assert.deepEqual(replayed.gm.lastFactReceipt, settled.gm.lastFactReceipt); assert.deepEqual(replayed.factReview.rounds, settled.factReview.rounds); assert.deepEqual(replayed.factReview.decisions, settled.factReview.decisions)
       let written, presentationDeltas
@@ -332,13 +339,14 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
         assert.deepEqual(presented.snapshot.events.slice(replayed.snapshot.events.length).filter(row => row.type === 'tool/call').map(row => row.data.name), ['rp_present'])
       } else { assert.equal(nativeBoundary, false); acceptedProse(replayed, resumed.decision.factReceiptId) }
       const presented = await capture(source, sessionId), body = acceptedProse(presented, resumed.decision.factReceiptId)
+      assertFixedOperationRetained(replayed, presented, fixedWorkAudit)
       assert.equal(presented.review.pendingDecision, null); assert.deepEqual(pendingWorld(presented.database), pendingWorld(replayed.database)); assert.deepEqual(presented.database.notes, before.database.notes); assert.deepEqual(presented.database.binding, before.database.binding)
       assert.deepEqual(presented.database.entries.filter(row => row.ref.sourceKey !== '@session'), before.database.entries.filter(row => row.ref.sourceKey !== '@session'))
       assert.equal(presented.history.records.some(row => row.factReceiptId === oldBody.factReceiptId), false)
       assert.ok(presented.gm.facts.items.some(row => row.id === 'native-marker' && row.text === 'FACT_REVISION_B'))
       preservePrefix(presented.snapshot, before.snapshot)
       await source.page.screenshot({ path: join(run, 'policy-off-generation-presented.png') })
-      await write('policy-off-generation-resume.json', { sessionId, configuration, before, operationId, instruction, interrupted, afterAbort, generationEvidence, generationCommand, nativeBoundary, needsApplication, uiInstruction, resumed, settled, settleDeltas, decisionOperationId, decisionCommand, replay, replayed, replayDeltas, written, presentationDeltas, presented, body })
+      await write('policy-off-generation-resume.json', { sessionId, configuration, before, operationId, instruction, interrupted, afterAbort, generationEvidence, generationCommand, nativeBoundary, needsApplication, uiInstruction, fixedWorkAudit, resumed, settled, settleDeltas, decisionOperationId, decisionCommand, replay, replayed, replayDeltas, written, presentationDeltas, presented, body })
       report.actions.push({ name: 'disable fact approval', deltas: modelDeltas(presentedBefore.models, before.models) }, { name: 'OFF generation completion interruption attempt', deltas: generationEvidence.deltas }, { name: 'OFF generation settlement resume', deltas: settleDeltas }, { name: 'OFF generation settlement replay', deltas: replayDeltas }, ...(presentationDeltas ? [{ name: 'explicit OFF fact presentation', deltas: presentationDeltas }] : []))
       return { sessionId, roundId: round.roundId, originalGenerationOperationId: operationId, mappedDecisionOperationId: decisionOperationId, candidateId: generationEvidence.candidate.id, factReceiptId: resumed.decision.factReceiptId, interruption: { status: nativeBoundary ? 'passed' : 'NOT NATIVELY VERIFIED', attemptCount: 1 }, presentation: body.ref, evidence: 'policy-off-generation-resume.json' }
     })

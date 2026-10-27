@@ -87,6 +87,31 @@ test('generation interruption evidence requires the staged candidate and origina
     assert.throws(() => proof.stagedGeneration(before, changed, { operationId: 'original-generation', instruction: 'STAGED_FACTS', marker: 'STAGED_FACTS' }))
   }
 })
+test('fixed work is proven once by the receipt-bound public change even after temporary current notes disappear', () => {
+  assert.equal(typeof proof.fixedOperationAudit, 'function')
+  const operation = { op: 'note', ref: { sourceKey: 'world', entryId: '0' }, text: 'NATIVE_FIXED_ONCE' }, hash = 'a'.repeat(64)
+  const command = { run: { seq: 5, data: { commandId: 'approval', args: `approve-op ${hash}` } }, done: { seq: 6 } }, source = { assistantMessageId: 'original-round', callSeq: 2 }, decisionSource = { sessionId: 'story', commandId: 'approval', runSeq: 5, doneSeq: 6, requestHash: hash }
+  const before = { database: { notes: [], changes: [] } }, change = { id: 'actual-change', anchor: 'original-round', operations: [{ op: 'update', ref: { sourceKey: '@session', entryId: 'gm.facts' }, patch: { content: 'facts' } }, operation] }
+  const after = { gm: { lastFactReceipt: { id: 'receipt', sessionId: 'story', factRoundId: 'round', changeId: 'actual-change', source, decisionSource } }, review: { latestRound: { roundId: 'round', source } }, database: { notes: [], changes: [change] } }
+  const audit = proof.fixedOperationAudit(before, after, command)
+  assert.equal(audit.changeId, 'actual-change'); assert.equal(audit.operationIndex, 1); assert.deepEqual(audit.operation, operation)
+  for (const mutate of [value => value.database.changes = [], value => value.database.changes[0].operations.push(operation), value => value.database.changes[0].operations[1].text = 'NATIVE_FIXED_ONCE altered', value => value.database.changes[0].anchor = 'unrelated', value => value.gm.lastFactReceipt.decisionSource.commandId = 'wrong', value => value.gm.lastFactReceipt.changeId = null]) {
+    const changed = structuredClone(after); mutate(changed)
+    assert.throws(() => proof.fixedOperationAudit(before, changed, command))
+  }
+})
+test('later fact revisions can append structured state operations but cannot replace or repeat the retained fixed operation', () => {
+  assert.equal(typeof proof.assertFixedOperationRetained, 'function')
+  const operation = { op: 'note', ref: { sourceKey: 'world', entryId: '0' }, text: 'NATIVE_FIXED_ONCE' }, change = { id: 'original', anchor: 'source', operations: [operation] }
+  const before = { database: { notes: [{ text: 'temporary' }], changes: [change] } }, after = structuredClone(before)
+  after.database.notes = []; after.database.changes.push({ id: 'revision', operations: [{ op: 'update', ref: { sourceKey: '@session', entryId: 'gm.facts' }, patch: { content: 'new facts' } }] })
+  const audit = { changeId: 'original', operationIndex: 0, operation, change }
+  assert.doesNotThrow(() => proof.assertFixedOperationRetained(before, after, audit))
+  for (const mutate of [value => value.database.changes[1].operations.push(operation), value => value.database.changes[0].operations[0].ref.entryId = 'other', value => value.database.changes[0].id = 'replacement', value => value.database.changes[0].anchor = 'changed']) {
+    const changed = structuredClone(after); mutate(changed)
+    assert.throws(() => proof.assertFixedOperationRetained(before, changed, audit))
+  }
+})
 test('zero model recovery rejects an omitted stage and every real nonzero stage', () => {
   assert.equal(typeof proof.modelDeltas, 'function')
   const counts = { gm: 2, revise: 1, prepare: 1, summarize: 0, assembly: 1, writer: 1, 'writer-alt': 0 }

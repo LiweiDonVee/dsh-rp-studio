@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import { isDeepStrictEqual } from 'node:util'
 export const MODEL_STAGES = ['gm', 'revise', 'prepare', 'summarize', 'assembly', 'writer', 'writer-alt']
 export const sha = value => createHash('sha256').update(typeof value === 'string' || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest('hex')
 export function ownerRequestHash(value) {
@@ -140,4 +141,31 @@ export function stagedGeneration(before, after, { operationId, instruction, mark
   const request = requests[0]; assert.deepEqual(request.tools, []); assert.deepEqual(request.input.base, original.base); assert.deepEqual(request.input.capture, original.capture); assert.equal(request.input.instruction, instruction)
   assert.ok(after.snapshot.events.slice(before.snapshot.events.length).filter(row => row.type === 'tool/call').every(row => row.data.name === 'rp_present'), 'generation repeated fact/evidence tools')
   return { candidate, job, request, deltas }
+}
+const FIXED_OPERATION = { op: 'note', ref: { sourceKey: 'world', entryId: '0' }, text: 'NATIVE_FIXED_ONCE' }
+function fixedOccurrences(view) {
+  assert.ok(Array.isArray(view.database.changes), 'missing public effective changes')
+  const ids = new Set(), occurrences = []
+  for (const change of view.database.changes) {
+    assert.ok(typeof change.id === 'string' && !ids.has(change.id), 'missing or duplicated public change ID'); ids.add(change.id); assert.ok(Array.isArray(change.operations))
+    for (const [operationIndex, operation] of change.operations.entries()) if (isDeepStrictEqual(operation, FIXED_OPERATION)) occurrences.push({ changeId: change.id, operationIndex, operation })
+  }
+  return occurrences
+}
+export function fixedOperationAudit(before, after, command) {
+  const receipt = after.gm.lastFactReceipt, round = after.review.latestRound
+  assert.ok(typeof receipt.changeId === 'string' && receipt.changeId); assert.equal(receipt.factRoundId, round.roundId); assert.deepEqual(receipt.source, round.source)
+  const changes = after.database.changes.filter(change => change.id === receipt.changeId); assert.equal(changes.length, 1)
+  const change = changes[0], tokens = command.run.data.args.trim().split(/\s+/u)
+  const decisionSource = { sessionId: receipt.sessionId, commandId: command.run.data.commandId, runSeq: command.run.seq, doneSeq: command.done.seq, requestHash: tokens[1] }
+  assert.equal(change.anchor, round.source.assistantMessageId); assert.deepEqual(receipt.decisionSource, decisionSource)
+  const occurrences = fixedOccurrences(after), selected = occurrences.filter(row => row.changeId === receipt.changeId)
+  assert.equal(selected.length, 1, 'accepted change must apply the exact fixed operation once'); assert.equal(occurrences.length, fixedOccurrences(before).length + 1)
+  return structuredClone({ ...selected[0], change })
+}
+export function assertFixedOperationRetained(before, after, audit) {
+  const prior = fixedOccurrences(before), current = fixedOccurrences(after)
+  assert.ok(prior.some(row => row.changeId === audit.changeId && row.operationIndex === audit.operationIndex && isDeepStrictEqual(row.operation, audit.operation)), 'original fixed operation was already missing')
+  assert.deepEqual(current, prior, 'fixed operation disappeared, changed or replayed')
+  assert.deepEqual(after.database.changes.find(change => change.id === audit.changeId), audit.change, 'original fixed operation source changed')
 }
