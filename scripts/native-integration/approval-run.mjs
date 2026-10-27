@@ -12,10 +12,17 @@ import { redact } from './host.mjs'
 import { modelDeltas, zeroModels, pendingWorld, durablePending, successfulToolResults, terminalProposal, acceptedProse, preservePrefix } from './approval-proof.mjs'
 
 export const APPROVAL_SCENARIOS = ['default-off-pending-cold', 'custom-regeneration-decision-resume', 'policy-off-generation-resume', 'effective-writer-scope', 'fork-saved-story-cold']
-export async function clickOwner(context, action, click) {
-  const response = context.page.waitForResponse(row => row.url().endsWith('/api/rp-studio/actions') && row.request().method() === 'POST' && row.request().postDataJSON()?.action === action)
-  await click(); const result = await response, value = await result.json()
+export async function clickOwner(context, action, click, matches = () => true) {
+  const response = context.page.waitForResponse(row => row.url().endsWith('/api/rp-studio/actions') && row.request().method() === 'POST' && row.request().postDataJSON()?.action === action && matches(row.request().postDataJSON()))
+  const [, result] = await Promise.all([click(), response]), value = await result.json()
   assert.equal(result.status(), 200, JSON.stringify(value)); assert.ok(!value.error, JSON.stringify(value)); return value
+}
+export async function configureApproval(context, sessionId, enabled) {
+  const toggle = context.page.getByRole('checkbox', { name: '本故事事实审批', exact: true })
+  await expect(toggle).toBeEnabled(); await expect(toggle).toBeChecked({ checked: !enabled })
+  const result = await clickOwner(context, 'configureReview', () => toggle.click(), input => input.sessionId === sessionId && input.enabled === enabled)
+  assert.equal(result.enabled, enabled); await expect(toggle).toBeChecked({ checked: enabled })
+  return result
 }
 async function sendPlayer(context, sessionId, input) {
   const response = context.page.waitForResponse(row => row.url().endsWith('/api/rp-studio/request') && row.request().method() === 'POST' && row.request().postDataJSON()?.path?.endsWith('/messages'))
@@ -92,7 +99,7 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       assert.deepEqual(baseline.gm.facts.items.filter(row => row.id !== 'native-marker'), initial.gm.facts.items)
       for (const ref of baseline.gm.lastFactReceipt.stateRefs) assert.equal(baseline.database.entries.find(entry => entry.ref.sourceKey === ref.sourceKey && entry.ref.entryId === ref.entryId)?.version, ref.version)
       assert.equal(baseline.review.latestRound.approvalRequired, false)
-      await clickOwner(source, 'configureReview', () => toggle.check()); await expect(toggle).toBeChecked()
+      const reviewConfiguration = await configureApproval(source, sessionId, true)
       await setNote(source, sessionId, 'NATIVE_OLD_NOTE_CONSUMED_ON_CUSTOM')
       const before = await capture(source, sessionId)
       await sendPlayer(source, sessionId, 'NATIVE_APPROVAL_PENDING')
@@ -128,7 +135,7 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       const afterColdUi = await capture(source, sessionId)
       assert.equal(afterColdUi.models.total, 0); zeroModels(afterColdUi.models.counts); assert.deepEqual(durablePending(afterColdUi), durablePending(saved))
       preservePrefix(afterColdUi.snapshot, saved.snapshot); assert.ok(afterColdUi.snapshot.events.slice(saved.snapshot.events.length).every(row => row.type === 'session/end-seed'))
-      await write('pending-cold.json', { sessionId, initial, baseline, baselineBody, baselineDeltas, commits, presentations, before, pending, pendingDeltas, proposal, saved, cold, afterColdUi, prefix, pendingSnapshot, layouts })
+      await write('pending-cold.json', { sessionId, initial, baseline, baselineBody, baselineDeltas, commits, presentations, reviewConfiguration, before, pending, pendingDeltas, proposal, saved, cold, afterColdUi, prefix, pendingSnapshot, layouts })
       report.actions.push({ name: 'default-off ordinary', deltas: baselineDeltas }, { name: 'terminal pending', deltas: pendingDeltas }, { name: 'cold pending observation', models: cold.models.counts })
       return { sessionId, candidateId, baselineReceiptId: baseline.gm.lastFactReceipt.id, proposalCallSeq: call.seq, proposalResultSeq: result.seq, pendingWorldUnchanged: true, coldHistoricalModels: 0, prefix, layouts }
     })

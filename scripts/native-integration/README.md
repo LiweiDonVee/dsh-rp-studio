@@ -28,6 +28,8 @@ node scripts/native-integration/readback-defaults.mjs --run <existing-passed-run
 node --test scripts/native-integration/*.test.mjs
 ```
 
+The approval UI helper tests use an existing Chromium through `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` or Playwright's installed default. They run synthetic controlled-checkbox pages without starting a native host.
+
 Both scenario modes require a complete `stage: final` manifest. Run `full` only with the coordinator's currently approved final archive list; a revoked or superseded list may be used only for an explicitly authorized diagnostic. A manifest's stage alone does not establish approval.
 
 `approval` is the separate bounded A029 approval/regeneration workflow. The first source checkpoint implements default-off → terminal pending → cold pending observation only; remaining four groups stay `not-run`, and `checkpoint-passed` has `finalAcceptance:false`. It reuses the same installed owners, paths, browser and cleanup helpers. Approval fixtures are enabled only for this mode: bounded synthetic LLM input evidence, a tool-free `revise` model, real Loop routing and a scoped public command completion AbortSignal observer. They do not supply owner services or modify journals. Actual execution requires the coordinator's approved compatible manifest; a source/unit checkpoint is not native acceptance. Response observations retain error URLs and timestamps without filtering the original console-error array.
