@@ -176,6 +176,11 @@ export function validOwnerPatch(database, catalog) {
   const args = { expectedRevision: catalog.revision, operations: [{ op: 'update', id: JSON.stringify([entry.ref.sourceKey, entry.ref.entryId]), patch: { content: 'NATIVE_FORBIDDEN_SCOPE' } }] }
   return structuredClone({ args, previous, catalogEntry: entry, catalogRevision: catalog.revision })
 }
+export function authorNoteRecord(value) {
+  assert.equal(typeof value?.text, 'string', 'authorNote GET must return the record itself')
+  assert.ok(Number.isSafeInteger(value.version) && value.version >= 0); assert.ok(['pending', 'claimed', 'consumed'].includes(value.status)); assert.equal(Object.hasOwn(value, 'note'), false)
+  return value
+}
 function unchangedWriterFacts(before, after) {
   assert.deepEqual(pendingWorld(after.database), pendingWorld(before.database)); assert.deepEqual(after.gm.lastFactReceipt, before.gm.lastFactReceipt)
   assert.deepEqual(after.gm.scene, before.gm.scene); assert.deepEqual(after.gm.facts, before.gm.facts)

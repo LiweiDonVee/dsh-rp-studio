@@ -25,6 +25,13 @@ test('a scope test patch uses the real catalog revision and qualified tool id ra
   assert.deepEqual(armed.args, { expectedRevision: 7, operations: [{ op: 'update', id: '["world","0"]', patch: { content: 'NATIVE_FORBIDDEN_SCOPE' } }] })
   for (const mutate of [value => value.entries[0].readOnly = true, value => value.entries[0].mode = 'disabled', value => value.revision++]) { const changed = structuredClone(database); mutate(changed); assert.throws(() => proof.validOwnerPatch(changed, catalog)) }
 })
+test('authorNote GET is the public record while setAuthorNote keeps its explicit note wrapper', () => {
+  assert.equal(typeof proof.authorNoteRecord, 'function')
+  const record = { text: 'PUBLIC_AUTHOR_NOTE', version: 2, status: 'consumed' }, setResult = { revision: 8, note: { ...record, status: 'pending' } }
+  assert.deepEqual(proof.authorNoteRecord(record), record)
+  assert.deepEqual(proof.authorNoteRecord(setResult.note), setResult.note)
+  for (const invalid of [setResult, null, { ...record, text: undefined }, { ...record, version: '2' }, { ...record, status: 'complete' }]) assert.throws(() => proof.authorNoteRecord(invalid))
+})
 test('writer regeneration requires canonical append, frozen composition and the actual changed render route with dispatch costs', () => {
   assert.equal(typeof proof.writerRevision, 'function')
   const fixture = writerViews(); assert.equal(proof.writerRevision(fixture.before, fixture.after, fixture).narrative.ref.presentationId, 'new')

@@ -10,7 +10,7 @@ import { openNativeContext, finishNativeContext, restartNativeContext } from './
 import { ownedRunPath } from './paths.mjs'
 import { redact } from './host.mjs'
 import { verifyAction } from './action-proof.mjs'
-import { modelDeltas, zeroModels, pendingWorld, durablePending, assertReceiptProjection, successfulToolResults, terminalProposal, acceptedProse, preservePrefix, commandProof, generatedCandidate, approvedWithoutPresentation, stagedGeneration, fixedOperationAudit, assertFixedOperationRetained, writerRevision, writerScopeDenial, effectiveMaterialAudit, ownerRequestHash, textOf } from './approval-proof.mjs'
+import { modelDeltas, zeroModels, pendingWorld, durablePending, assertReceiptProjection, successfulToolResults, terminalProposal, acceptedProse, preservePrefix, commandProof, generatedCandidate, approvedWithoutPresentation, stagedGeneration, fixedOperationAudit, assertFixedOperationRetained, writerRevision, writerScopeDenial, effectiveMaterialAudit, authorNoteRecord, ownerRequestHash, textOf } from './approval-proof.mjs'
 
 export const APPROVAL_SCENARIOS = ['default-off-pending-cold', 'custom-regeneration-decision-resume', 'policy-off-generation-resume', 'effective-writer-scope', 'fork-saved-story-cold']
 export async function clickOwner(context, action, click, matches = () => true) {
@@ -364,9 +364,9 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       const readingBefore = await source.api('studio', 'exportReading', { sessionId, format: 'markdown' })
       assert.ok(readingBefore.text.includes(originalBody.text))
       for (const obsolete of materialAudit.superseded) assert.equal(readingBefore.text.includes(obsolete.text), false)
-      const oldNote = await source.api('studio', 'authorNote', { sessionId }); assert.equal(oldNote.status, 'consumed')
-      assert.equal(oldNote.note.text, 'NATIVE_OLD_NOTE_CONSUMED_ON_CUSTOM')
-      for (const request of effectiveRequests.filter(row => ['prepare', 'summarize', 'assembly', 'writer', 'writer-alt'].includes(row.model))) assert.equal(JSON.stringify(request.input).includes(oldNote.note.text), false, 'folded prose requeued the consumed author note')
+      const oldNote = authorNoteRecord(await source.api('studio', 'authorNote', { sessionId })); assert.equal(oldNote.status, 'consumed')
+      assert.equal(oldNote.text, 'NATIVE_OLD_NOTE_CONSUMED_ON_CUSTOM')
+      for (const request of effectiveRequests.filter(row => ['prepare', 'summarize', 'assembly', 'writer', 'writer-alt'].includes(row.model))) assert.equal(JSON.stringify(request.input).includes(oldNote.text), false, 'folded prose requeued the consumed author note')
       const pendingNote = await setNote(source, sessionId, 'NATIVE_NEW_NOTE_MUST_REMAIN_PENDING_DURING_WRITER_REGEN')
       const loopBefore = await source.probe('loop', { sessionId }), routes = await source.probe('routes', { sessionId, renderModel: 'writer-alt' }), loopAfter = await source.probe('loop', { sessionId })
       assert.equal(loopAfter.policies.session.routes['rp-last-step.render'].model, 'writer-alt')
@@ -384,18 +384,18 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       const firstBody = acceptedProse(rewritten, before.gm.lastFactReceipt.id), firstMaterial = await source.api('studio', 'material', { sessionId, presentationId: firstBody.ref.presentationId })
       const firstProof = writerRevision(preWriter, rewritten, { ...first, originalMaterial, material: firstMaterial, originalInput: originalWriter.input, operationId: first.request.operationId, instruction: first.request.instruction, model: 'writer-alt', basedOn: originalBody.ref })
       assertFixedOperationRetained(preWriter, rewritten, fixedWorkAudit)
-      const afterFirstNote = await source.api('studio', 'authorNote', { sessionId }); assert.equal(afterFirstNote.status, 'pending'); assert.equal(afterFirstNote.note.version, pendingNote.note.version)
+      const afterFirstNote = authorNoteRecord(await source.api('studio', 'authorNote', { sessionId })); assert.equal(afterFirstNote.status, 'pending'); assert.equal(afterFirstNote.version, pendingNote.note.version)
       const armed = await source.probe('armOwnerPatch', { sessionId }), preDenial = await capture(source, sessionId)
       const denied = await regenerate('NATIVE_WRITER_SCOPE_GUARD', firstBody.ref), afterDenial = await capture(source, sessionId)
       assert.equal(denied.result.status, 'failed')
       const denialProof = writerScopeDenial(preDenial, afterDenial, armed, denied.request.operationId)
       assertFixedOperationRetained(preDenial, afterDenial, fixedWorkAudit)
-      const afterDenialNote = await source.api('studio', 'authorNote', { sessionId }); assert.equal(afterDenialNote.status, 'pending'); assert.equal(afterDenialNote.note.version, pendingNote.note.version)
+      const afterDenialNote = authorNoteRecord(await source.api('studio', 'authorNote', { sessionId })); assert.equal(afterDenialNote.status, 'pending'); assert.equal(afterDenialNote.version, pendingNote.note.version)
       const nextWriter = await regenerate('NATIVE_WRITER_SCOPE_RELEASED', firstBody.ref), valid = await capture(source, sessionId)
       const validBody = acceptedProse(valid, before.gm.lastFactReceipt.id), validMaterial = await source.api('studio', 'material', { sessionId, presentationId: validBody.ref.presentationId })
       const validProof = writerRevision(afterDenial, valid, { ...nextWriter, originalMaterial: firstMaterial, material: validMaterial, originalInput: firstProof.request.input, operationId: nextWriter.request.operationId, instruction: nextWriter.request.instruction, model: 'writer-alt', basedOn: firstBody.ref })
       assertFixedOperationRetained(afterDenial, valid, fixedWorkAudit)
-      const afterValidNote = await source.api('studio', 'authorNote', { sessionId }); assert.equal(afterValidNote.status, 'pending'); assert.equal(afterValidNote.note.version, pendingNote.note.version)
+      const afterValidNote = authorNoteRecord(await source.api('studio', 'authorNote', { sessionId })); assert.equal(afterValidNote.status, 'pending'); assert.equal(afterValidNote.version, pendingNote.note.version)
       const readingAfter = await source.api('studio', 'exportReading', { sessionId, format: 'markdown' }), nativeReader = await source.studio('GET', `/api/v1/sessions/${sessionId}`)
       assert.ok(readingAfter.text.includes(validBody.text)); assert.ok(nativeReader.messages.some(row => row.text === validBody.text))
       for (const obsolete of materialAudit.superseded) { assert.equal(readingAfter.text.includes(obsolete.text), false); assert.equal(nativeReader.messages.some(row => row.text === obsolete.text), false) }
@@ -414,7 +414,7 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       assert.deepEqual(next.review.latestRound.base, { scene: actualState.scene, facts: actualState.facts }); assert.equal(next.review.latestRound.capture.playerInput.text, nextAction)
       const nextProof = verifyAction({ ...preNext, narratives: preNext.canonical.records }, { ...next, narratives: next.canonical.records }, { text: nextAction, facts: preNext.gm.facts })
       assertFixedOperationRetained(preNext, next, fixedWorkAudit); preservePrefix(next.snapshot, preNext.snapshot)
-      const consumedNote = await source.api('studio', 'authorNote', { sessionId }); assert.equal(consumedNote.status, 'consumed'); assert.equal(consumedNote.note.version, pendingNote.note.version)
+      const consumedNote = authorNoteRecord(await source.api('studio', 'authorNote', { sessionId })); assert.equal(consumedNote.status, 'consumed'); assert.equal(consumedNote.version, pendingNote.note.version)
       await source.page.screenshot({ path: join(run, 'effective-writer-scope-released.png') })
       await write('effective-writer-scope.json', { sessionId, before, originalBody, originalMaterial, originalWriter, effectiveRequests, materialAudit, readingBefore, oldNote, pendingNote, loopBefore, routes, loopAfter, preWriter, first, rewritten, firstMaterial, firstProof, afterFirstNote, armed, preDenial, denied, afterDenial, denialProof, afterDenialNote, nextWriter, valid, validMaterial, validProof, afterValidNote, readingAfter, nativeReader, preNext, nextAction, actualState, observed, actualCommit, next, nextProof, consumedNote, fixedWorkAudit })
       report.actions.push({ name: 'writer regeneration current route', deltas: firstProof.deltas }, { name: 'writer scope forbidden real patch', deltas: denialProof.deltas }, { name: 'valid writer after denial', deltas: validProof.deltas }, { name: 'ordinary action after scope disposal', deltas: modelDeltas(preNext.models, next.models) })
