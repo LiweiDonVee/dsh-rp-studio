@@ -43,14 +43,15 @@ afterEach(cleanup)
 const mount = h => render(<Workspace sessionId="story" client={h.api} openSession={vi.fn()} />)
 
 describe('fact approval and separate regeneration controls (contract fixtures)', () => {
-  it.skipIf(!process.env.STUDIO_NATIVE_GM_REVIEW_URL)('BASE counterexample: real scoped legacy capabilities still lead FactTools to the real GM unbound refusal', async () => {
+  it.skipIf(!process.env.STUDIO_NATIVE_GM_REVIEW_URL)('uses real scoped legacy capabilities to avoid the inapplicable GM read while preserving LastStep, writer-only and ordinary actions', async () => {
     // Opt in with the independently fixed GM source URL; this never boots an owner or writes its state.
     const { createFactReview } = createRequire(import.meta.url)(fileURLToPath(process.env.STUDIO_NATIVE_GM_REVIEW_URL))
-    const h = fixture({ pending: false }), bindingCalls = []
-    const binding = async ({ sessionId }) => { bindingCalls.push(sessionId); return null }
+    const h = fixture({ pending: false })
+    const binding = async ({ sessionId }) => { expect(sessionId).toBe('story'); return null }
     const review = createFactReview({ ctx: {}, runtime: { assertPlayable: async sessionId => { expect(sessionId).toBe('story') } }, bound: sessionId => binding({ sessionId }) })
     const gm = { ...review, apiVersion: 1, capabilities: { factReview: 1 }, binding, storyState: async () => { throw new Error('unbound story must not read GM state') } }
-    const route = createStudioActions({ getService: name => name === 'rpGM' ? gm : undefined, authorize: async sessionId => { expect(sessionId).toBe('story') } })
+    const lastStep = { apiVersion: 1, capabilities: { narrativeRevisions: 1 }, storyHistory: async () => ({ schemaVersion: 1, records: [narrative], folded: [], projectionKey: 'legacy-effective-1' }), presentationSummaries: async () => ({ presentations: [], canRegenerate: true, capabilities: { regenerateDispatch: true, retryDispatch: false } }), regenerateProse: async () => ({ status: 'complete' }) }
+    const route = createStudioActions({ getService: name => ({ rpGM: gm, rpLastStep: lastStep })[name], authorize: async sessionId => { expect(sessionId).toBe('story') } })
     const request = input => route.request(new Request('http://local/api/rp-studio/actions', { method: 'POST', body: JSON.stringify(input) }))
     const capabilityResponse = await request({ action: 'capabilities', sessionId: 'story' })
     const capabilities = await capabilityResponse.json()
@@ -62,16 +63,69 @@ describe('fact approval and separate regeneration controls (contract fixtures)',
     expect(refusal.error.code).toBe('STORY_NOT_FOUND')
     delete h.state.extensions.gm
     h.handlers.capabilities = async input => (await request({ action: 'capabilities', ...input })).json()
-    h.handlers.reviewState = async input => {
-      const response = await request({ action: 'reviewState', ...input }), body = await response.json()
+    for (const action of ['reviewState', 'storyHistory', 'presentationSummaries', 'regenerateProse']) h.handlers[action] = async input => {
+      const response = await request({ action, ...input }), body = await response.json()
       if (!response.ok) throw Object.assign(new Error(body.error.message), { code: body.error.code, status: response.status })
       return body
     }
     mount(h)
-    expect(await screen.findByRole('alert')).toHaveTextContent('STORY_NOT_FOUND')
-    expect(h.calls.filter(call => call.action === 'reviewState').map(call => call.input)).toEqual([{ sessionId: 'story' }])
-    expect(bindingCalls).toEqual(['story', 'story', 'story', 'story'])
+    const writer = await screen.findByRole('button', { name: '只重新写作' })
+    await waitFor(() => expect(writer).not.toBeDisabled())
+    expect(h.calls.some(call => call.action === 'reviewState')).toBe(false)
+    expect(h.calls.find(call => call.action === 'storyHistory')?.input).toEqual({ sessionId: 'story' })
+    expect(h.calls.find(call => call.action === 'presentationSummaries')?.input).toEqual({ sessionId: 'story' })
+    expect(screen.queryByRole('checkbox', { name: '本故事事实审批' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '重新生成事实' })).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    fireEvent.click(writer)
+    await screen.findByText('新的正文已完成，旧版本保留审计。')
+    expect(h.calls.find(call => call.action === 'regenerateProse')?.input).toEqual({ sessionId: 'story', basedOn: ref, operationId: expect.any(String) })
+    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    expect(await screen.findByText('有效正文。')).toBeTruthy()
+    const input = screen.getByRole('textbox', { name: '写下你的行动' })
+    fireEvent.change(input, { target: { value: '旧故事继续行动' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送行动 ↑' }))
+    await waitFor(() => expect(h.api.send).toHaveBeenCalledWith('story', '旧故事继续行动'))
+    expect(h.calls.some(call => ['reviewState', 'configureReview', 'decideFacts', 'regenerateFacts'].includes(call.action))).toBe(false)
     route.close(); review.close()
+  })
+  it.each([
+    ['missing story', undefined, false],
+    ['non-boolean generic', { generic: 'false' }, false],
+    ['malformed actions', { generic: false }, true],
+  ])('keeps %s capabilities visible as an error rather than a successful legacy state', async (_label, story, malformedActions) => {
+    const h = fixture({ pending: false })
+    h.handlers.capabilities = async () => ({ schemaVersion: 1, services, actions: malformedActions ? [] : { ...h.flags }, ...(story === undefined ? {} : { story }) })
+    mount(h)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/本故事.*能力/u)
+    expect(h.calls.some(call => call.action === 'reviewState')).toBe(false)
+    expect(screen.queryByRole('checkbox', { name: '本故事事实审批' })).toBeNull()
+    expect(screen.getByRole('button', { name: '只重新写作' })).toBeDisabled()
+  })
+  it('retains a failed capabilities read as an error without inferring legacy support', async () => {
+    const h = fixture({ pending: false })
+    h.handlers.capabilities = async () => { throw Object.assign(new Error('capabilities owner unavailable'), { code: 'CAPABILITY_UNAVAILABLE', status: 503 }) }
+    mount(h)
+    expect(await screen.findByRole('alert')).toHaveTextContent('CAPABILITY_UNAVAILABLE：capabilities owner unavailable')
+    expect(h.calls.some(call => call.action === 'reviewState')).toBe(false)
+    expect(screen.queryByRole('checkbox', { name: '本故事事实审批' })).toBeNull()
+  })
+  it.each([['PERMISSION_DENIED', 403], ['FACT_BASE_CHANGED', 409], ['CAPABILITY_UNAVAILABLE', 503]])('keeps a supported generic read failure %s/%s visible', async (code, status) => {
+    const h = fixture({ pending: false })
+    h.handlers.reviewState = async () => { throw Object.assign(new Error('generic owner refused the read'), { code, status }) }
+    mount(h)
+    expect(await screen.findByRole('alert')).toHaveTextContent(`${code}：generic owner refused the read`)
+    expect(h.calls.find(call => call.action === 'reviewState')?.input).toEqual({ sessionId: 'story' })
+  })
+  it('keeps a supported legacy LastStep read failure visible and writer-only disabled', async () => {
+    const h = fixture({ pending: false })
+    delete h.state.extensions.gm
+    h.handlers.capabilities = async () => ({ schemaVersion: 1, services, actions: { ...h.flags }, story: { generic: false } })
+    h.handlers.storyHistory = async () => { throw Object.assign(new Error('effective history owner unavailable'), { code: 'EFFECTIVE_HISTORY_UNAVAILABLE', status: 503 }) }
+    mount(h)
+    expect(await screen.findByRole('alert')).toHaveTextContent('EFFECTIVE_HISTORY_UNAVAILABLE：effective history owner unavailable')
+    expect(h.calls.some(call => call.action === 'reviewState')).toBe(false)
+    expect(screen.getByRole('button', { name: '只重新写作' })).toBeDisabled()
   })
   it('starts approval off and uses the GM settings revision for the per-story switch', async () => {
     const h = fixture({ pending: false }); mount(h)

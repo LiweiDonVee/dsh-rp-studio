@@ -41,7 +41,7 @@ function CustomFields({ value, onChange, variables, onVariables }) {
 }
 
 export function FactTools({ sessionId, client, running, currentWorld, ownerRevision = '', onPause, onChanged }) {
-  const [data, setData] = useState({ flags: {}, review: null, latest: null, summaries: null })
+  const [data, setData] = useState({ flags: {}, generic: null, review: null, latest: null, summaries: null })
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [cancelling, setCancelling] = useState(false)
   const [tick, setTick] = useState(0), [error, setError] = useState(''), [notice, setNotice] = useState('')
   const [selected, setSelected] = useState(null), [custom, setCustom] = useState(null), [editing, setEditing] = useState(false)
@@ -57,9 +57,10 @@ export function FactTools({ sessionId, client, running, currentWorld, ownerRevis
     setLoading(true)
     void (async () => {
       try {
-        const { actions: flags } = await client.action('capabilities', { sessionId }, controller.signal)
-        const next = { flags, review: null, latest: null, summaries: null }
-        const reads = ['reviewState', 'storyHistory', 'presentationSummaries'].filter(method => flags[method])
+        const { actions: flags, story } = await client.action('capabilities', { sessionId }, controller.signal)
+        if (typeof story?.generic !== 'boolean' || !flags || typeof flags !== 'object' || Array.isArray(flags) || ['reviewState', 'storyHistory', 'presentationSummaries'].some(method => typeof flags[method] !== 'boolean')) throw new Error('无法读取本故事的 GM 能力，请刷新后重试。')
+        const next = { flags, generic: story.generic, review: null, latest: null, summaries: null }
+        const reads = ['reviewState', 'storyHistory', 'presentationSummaries'].filter(method => flags[method] && (method !== 'reviewState' || story.generic))
         const values = await Promise.allSettled(reads.map(method => client.action(method, { sessionId }, controller.signal)))
         if (!current()) return
         for (let index = 0; index < reads.length; index++) {
@@ -75,12 +76,12 @@ export function FactTools({ sessionId, client, running, currentWorld, ownerRevis
           const candidate = round.candidates.find(item => item.id === round.pendingCandidateId && item.generationConfirmed !== false)
           if (candidate) { selection.current = candidate; setSelected(copy(candidate)); setCustom(copy(candidate.payload)); setVariableRows(Object.entries(candidate.payload.packet.variables ?? {})) }
         }
-      } catch (cause) { if (current()) setError(errorText(cause)) }
+      } catch (cause) { if (current()) { setData(previous => ({ ...previous, generic: null })); setError(errorText(cause)) } }
       finally { if (current()) setLoading(false) }
     })()
     return () => controller.abort()
   }, [sessionId, client, running, ownerRevision, tick])
-  const { flags, review, latest, summaries } = data
+  const { flags, generic, review, latest, summaries } = data
   const round = review?.latestRound, generation = review?.generation, intent = review?.pendingDecision
   const pending = pendingReview(review)
   const blocked = pending || busy || loading && !!currentWorld && typeof client.action === 'function'
@@ -143,10 +144,12 @@ export function FactTools({ sessionId, client, running, currentWorld, ownerRevis
     {loading && <p role="status">正在读取事实审批状态…</p>}
     {error && <p role="alert" className="rp-tool-error">{error}</p>}{notice && <p role="status">{notice}</p>}
     {retained && <p>保留操作：{retained.input.operationId || retained.method}{retained.input.candidateId ? ` · 原候选 ${retained.input.candidateId}` : ''}</p>}
+    {generic === false && <p className="rp-note">此故事未使用通用 GM；事实审批与事实重新生成不适用。</p>}
+    <button type="button" disabled={busy} onClick={() => { setError(''); setTick(value => value + 1) }}>刷新事实与写作状态</button>
+    {generic === true && <>
     <label className="rp-review-toggle"><input type="checkbox" aria-label="本故事事实审批" checked={review?.enabled === true} disabled={!review || !flags.configureReview || unavailable} onChange={event => { if (review && !unavailable) void run('configureReview', { sessionId, enabled: event.target.checked, expectedRevision: review.revision }, 'settings') }} />本故事事实审批</label>
     <p className="rp-note">默认关闭。开启后先确认事实，再继续写作；已经等待审批的候选保留原审批策略。</p>
     {!flags.reviewState && !loading && <p>事实审批不可用，请检查 GM 与 Database 的对应能力。旧故事入口仍可使用。</p>}
-    <button type="button" disabled={busy} onClick={() => { setError(''); setTick(value => value + 1) }}>刷新事实与写作状态</button>
     {round && <p>事实回合：{round.roundId} · 版本 {round.version} · {round.activeReceiptId ? `已生效回执 ${round.activeReceiptId}` : '尚无生效事实'}</p>}
     {round?.pendingCandidateId && <p role="status">候选事实 · 尚未写入</p>}
     {reserved && <p role="status">{intent.status === 'recorded' ? '审批已记录，等待确认或应用。' : '审批中断或失败，可继续原决定。'} 原操作：{intent.operationId}</p>}
@@ -172,6 +175,7 @@ export function FactTools({ sessionId, client, running, currentWorld, ownerRevis
       {generationResume && <button type="button" disabled={unavailable || !flags.resumeFactGeneration} onClick={() => void run('resumeFactGeneration', { sessionId, operationId: generationResume }, 'generation')}>继续候选结算（不重新生成）</button>}
       {generation && ['failed', 'interrupted', 'cancelled'].includes(generation.status) && !generation.candidateId && <p>没有已暂存的候选时，继续结算不会重新调用模型。请明确发起新的事实生成。</p>}
     </section>
+    </>}
     <section className="rp-tool-section"><h3>只重新写作</h3><p>沿用当前事实与已冻结的完整写作材料，只请求 writer；成功后旧正文折叠为审计。</p>
       <label>写作重生要求<textarea aria-label="写作重生要求" value={writerInstruction} onChange={event => setWriterInstruction(event.target.value)} rows={2} /></label>
       <button type="button" disabled={unavailable || pending || !flags.regenerateProse || !latest || summaries?.canRegenerate !== true || summaries?.capabilities?.regenerateDispatch !== true} onClick={() => void run('regenerateProse', { sessionId, basedOn: copy(latest.ref), operationId: operationId(), ...(writerInstruction ? { instruction: writerInstruction } : {}) }, 'writer')}>只重新写作</button>
