@@ -10,13 +10,16 @@ const quote = value => { if (/["\r\n]/u.test(value)) throw new Error('INVALID_CL
 export const defaultCli = () => process.env.DSH_BIN ?? join(process.env.LOCALAPPDATA ?? '', 'Programs/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd')
 export async function closeOwnedResources(browser, host, recordLifecycle = () => {}) {
   recordLifecycle('close-requested')
-  const results = await Promise.allSettled([browser, host].map((resource, index) => Promise.resolve().then(async () => {
-    const name = index === 0 ? 'browser' : 'host'
+  const failures = []
+  for (const [name, resource] of [['browser', browser], ['host', host]]) {
     recordLifecycle(`${name}-close-invoked`)
     try { await resource?.close(); recordLifecycle(`${name}-close-settled`, { status: 'stopped' }) }
-    catch (error) { recordLifecycle(`${name}-close-settled`, { status: 'failed', error: redact(error?.message ?? error).slice(0, 600) }); throw error }
-  })))
-  return results.flatMap((result, index) => result.status === 'rejected' ? [{ resource: index === 0 ? 'browser' : 'host', message: redact(result.reason?.message ?? result.reason).slice(0, 600) }] : [])
+    catch (error) {
+      const message = redact(error?.message ?? error).slice(0, 600)
+      recordLifecycle(`${name}-close-settled`, { status: 'failed', error: message }); failures.push({ resource: name, message })
+    }
+  }
+  return failures
 }
 export async function runCli(cli, args, environment, cwd) {
   return new Promise((done, reject) => {

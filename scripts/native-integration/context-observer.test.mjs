@@ -91,19 +91,21 @@ test('failed requests without responses retain their request IDs separately and 
   assert.equal(f.observer.evidence.reads[0].status, undefined)
 })
 
-test('cleanup observations preserve the original parallel ordering and both failures on the request clock', async () => {
+test('cleanup observations show browser settlement before host invocation and retain both failures on the request clock', async () => {
   const f = fixture(), browserClose = deferred()
   const closing = closeOwnedResources({ close: () => browserClose.promise }, { close() { throw new Error('host failed') } }, f.observer.record)
-  await new Promise(done => setImmediate(done))
-  assert.ok(f.observer.evidence.lifecycle.some(row => row.event === 'host-close-invoked'))
-  assert.equal(f.observer.evidence.lifecycle.some(row => row.event === 'browser-close-settled'), false)
-  browserClose.resolve(Promise.reject(new Error('browser failed')))
-  const errors = await closing
+  let errors
+  try {
+    await new Promise(done => setImmediate(done))
+    assert.equal(f.observer.evidence.lifecycle.some(row => row.event === 'host-close-invoked'), false)
+    assert.equal(f.observer.evidence.lifecycle.some(row => row.event === 'browser-close-settled'), false)
+  } finally { browserClose.resolve(Promise.reject(new Error('browser failed'))); errors = await closing }
   assert.deepEqual(errors.map(row => row.resource), ['browser', 'host'])
   assert.deepEqual(errors.map(row => row.message), ['browser failed', 'host failed'])
   const events = f.observer.evidence.lifecycle
   assert.equal(events[0].event, 'close-requested')
   assert.ok(events.every((row, index) => index === 0 || row.monotonicMs >= events[index - 1].monotonicMs))
+  assert.ok(events.findIndex(row => row.event === 'browser-close-settled') < events.findIndex(row => row.event === 'host-close-invoked'))
   assert.equal(events.filter(row => row.event.endsWith('-close-settled') && row.status === 'failed').length, 2)
 })
 
