@@ -248,8 +248,41 @@ export function forkPrefix(actual, parent, atSeq) {
   const events = parent.events.filter(row => row.seq <= atSeq)
   assert.equal(actual.header.parentSession, parent.header.id); assert.notEqual(actual.header.id, parent.header.id); assert.equal(actual.inheritedEventCount, events.length)
   const prefix = preservePrefix(actual, { ...parent, events }, { fork: true })
-  assert.ok(actual.events.slice(events.length).every(row => row.type === 'session/end-seed'), 'unexpected child work before explicit action')
-  return { ...prefix, atSeq, parentSessionId: parent.header.id, childSessionId: actual.header.id }
+  const controlSuffix = forkControlSuffix(events, actual.events.slice(events.length))
+  return { ...prefix, atSeq, parentSessionId: parent.header.id, childSessionId: actual.header.id, controlSuffix }
+}
+export function forkControlSuffix(prefix, suffix) {
+  assert.ok(prefix.length, 'fork control prefix is empty')
+  let turn = null, step = null, lastTurn = 0, lastStep = 0, lastSeq = -1
+  const identifier = value => Number.isSafeInteger(value) && value > 0
+  for (const row of prefix) {
+    assert.ok(Number.isSafeInteger(row.seq) && row.seq > lastSeq, 'ambiguous parent event order'); lastSeq = row.seq
+    if (row.type === 'turn/start') {
+      assert.ok(turn === null && step === null && identifier(row.data.turn) && row.data.turn > lastTurn, 'ambiguous parent turn start')
+      turn = row.data.turn; lastTurn = turn; lastStep = 0
+    } else if (row.type === 'step/start') {
+      assert.ok(turn !== null && step === null && row.data.turn === turn && identifier(row.data.step) && row.data.step > lastStep, 'ambiguous parent step start')
+      step = row.data.step; lastStep = step
+    } else if (row.type === 'step/end') {
+      assert.ok(turn !== null && step !== null && row.data.turn === turn && row.data.step === step, 'unmatched parent step end'); step = null
+    } else if (row.type === 'turn/end') {
+      assert.ok(turn !== null && step === null && row.data.turn === turn, 'unmatched parent turn end'); turn = null
+    }
+  }
+  assert.ok(turn === null && step === null || turn !== null && step !== null, 'unmeasured turn-only fork boundary')
+  const expected = [{ type: 'session/end-seed', data: { inherited: true } }, ...(turn === null ? [] : [{ type: 'step/end', data: { turn, step } }, { type: 'turn/end', data: { turn, reason: { kind: 'forked' } } }])]
+  assert.equal(suffix.length, expected.length, 'unexpected child control suffix count')
+  let time = prefix.at(-1).time; assert.ok(Number.isSafeInteger(time) && time >= 0, 'invalid inherited timestamp')
+  for (const [index, row] of suffix.entries()) {
+    assert.deepEqual(Object.keys(row).sort(), ['data', 'seq', 'time', 'type'], 'unexpected child control envelope')
+    assert.equal(row.seq, lastSeq + index + 1); assert.ok(Number.isSafeInteger(row.time) && row.time >= time, 'invalid child control timestamp'); time = row.time
+    assert.equal(row.type, expected[index].type); assert.deepEqual(row.data, expected[index].data)
+  }
+  return { openTurn: turn, openStep: step, events: suffix.length, firstSeq: suffix[0].seq, lastSeq: suffix.at(-1).seq }
+}
+export function forkReaderUnchanged(saved, actual) {
+  assert.deepEqual(actual.header, saved.header); assert.deepEqual(actual.events, saved.events); assert.equal(actual.inheritedEventCount, saved.inheritedEventCount)
+  zeroModels(modelDeltas(saved.models, actual.models))
 }
 export function restoredReviseRoute(policy, loop, route, binding) {
   assert.equal(policy?.enabled, true); assert.ok(policy.routes?.['rp-gm.revise']); assert.deepEqual(loop.policies.session, policy)

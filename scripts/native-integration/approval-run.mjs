@@ -11,7 +11,7 @@ import { ownedRunPath } from './paths.mjs'
 import { redact } from './host.mjs'
 import { verifyAction } from './action-proof.mjs'
 import { verifyUnchanged } from './witness-proof.mjs'
-import { modelDeltas, zeroModels, pendingWorld, durablePending, assertReceiptProjection, successfulToolResults, terminalProposal, acceptedProse, preservePrefix, commandProof, generatedCandidate, approvedWithoutPresentation, stagedGeneration, fixedOperationAudit, assertFixedOperationRetained, writerRevision, writerScopeDenial, effectiveMaterialAudit, authorNoteRecord, forkPrefix, restoredReviseRoute, ownerRequestHash, textOf, sha } from './approval-proof.mjs'
+import { modelDeltas, zeroModels, pendingWorld, durablePending, assertReceiptProjection, successfulToolResults, terminalProposal, acceptedProse, preservePrefix, commandProof, generatedCandidate, approvedWithoutPresentation, stagedGeneration, fixedOperationAudit, assertFixedOperationRetained, writerRevision, writerScopeDenial, effectiveMaterialAudit, authorNoteRecord, forkPrefix, forkReaderUnchanged, restoredReviseRoute, ownerRequestHash, textOf, sha } from './approval-proof.mjs'
 
 export const APPROVAL_SCENARIOS = ['default-off-pending-cold', 'custom-regeneration-decision-resume', 'policy-off-generation-resume', 'effective-writer-scope', 'fork-saved-story-cold']
 export async function clickOwner(context, action, click, matches = () => true) {
@@ -59,7 +59,7 @@ async function screenshots(context, run, label, write) {
 export async function executeApprovalNative({ workspace, run, staged, cli, browserPath }) {
   assert.equal(staged.stage, 'final')
   const provider = await startRetrievalProvider(), report = { schemaVersion: 1, scope: 'A029 installed-owner approval native scenarios; five-group source checkpoint, coordinator final acceptance separate', packages: staged.packages, scenarios: [], segments: [], actions: [], limitations: [], fullChain: { status: 'not-run', finalAcceptance: false } }
-  const write = async (name, value) => writeFile(await ownedRunPath(workspace, run, join(run, name)), JSON.stringify(value, null, 2) + '\n')
+  const write = async (name, value, { exclusive = false } = {}) => writeFile(await ownedRunPath(workspace, run, join(run, name)), JSON.stringify(value, null, 2) + '\n', { flag: exclusive ? 'wx' : 'w' })
   const cases = scenarioState(APPROVAL_SCENARIOS, async rows => { report.scenarios = structuredClone(rows); await write('approval-progress.json', report) })
   const active = new Set(), finalized = new Map()
   const open = async (name, existing) => {
@@ -425,11 +425,16 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
     })
     await cases.run(APPROVAL_SCENARIOS[4], async () => {
       const parentBefore = await capture(source, sessionId), command = revisedEvidence.decisionCommand, selectedReceipt = revisedEvidence.presented.gm.lastFactReceipt
+      await write('fork-parent-before.json', { sessionId, parentBefore }, { exclusive: true })
       const priorReceipt = revisedEvidence.before.gm.lastFactReceipt, beforeRun = parentBefore.snapshot.events.findLast(row => row.seq < command.run.seq).seq
       const cuts = [{ name: 'before-decision', atSeq: beforeRun, receipt: priorReceipt, state: revisedEvidence.before }, { name: 'run-only', atSeq: command.run.seq, receipt: priorReceipt, state: revisedEvidence.before }, { name: 'done-unpresented', atSeq: command.done.seq, receipt: selectedReceipt, state: revisedEvidence.presented }, { name: 'prose-appended', atSeq: revisedEvidence.body.ref.resultSeq, receipt: selectedReceipt, state: revisedEvidence.presented }]
       const forks = []
       for (const cut of cuts) {
-        const created = await source.probe('approvalFork', { sessionId, atSeq: cut.atSeq }), view = await capture(source, created.sessionId)
+        const created = await source.probe('approvalFork', { sessionId, atSeq: cut.atSeq }), evidenceName = `fork-${cut.name}-${cut.atSeq}-${encodeURIComponent(created.sessionId)}`
+        await write(`${evidenceName}-created.json`, { cut, created }, { exclusive: true })
+        const view = await capture(source, created.sessionId)
+        await write(`${evidenceName}-captured.json`, { cut, created, view }, { exclusive: true })
+        zeroModels(modelDeltas(parentBefore.models, view.models))
         const prefix = forkPrefix(view.snapshot, parentBefore.snapshot, cut.atSeq), group = view.factReviewProjection.groups.find(row => row.roundId === cut.receipt.factRoundId)
         assert.ok(group); assert.equal(group.activeReceiptId, cut.receipt.id); assert.equal(group.factRevision, cut.receipt.factRevision); assert.deepEqual(group.source, cut.receipt.source)
         assert.deepEqual(view.gm.scene, cut.state.gm.scene); assert.deepEqual(view.gm.facts, cut.state.gm.facts); assert.equal(view.review.generation, null)
@@ -445,9 +450,11 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
           assert.equal(body?.text, revisedEvidence.body.text); assert.equal(body.factReceiptId, selectedReceipt.id); assert.equal(view.review.pendingDecision, null)
         }
         const reader = await source.studio('GET', `/api/v1/sessions/${created.sessionId}`), selectedTexts = new Set(view.history.records.map(row => row.text))
+        const afterReader = await source.snapshot(created.sessionId)
+        await write(`${evidenceName}-reader.json`, { cut, created, reader, afterReader }, { exclusive: true })
+        forkReaderUnchanged(view.snapshot, afterReader)
         for (const record of view.history.records) assert.ok(reader.messages.some(row => row.text === record.text), 'fork native reader omitted selected prefix prose')
         for (const record of parentBefore.canonical.records.filter(row => !selectedTexts.has(row.text))) assert.equal(reader.messages.some(row => row.text === record.text), false, 'fork native reader exposed superseded or future prose')
-        const afterReader = await source.snapshot(created.sessionId); forkPrefix(afterReader, parentBefore.snapshot, cut.atSeq)
         forks.push({ ...cut, created, view, prefix, reader, afterReader })
       }
       const afterForks = await capture(source, sessionId); zeroModels(modelDeltas(parentBefore.models, afterForks.models))
