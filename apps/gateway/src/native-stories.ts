@@ -36,7 +36,7 @@ export interface NativeDatabase {
   capabilities?: { factReview?: number }
   factReviewProjection?(input: Request): Promise<{ schemaVersion: number; latestRoundId: string | null; groups: { roundId: string; activeReceiptId: string | null; pendingCandidateId: string | null; factRevision: number | null }[] }>
 }
-interface ReadingOptions { database?: NativeDatabase | undefined; hasVersionedRecords?: boolean }
+interface ReadingOptions { database?: NativeDatabase | undefined; hasVersionedRecords?: boolean; isPureLegacy?: () => Promise<boolean> }
 const unavailableHistory = () => new GatewayError({ code: 'upstream-unavailable', upstreamCode: 'EFFECTIVE_HISTORY_UNAVAILABLE', message: '有效正文暂不可用。请连接支持当前事实版本的 RP 最后一步与 Database；旧版本仍保留审计。' }, 503)
 export const reviewPending = (value: Awaited<ReturnType<NonNullable<NativeGM['reviewState']>>>) => !!value.latestRound?.pendingCandidateId || ['recorded', 'interrupted'].includes(value.pendingDecision?.status ?? '') || value.generation?.status === 'running'
 
@@ -84,6 +84,10 @@ export async function nativeReading(service: NativeLastStep | undefined, session
     || item.id !== JSON.stringify([item.ref.presentationId, item.ref.resultSeq]) || typeof item.text !== 'string' || !item.text.trim())) {
     throw new GatewayError({ code: 'upstream-protocol', message: '正式正文来源无效，请在 RP 最后一步检查。' }, 503)
   }
+  // An empty effective set can also describe ordinary legacy prose, which has
+  // no canonical LastStep record. Only the caller can prove that source case.
+  if (history && records.length === 0 && history.folded.length === 0 && canonicalIds.length === 0
+    && !options.hasVersionedRecords && await options.isPureLegacy?.()) history = undefined
   const ids = new Set([...canonicalIds, ...records.map(item => item.ref.presentationId)])
   const revisions: TranscriptMessage[] = records.map(item => ({ id: item.id, seq: item.ref.resultSeq, role: 'gm', text: item.text, createdAt: item.createdAt && Number.isFinite(Date.parse(item.createdAt)) ? Math.max(0, Date.parse(item.createdAt)) : 0, status: 'complete' }))
   return { messages: [...fallback.filter(item => history ? item.role !== 'gm' : !ids.has(item.id)), ...revisions].sort((a, b) => a.seq - b.seq), ...(history ? { history } : {}) }

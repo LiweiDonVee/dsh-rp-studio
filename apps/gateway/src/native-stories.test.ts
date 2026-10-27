@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest'
-import { nativeTranscript, storyPublicState } from './native-stories.js'
+import { describe, expect, it, vi } from 'vitest'
+import { nativeReading, nativeTranscript, storyPublicState } from './native-stories.js'
+import capturedEmptyLegacyHistory from './fixtures/last-step-empty-legacy-history.json'
 
 const ref = { sessionId: 'story', presentationId: 'prose', assistantMessageId: 'assistant', callSeq: 2, baseResultSeq: 3, resultSeq: 9 }
 const narrative = { id: '["prose",9]', ref, turn: 1, action: '开门', text: '采用的正文。' }
+const emptyLegacyHistory = { ...capturedEmptyLegacyHistory, schemaVersion: 1 as const }
 describe('native owner projection boundaries', () => {
   it('does not revive fallback receipt text when the owner excludes its canonical root', async () => {
     const fallback = [{ id: 'prose', seq: 3, role: 'gm' as const, text: '过期正文。', status: 'complete' as const, createdAt: 1 }]
@@ -20,10 +22,41 @@ describe('native owner projection boundaries', () => {
     expect(JSON.stringify(state)).not.toContain('PRIVATE_CANARY')
     expect(state.extensions.gm).toMatchObject({ facts: { items: [{ id: 'f1', text: '船已到港。' }] } })
   })
-  it('selects only storyHistory records and never revives folded prose before current facts have writing', async () => {
+  it.each([false, true])('never revives folded prose before current facts have writing (pending=%s)', async pendingFacts => {
     const fallback = [{ id: 'player', seq: 0, role: 'player' as const, text: '开门', status: 'complete' as const, createdAt: 1 }, { id: 'prose', seq: 3, role: 'gm' as const, text: '旧事实正文', status: 'complete' as const, createdAt: 1 }]
-    const service = { capabilities: { narrativeRevisions: 1 }, narratives: async () => ({ records: [narrative] }), storyHistory: async () => ({ schemaVersion: 1 as const, records: [], folded: [{ groupId: 'round', activeFactReceiptId: 'fact-new', selectedPresentationId: null, pendingFacts: true, versions: [{ presentationId: 'prose', resultSeq: 9 }] }], projectionKey: 'selected-new-facts' }) }
-    expect(await nativeTranscript(service, 'story', fallback, ['prose'])).toEqual([fallback[0]])
+    const service = { capabilities: { narrativeRevisions: 1 }, narratives: async () => ({ records: [narrative] }), storyHistory: async () => ({ schemaVersion: 1 as const, records: [], folded: [{ groupId: 'round', activeFactReceiptId: 'fact-new', selectedPresentationId: null, pendingFacts, versions: [{ presentationId: 'prose', resultSeq: 9 }] }], projectionKey: 'selected-new-facts' }) }
+    expect(await nativeTranscript(service, 'story', fallback, [], { isPureLegacy: async () => true })).toEqual([fallback[0]])
+  })
+  it('keeps a valid selected effective record authoritative without checking legacy eligibility', async () => {
+    const fallback = [{ id: 'gm-old', seq: 0, role: 'gm' as const, text: '旧正文。', status: 'complete' as const, createdAt: 1 }]
+    const history = { schemaVersion: 1 as const, records: [narrative], folded: [{ groupId: 'prose', activeFactReceiptId: null, selectedPresentationId: 'prose', pendingFacts: false, versions: [{ presentationId: 'prose', resultSeq: 9 }] }], projectionKey: 'typed-consumer-selection' }
+    const isPureLegacy = vi.fn(async () => true)
+    expect(await nativeReading({ capabilities: { narrativeRevisions: 1 }, storyHistory: async () => history }, 'story', fallback, [], { isPureLegacy })).toMatchObject({ messages: [{ id: '["prose",9]', text: '采用的正文。' }], history })
+    expect(isPureLegacy).not.toHaveBeenCalled()
+  })
+  it.each(['unconfirmed', 'canonical', 'versioned'])('keeps empty effective selection authoritative for %s sources', async source => {
+    const fallback = [{ id: 'prose', seq: 3, role: 'gm' as const, text: '不得复活的正文。', status: 'complete' as const, createdAt: 1 }]
+    const service = { capabilities: { narrativeRevisions: 1 }, storyHistory: async () => structuredClone(emptyLegacyHistory) }
+    const options = source === 'unconfirmed' ? {} : { isPureLegacy: async () => true, hasVersionedRecords: source === 'versioned' }
+    expect(await nativeTranscript(service, 'story', fallback, source === 'canonical' ? ['prose'] : [], options)).toEqual([])
+  })
+  it.each(['schema', 'folded', 'records', 'foreign-source'])('rejects malformed effective owner DTOs before allowing legacy prose (%s)', async invalid => {
+    const value: Record<string, unknown> = structuredClone(emptyLegacyHistory)
+    if (invalid === 'schema') value.schemaVersion = 2
+    if (invalid === 'folded') value.folded = null
+    if (invalid === 'records') value.records = undefined
+    if (invalid === 'foreign-source') value.records = [{ ...narrative, ref: { ...ref, sessionId: 'other' } }]
+    const isPureLegacy = vi.fn(async () => true)
+    const service = { capabilities: { narrativeRevisions: 1 }, storyHistory: async () => value } as unknown as NonNullable<Parameters<typeof nativeReading>[0]>
+    await expect(nativeReading(service, 'story', [], [], { isPureLegacy })).rejects.toMatchObject({ apiError: { code: 'upstream-protocol' } })
+    expect(isPureLegacy).not.toHaveBeenCalled()
+  })
+  it.each(['NOT_BOUND', 'PERMISSION_DENIED', 'SOURCE_CORRUPT'])('propagates effective owner %s without a legacy retry', async code => {
+    const error = Object.assign(new Error(code), { code })
+    const isPureLegacy = vi.fn(async () => true)
+    const service = { capabilities: { narrativeRevisions: 1 }, storyHistory: async () => { throw error } }
+    await expect(nativeReading(service, 'story', [], [], { isPureLegacy })).rejects.toBe(error)
+    expect(isPureLegacy).not.toHaveBeenCalled()
   })
   it('does not fall back to canonical narratives after an effective reader fails', async () => {
     const service = { capabilities: { narrativeRevisions: 1 }, narratives: async () => ({ records: [narrative] }), storyHistory: async () => { throw Object.assign(new Error('database missing'), { code: 'EFFECTIVE_HISTORY_UNAVAILABLE' }) } }

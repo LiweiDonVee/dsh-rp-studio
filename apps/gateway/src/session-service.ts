@@ -155,6 +155,12 @@ export class SessionService implements SessionApi {
       const reading = await nativeReading(this.options.getLastStep?.(), sessionId, fallback, canonicalIds, {
         database: this.options.getDatabase?.(),
         hasVersionedRecords: events.some(event => record(record(record(event.data.meta)?.rpLastStep)?.record)?.narrativeVersion !== undefined),
+        isPureLegacy: async () => {
+          if (owner || events.some(event => event.type === 'tool/result' && record(record(event.data.meta)?.rpLastStep)?.record !== undefined
+            || event.type === 'tool/call' && ['rp_commit_turn', 'rp_propose_turn'].includes(String(event.data.name)))) return false
+          const gm = this.options.getGM?.()
+          return gm === undefined || typeof gm.binding === 'function' && await gm.binding({ sessionId }) === null
+        },
       })
       messages = reading.messages
       if (reading.history) state = { ...state, extensions: { ...state.extensions, reader: { status: 'available', projectionKey: reading.history.projectionKey, pendingFacts: reading.history.folded.some(group => group.pendingFacts), folded: reading.history.folded } } }
