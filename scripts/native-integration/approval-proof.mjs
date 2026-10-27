@@ -169,3 +169,72 @@ export function assertFixedOperationRetained(before, after, audit) {
   assert.deepEqual(current, prior, 'fixed operation disappeared, changed or replayed')
   assert.deepEqual(after.database.changes.find(change => change.id === audit.changeId), audit.change, 'original fixed operation source changed')
 }
+export function validOwnerPatch(database, catalog) {
+  assert.ok(Number.isSafeInteger(database.revision)); assert.equal(catalog.revision, database.revision)
+  const previous = database.entries.find(row => row.ref.sourceKey === 'world' && row.ref.entryId === '0'), entry = catalog.entries.find(row => row.ref.sourceKey === 'world' && row.ref.entryId === '0')
+  assert.ok(previous && entry, 'real catalog patch target missing'); assert.equal(previous.readOnly, false); assert.notEqual(previous.mode, 'disabled'); assert.notEqual(entry.readOnly, true); assert.notEqual(entry.mode, 'disabled')
+  const args = { expectedRevision: catalog.revision, operations: [{ op: 'update', id: JSON.stringify([entry.ref.sourceKey, entry.ref.entryId]), patch: { content: 'NATIVE_FORBIDDEN_SCOPE' } }] }
+  return structuredClone({ args, previous, catalogEntry: entry, catalogRevision: catalog.revision })
+}
+function unchangedWriterFacts(before, after) {
+  assert.deepEqual(pendingWorld(after.database), pendingWorld(before.database)); assert.deepEqual(after.gm.lastFactReceipt, before.gm.lastFactReceipt)
+  assert.deepEqual(after.gm.scene, before.gm.scene); assert.deepEqual(after.gm.facts, before.gm.facts)
+  assert.deepEqual(after.factReview.rounds, before.factReview.rounds); assert.deepEqual(after.factReview.decisions, before.factReview.decisions); assert.deepEqual(after.factReviewProjection, before.factReviewProjection)
+}
+function writerCommand(events, operationId, kind) {
+  const run = events.findLast(row => row.type === 'command/run' && row.data.name === 'rp_regenerate_prose' && row.data.source?.kind === 'user' && row.data.args.trim().split(/\s+/u)[0] === operationId)
+  assert.ok(run, 'real writer owner command missing'); const tokens = run.data.args.trim().split(/\s+/u)
+  assert.equal(tokens.length, 3); assert.match(tokens[1], /^[a-f0-9]{64}$/u)
+  const done = events.find(row => row.seq > run.seq && row.type === 'command/done' && row.data.commandId === run.data.commandId)
+  assert.equal(done?.data.kind, kind); return { run, done, requestHash: tokens[1] }
+}
+export function writerRevision(before, after, { result, originalMaterial, material, originalInput, operationId, instruction, model, basedOn }) {
+  const deltas = modelDeltas(before.models, after.models); assert.ok(deltas.gm > 0); assert.equal(deltas[model], 1); zeroModels({ ...deltas, gm: 0, [model]: 0 })
+  unchangedWriterFacts(before, after); preservePrefix(after.snapshot, before.snapshot)
+  const narrative = acceptedProse(after, before.gm.lastFactReceipt.id), command = writerCommand(after.snapshot.events, operationId, 'success')
+  assert.equal(result.status, 'complete'); assert.equal(result.presentationId, narrative.ref.presentationId); assert.ok(command.done.seq > narrative.ref.resultSeq)
+  assert.equal(narrative.narrativeVersion.kind, 'writer-regeneration'); assert.equal(narrative.narrativeVersion.basePresentationId, basedOn.presentationId); assert.equal(narrative.narrativeVersion.factRoundId, before.gm.lastFactReceipt.factRoundId); assert.equal(narrative.narrativeVersion.factRevision, before.gm.lastFactReceipt.factRevision)
+  for (const key of ['packet', 'contextPreparation', 'compiled', 'storySnapshot', 'factReceiptRef']) assert.deepEqual(material[key] ?? null, originalMaterial[key] ?? null, `changed frozen ${key}`)
+  assert.equal(material.models.render.model, model); assert.equal(material.ownerOperation.operationId, operationId); assert.equal(material.ownerOperation.requestHash, command.requestHash)
+  const resultEvent = after.snapshot.events.find(row => row.seq === narrative.ref.resultSeq)
+  assert.deepEqual(resultEvent.data.meta.rpLastStep.record.ownerOperation, material.ownerOperation)
+  const newCalls = after.snapshot.events.slice(before.snapshot.events.length).filter(row => row.type === 'tool/call')
+  assert.equal(newCalls.length, 1); assert.equal(newCalls[0].data.name, 'rp_present'); assert.deepEqual(JSON.parse(newCalls[0].data.arguments), { regenerateOf: basedOn.presentationId })
+  for (const record of before.canonical.records) assert.deepEqual(after.canonical.records.find(row => row.ref.presentationId === record.ref.presentationId && row.ref.resultSeq === record.ref.resultSeq), record)
+  assert.equal(after.canonical.records.length, before.canonical.records.length + 1); assert.equal(after.history.records.some(row => row.ref.presentationId === basedOn.presentationId), false)
+  const requests = after.models.requests.slice(before.models.requests.length).filter(row => row.model === model); assert.equal(requests.length, 1)
+  const request = requests[0]; assert.equal(request.input.instruction, instruction); assert.deepEqual(request.tools, [])
+  for (const key of ['packet', 'modules', 'context', 'story', 'recentProse']) assert.deepEqual(request.input[key] ?? null, originalInput[key] ?? null, `writer rebuilt frozen ${key}`)
+  return { narrative, command, request, deltas }
+}
+export function writerScopeDenial(before, after, armed, operationId) {
+  unchangedWriterFacts(before, after); preservePrefix(after.snapshot, before.snapshot); assert.deepEqual(after.history, before.history); assert.deepEqual(after.canonical, before.canonical)
+  const deltas = modelDeltas(before.models, after.models); assert.ok(deltas.gm > 0); zeroModels({ ...deltas, gm: 0 }); assert.equal(armed.args.expectedRevision, before.database.revision)
+  const calls = after.snapshot.events.slice(before.snapshot.events.length).filter(row => row.type === 'tool/call'); assert.equal(calls.length, 1)
+  const call = calls[0]; assert.equal(call.data.name, 'rp_db_patch'); assert.deepEqual(JSON.parse(call.data.arguments), armed.args)
+  const rejection = after.snapshot.events.find(row => row.seq > call.seq && row.type === 'tool/result' && row.data.message?.toolCallId === call.data.callId)
+  assert.equal(rejection?.data.message.isError, true); assert.deepEqual(rejection.sourceEventSeqs, [call.seq]); assert.equal(rejection.data.message.source?.kind, 'tool'); assert.equal(rejection.data.message.source.callId, call.data.callId)
+  assert.match(textOf(rejection.data.message), /^(?:Error: )?Only the exact selected rp_present operation is permitted for this owner request$/u)
+  const command = writerCommand(after.snapshot.events, operationId, 'error'); assert.ok(command.run.seq < call.seq && command.done.seq > rejection.seq)
+  return { call, rejection, command, deltas, target: armed.previous }
+}
+export function effectiveMaterialAudit(view, material, requests) {
+  const receipt = view.gm.lastFactReceipt, marker = view.gm.facts.items.find(row => row.id === 'native-marker')?.text
+  assert.ok(marker); assert.equal(material.factReceiptRef, receipt.id)
+  const superseded = view.canonical.records.filter(row => row.narrativeVersion?.factRoundId === receipt.factRoundId && row.factReceiptId !== receipt.id)
+  assert.ok(superseded.length, 'no actual superseded same-round narrative to audit')
+  const obsoleteCandidates = view.review.latestRound.candidates.filter(row => row.id !== receipt.candidateId)
+  const forbidden = [...superseded.map(row => row.text), ...obsoleteCandidates.flatMap(row => [row.payload.summary, row.payload.facts.items.find(item => item.id === 'native-marker')?.text])].filter(value => typeof value === 'string' && value && value !== marker)
+  const strings = value => typeof value === 'string' ? [value] : Array.isArray(value) ? value.flatMap(strings) : value && typeof value === 'object' ? Object.values(value).flatMap(strings) : []
+  const projection = material.contextPreparation?.historyProjection; assert.ok(projection?.activeFactReceiptIds.includes(receipt.id))
+  for (const record of superseded) assert.equal(projection.selectedPresentationIds.includes(record.ref.presentationId), false)
+  const stages = requests.filter(row => ['prepare', 'summarize', 'assembly', 'writer', 'writer-alt'].includes(row.model))
+  for (const stage of ['prepare', 'assembly']) assert.ok(stages.some(row => row.model === stage), `no actual ${stage} input`)
+  assert.ok(stages.some(row => ['writer', 'writer-alt'].includes(row.model)))
+  for (const row of stages) {
+    const values = strings(row.input); for (const old of forbidden) assert.equal(values.some(value => value.includes(old)), false, `${row.model} selected superseded material`)
+    if (row.model !== 'summarize') assert.ok(values.some(value => value.includes(marker)), `${row.model} omitted selected facts`)
+  }
+  for (const old of forbidden) assert.equal(strings(material).some(value => value.includes(old)), false, 'material audit selected superseded content')
+  return { receiptId: receipt.id, marker, superseded, forbidden, projection, requests: stages }
+}

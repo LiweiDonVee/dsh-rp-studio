@@ -2,7 +2,7 @@
 import { createLocalModels, MODELS } from './model-fixture.mjs'
 import { SERVICES } from './requirements.mjs'
 import { createApprovalModels, APPROVAL_MODELS } from './approval-model.mjs'
-import { commandBoundary, ownerRequestHash } from './approval-proof.mjs'
+import { commandBoundary, ownerRequestHash, validOwnerPatch } from './approval-proof.mjs'
 export const name = 'studio-native-probe'
 export const inject = ['llm', 'agents', 'connection', 'typertGateway', 'agentPresets', 'sessionQuery', 'sessionPersistence']
 export function apply(ctx) {
@@ -97,10 +97,9 @@ export function apply(ctx) {
       }
       else if (input.action === 'armOwnerPatch') {
         if (!approval) throw new Error('APPROVAL_FIXTURE_NOT_ENABLED')
-        const current = await ctx.get('rpDatabase').effectiveV2({ sessionId: input.sessionId, signal: request.signal }), entry = current.entries.find(row => row.ref.sourceKey === 'world' && row.ref.entryId === '0')
-        if (!entry || entry.readOnly) throw new Error('VALID_WRITABLE_SCOPE_TARGET_REQUIRED')
-        const args = { expectedRevision: current.revision, operations: [{ op: 'update', ref: { sourceKey: 'world', entryId: '0' }, patch: { content: 'NATIVE_FORBIDDEN_SCOPE' } }] }
-        local.armOwnerPatch(args); result = { armed: true, args, previous: entry }
+        const args = { sessionId: input.sessionId, signal: request.signal }, database = ctx.get('rpDatabase')
+        const armed = validOwnerPatch(await database.effectiveV2(args), await database.catalogV2(args))
+        local.armOwnerPatch(armed.args); result = { armed: true, ...armed }
       }
       else if (input.action === 'failWriterOnce') { local.failWriterOnce(); result = { armed: true } }
       else if (input.action === 'failAssemblyOnce') { local.failAssemblyOnce(); result = { armed: true } }

@@ -9,7 +9,8 @@ import { scenarioState } from './scenario-state.mjs'
 import { openNativeContext, finishNativeContext, restartNativeContext } from './contexts.mjs'
 import { ownedRunPath } from './paths.mjs'
 import { redact } from './host.mjs'
-import { modelDeltas, zeroModels, pendingWorld, durablePending, assertReceiptProjection, successfulToolResults, terminalProposal, acceptedProse, preservePrefix, commandProof, generatedCandidate, approvedWithoutPresentation, stagedGeneration, fixedOperationAudit, assertFixedOperationRetained, ownerRequestHash, textOf } from './approval-proof.mjs'
+import { verifyAction } from './action-proof.mjs'
+import { modelDeltas, zeroModels, pendingWorld, durablePending, assertReceiptProjection, successfulToolResults, terminalProposal, acceptedProse, preservePrefix, commandProof, generatedCandidate, approvedWithoutPresentation, stagedGeneration, fixedOperationAudit, assertFixedOperationRetained, writerRevision, writerScopeDenial, effectiveMaterialAudit, ownerRequestHash, textOf } from './approval-proof.mjs'
 
 export const APPROVAL_SCENARIOS = ['default-off-pending-cold', 'custom-regeneration-decision-resume', 'policy-off-generation-resume', 'effective-writer-scope', 'fork-saved-story-cold']
 export async function clickOwner(context, action, click, matches = () => true) {
@@ -56,7 +57,7 @@ async function screenshots(context, run, label, write) {
 }
 export async function executeApprovalNative({ workspace, run, staged, cli, browserPath }) {
   assert.equal(staged.stage, 'final')
-  const provider = await startRetrievalProvider(), report = { schemaVersion: 1, scope: 'A029 installed-owner approval native scenarios; checkpoint 3 of 5', packages: staged.packages, scenarios: [], segments: [], actions: [], limitations: [], fullChain: { status: 'not-run', finalAcceptance: false } }
+  const provider = await startRetrievalProvider(), report = { schemaVersion: 1, scope: 'A029 installed-owner approval native scenarios; checkpoint 4 of 5', packages: staged.packages, scenarios: [], segments: [], actions: [], limitations: [], fullChain: { status: 'not-run', finalAcceptance: false } }
   const write = async (name, value) => writeFile(await ownedRunPath(workspace, run, join(run, name)), JSON.stringify(value, null, 2) + '\n')
   const cases = scenarioState(APPROVAL_SCENARIOS, async rows => { report.scenarios = structuredClone(rows); await write('approval-progress.json', report) })
   const active = new Set(), finalized = new Map()
@@ -350,7 +351,76 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       report.actions.push({ name: 'disable fact approval', deltas: modelDeltas(presentedBefore.models, before.models) }, { name: 'OFF generation completion interruption attempt', deltas: generationEvidence.deltas }, { name: 'OFF generation settlement resume', deltas: settleDeltas }, { name: 'OFF generation settlement replay', deltas: replayDeltas }, ...(presentationDeltas ? [{ name: 'explicit OFF fact presentation', deltas: presentationDeltas }] : []))
       return { sessionId, roundId: round.roundId, originalGenerationOperationId: operationId, mappedDecisionOperationId: decisionOperationId, candidateId: generationEvidence.candidate.id, factReceiptId: resumed.decision.factReceiptId, interruption: { status: nativeBoundary ? 'passed' : 'NOT NATIVELY VERIFIED', attemptCount: 1 }, presentation: body.ref, evidence: 'policy-off-generation-resume.json' }
     })
-    report.fullChain = { status: report.limitations.length ? 'checkpoint-passed-with-limitations' : 'checkpoint-passed', finalAcceptance: false, reason: 'Groups 1–3 are implemented in this review checkpoint; groups 4–5 remain not-run. Public fault scheduling limitations are listed separately.' }
+    await cases.run(APPROVAL_SCENARIOS[3], async () => {
+      await source.idle(sessionId)
+      const before = await capture(source, sessionId), originalBody = acceptedProse(before, before.gm.lastFactReceipt.id)
+      const originalMaterial = await source.api('studio', 'material', { sessionId, presentationId: originalBody.ref.presentationId })
+      const writerModels = new Set(['writer', 'writer-alt']), originalWriter = before.models.requests.findLast(row => writerModels.has(row.model))
+      assert.ok(originalWriter); assert.deepEqual(originalWriter.input.packet, originalMaterial.packet); assert.equal(originalMaterial.models.render.model, 'writer')
+      const previousWriter = before.models.requests.findLast(row => writerModels.has(row.model) && row.index < originalWriter.index)
+      assert.ok(previousWriter)
+      const effectiveRequests = before.models.requests.filter(row => row.index > previousWriter.index && row.index <= originalWriter.index)
+      const materialAudit = effectiveMaterialAudit(before, originalMaterial, effectiveRequests)
+      const readingBefore = await source.api('studio', 'exportReading', { sessionId, format: 'markdown' })
+      assert.ok(readingBefore.text.includes(originalBody.text))
+      for (const obsolete of materialAudit.superseded) assert.equal(readingBefore.text.includes(obsolete.text), false)
+      const oldNote = await source.api('studio', 'authorNote', { sessionId }); assert.equal(oldNote.status, 'consumed')
+      assert.equal(oldNote.note.text, 'NATIVE_OLD_NOTE_CONSUMED_ON_CUSTOM')
+      for (const request of effectiveRequests.filter(row => ['prepare', 'summarize', 'assembly', 'writer', 'writer-alt'].includes(row.model))) assert.equal(JSON.stringify(request.input).includes(oldNote.note.text), false, 'folded prose requeued the consumed author note')
+      const pendingNote = await setNote(source, sessionId, 'NATIVE_NEW_NOTE_MUST_REMAIN_PENDING_DURING_WRITER_REGEN')
+      const loopBefore = await source.probe('loop', { sessionId }), routes = await source.probe('routes', { sessionId, renderModel: 'writer-alt' }), loopAfter = await source.probe('loop', { sessionId })
+      assert.equal(loopAfter.policies.session.routes['rp-last-step.render'].model, 'writer-alt')
+      const regenerate = async (instruction, basedOn) => {
+        await source.page.getByRole('button', { name: '刷新事实与写作状态', exact: true }).click()
+        await source.page.getByRole('textbox', { name: '写作重生要求', exact: true }).fill(instruction)
+        let request
+        const result = await clickOwner(source, 'regenerateProse', () => source.page.locator('.rp-fact-tools').getByRole('button', { name: '只重新写作', exact: true }).click(), row => {
+          if (row.sessionId !== sessionId || row.basedOn?.presentationId !== basedOn.presentationId || row.instruction !== instruction) return false
+          request = structuredClone(row); return true
+        })
+        await source.idle(sessionId); return { request, result }
+      }
+      const preWriter = await capture(source, sessionId), first = await regenerate('NATIVE_WRITER_EXPRESSION_A', originalBody.ref), rewritten = await capture(source, sessionId)
+      const firstBody = acceptedProse(rewritten, before.gm.lastFactReceipt.id), firstMaterial = await source.api('studio', 'material', { sessionId, presentationId: firstBody.ref.presentationId })
+      const firstProof = writerRevision(preWriter, rewritten, { ...first, originalMaterial, material: firstMaterial, originalInput: originalWriter.input, operationId: first.request.operationId, instruction: first.request.instruction, model: 'writer-alt', basedOn: originalBody.ref })
+      assertFixedOperationRetained(preWriter, rewritten, fixedWorkAudit)
+      const afterFirstNote = await source.api('studio', 'authorNote', { sessionId }); assert.equal(afterFirstNote.status, 'pending'); assert.equal(afterFirstNote.note.version, pendingNote.note.version)
+      const armed = await source.probe('armOwnerPatch', { sessionId }), preDenial = await capture(source, sessionId)
+      const denied = await regenerate('NATIVE_WRITER_SCOPE_GUARD', firstBody.ref), afterDenial = await capture(source, sessionId)
+      assert.equal(denied.result.status, 'failed')
+      const denialProof = writerScopeDenial(preDenial, afterDenial, armed, denied.request.operationId)
+      assertFixedOperationRetained(preDenial, afterDenial, fixedWorkAudit)
+      const afterDenialNote = await source.api('studio', 'authorNote', { sessionId }); assert.equal(afterDenialNote.status, 'pending'); assert.equal(afterDenialNote.note.version, pendingNote.note.version)
+      const nextWriter = await regenerate('NATIVE_WRITER_SCOPE_RELEASED', firstBody.ref), valid = await capture(source, sessionId)
+      const validBody = acceptedProse(valid, before.gm.lastFactReceipt.id), validMaterial = await source.api('studio', 'material', { sessionId, presentationId: validBody.ref.presentationId })
+      const validProof = writerRevision(afterDenial, valid, { ...nextWriter, originalMaterial: firstMaterial, material: validMaterial, originalInput: firstProof.request.input, operationId: nextWriter.request.operationId, instruction: nextWriter.request.instruction, model: 'writer-alt', basedOn: firstBody.ref })
+      assertFixedOperationRetained(afterDenial, valid, fixedWorkAudit)
+      const afterValidNote = await source.api('studio', 'authorNote', { sessionId }); assert.equal(afterValidNote.status, 'pending'); assert.equal(afterValidNote.note.version, pendingNote.note.version)
+      const readingAfter = await source.api('studio', 'exportReading', { sessionId, format: 'markdown' }), nativeReader = await source.studio('GET', `/api/v1/sessions/${sessionId}`)
+      assert.ok(readingAfter.text.includes(validBody.text)); assert.ok(nativeReader.messages.some(row => row.text === validBody.text))
+      for (const obsolete of materialAudit.superseded) { assert.equal(readingAfter.text.includes(obsolete.text), false); assert.equal(nativeReader.messages.some(row => row.text === obsolete.text), false) }
+      for (const earlier of before.history.records.filter(row => row.factReceiptId !== before.gm.lastFactReceipt.id)) assert.ok(readingAfter.text.includes(earlier.text), 'legitimate earlier selected history disappeared')
+      const preNext = await capture(source, sessionId); zeroModels(modelDeltas(valid.models, preNext.models)); assert.deepEqual(preNext.snapshot.events, valid.snapshot.events)
+      const nextAction = 'NATIVE_APPROVAL_NEXT_SCOPE_RELEASE'
+      await sendPlayer(source, sessionId, nextAction)
+      const next = await capture(source, sessionId), stateResults = successfulToolResults(next.snapshot.events, 'rp_gm_state', preNext.snapshot.events.at(-1)?.seq ?? -1)
+      assert.equal(stateResults.length, 1)
+      const actualState = JSON.parse(textOf(stateResults[0].result.data.message)), observed = next.models.observedStates.findLast(row => row.action === nextAction)
+      assert.equal(actualState.lastFactReceipt.id, preNext.gm.lastFactReceipt.id); assert.deepEqual(actualState.scene, preNext.gm.scene); assert.deepEqual(actualState.facts, preNext.gm.facts)
+      assert.equal(observed.receiptId, actualState.lastFactReceipt.id); assert.equal(observed.revision, actualState.revision); assert.deepEqual(observed.scene, actualState.scene); assert.deepEqual(observed.facts, actualState.facts)
+      const commits = successfulToolResults(next.snapshot.events, 'rp_commit_turn', preNext.snapshot.events.at(-1)?.seq ?? -1); assert.equal(commits.length, 1)
+      const actualCommit = JSON.parse(commits[0].call.data.arguments)
+      assert.equal(actualCommit.expectedRevision, actualState.revision); assert.deepEqual(actualCommit.scene, actualState.scene); assert.deepEqual(actualCommit.facts, actualState.facts)
+      assert.deepEqual(next.review.latestRound.base, { scene: actualState.scene, facts: actualState.facts }); assert.equal(next.review.latestRound.capture.playerInput.text, nextAction)
+      const nextProof = verifyAction({ ...preNext, narratives: preNext.canonical.records }, { ...next, narratives: next.canonical.records }, { text: nextAction, facts: preNext.gm.facts })
+      assertFixedOperationRetained(preNext, next, fixedWorkAudit); preservePrefix(next.snapshot, preNext.snapshot)
+      const consumedNote = await source.api('studio', 'authorNote', { sessionId }); assert.equal(consumedNote.status, 'consumed'); assert.equal(consumedNote.note.version, pendingNote.note.version)
+      await source.page.screenshot({ path: join(run, 'effective-writer-scope-released.png') })
+      await write('effective-writer-scope.json', { sessionId, before, originalBody, originalMaterial, originalWriter, effectiveRequests, materialAudit, readingBefore, oldNote, pendingNote, loopBefore, routes, loopAfter, preWriter, first, rewritten, firstMaterial, firstProof, afterFirstNote, armed, preDenial, denied, afterDenial, denialProof, afterDenialNote, nextWriter, valid, validMaterial, validProof, afterValidNote, readingAfter, nativeReader, preNext, nextAction, actualState, observed, actualCommit, next, nextProof, consumedNote, fixedWorkAudit })
+      report.actions.push({ name: 'writer regeneration current route', deltas: firstProof.deltas }, { name: 'writer scope forbidden real patch', deltas: denialProof.deltas }, { name: 'valid writer after denial', deltas: validProof.deltas }, { name: 'ordinary action after scope disposal', deltas: modelDeltas(preNext.models, next.models) })
+      return { sessionId, selectedFactsDuringWriter: before.gm.lastFactReceipt.id, renderModel: firstMaterial.models.render, firstPresentation: firstProof.narrative.ref, guard: { code: denied.result.errorCode, callSeq: denialProof.call.seq, resultSeq: denialProof.rejection.seq }, validPresentation: validProof.narrative.ref, nextFactReceiptId: next.gm.lastFactReceipt.id, nextRoundId: next.review.latestRound.roundId, evidence: 'effective-writer-scope.json' }
+    })
+    report.fullChain = { status: report.limitations.length ? 'checkpoint-passed-with-limitations' : 'checkpoint-passed', finalAcceptance: false, reason: 'Groups 1–4 are implemented in this review checkpoint; group 5 remains not-run. Public fault scheduling limitations are listed separately.' }
   } catch (error) {
     report.error = redact(error.stack ?? error.message).slice(0, 12000); report.fullChain = { status: 'failed', finalAcceptance: false }
     if (source) {
