@@ -81,7 +81,7 @@ export async function executeFullNative({ workspace, run, staged, cli, browserPa
   const open = async (name, existing) => {
     try {
       const context = await openNativeContext({ workspace, run, staged, cli, browserPath, providerURL: provider.baseURL, name, existing })
-      segments.push({ name, hostPid: context.hostPid, installed: context.installed.installed, browserErrors: context.errors, actionProofs: context.actionProofs })
+      segments.push({ name, hostPid: context.hostPid, installed: context.installed.installed, browserErrors: context.errors, httpErrors: context.httpErrors, actionProofs: context.actionProofs })
       return context
     } catch (error) { if (error.nativeStartup) segments.push({ ...error.nativeStartup, startupFailed: true, modelStatus: 'unavailable-during-startup' }); throw error }
   }

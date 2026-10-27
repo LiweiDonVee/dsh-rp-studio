@@ -11,7 +11,7 @@ export async function closeFailedContext(error, { name, installed, errors, brows
   error.nativeStartup = { name, hostPid: host?.child?.pid, installed: installed.installed, hostVersion: installed.version, startupError: redact(error.message), browserErrors: [...errors], cleanupErrors, cleanupStatus: cleanupErrors.length ? 'failed' : 'stopped' }
   return error
 }
-export async function openNativeContext({ workspace, run, staged, cli, browserPath, providerURL, name, existing }) {
+export async function openNativeContext({ workspace, run, staged, cli, browserPath, providerURL, name, existing, approval = false }) {
   const home = join(run, name), fixture = join(run, 'fixture')
   const installed = existing ?? await installInputs({ staged, home, cli, workspace, log: message => console.log(`[full:${name}] ${message}`) })
   if (existing) for (const input of staged.packages) await verifyInstalled(home, input)
@@ -19,13 +19,14 @@ export async function openNativeContext({ workspace, run, staged, cli, browserPa
   const patch = await ownedRunPath(workspace, run, join(run, `${name}.patch.yml`))
   await writeFile(patch, `- id: session-title-llm\n  disabled: true\n- id: llm-deepseek\n  disabled: true\n- id: llm-deepseek-account\n  disabled: true\n- id: llm-pi-ai\n  disabled: true\n- id: agent-default-model\n  config:\n    provider: studio-native-local\n    model: gm\n- id: tools\n  config:\n    mode: native\n- id: rp-database\n  config:\n    embedding:\n      baseURL: ${providerURL}\n      model: studio-native-embedding\n    reranking:\n      baseURL: ${providerURL}\n      model: studio-native-rerank\n- insert:\n    - id: studio-native-probe\n      name: ${JSON.stringify(join(fixture, 'fixture.mjs').replaceAll('\\', '/'))}\n    - id: studio-native-legacy\n      name: '@deepseek-ai/dsh-agent-preset'\n      config:\n        id: studio-legacy-fixture\n        name: Studio full legacy regression\n        description: Public no-model legacy fixture\n        plugins:\n          - id: rp-runtime\n            name: '@deepseek-ai/dsh-persona'\n            config:\n              prefix: Public synthetic old preset.\n`)
   let host, browser
-  const errors = [], actionProofs = []
+  const errors = [], actionProofs = [], httpErrors = []
   try {
-    host = await startHost({ cli, home, patch, workspace, env: installed.env, logPath: join(run, `${name}-${Date.now()}.host.log`) })
+    host = await startHost({ cli, home, patch, workspace, env: { ...installed.env, STUDIO_NATIVE_APPROVAL: approval ? '1' : '0' }, logPath: join(run, `${name}-${Date.now()}.host.log`) })
     browser = await chromium.launch({ headless: true, ...(browserPath ? { executablePath: browserPath } : {}) })
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
     page.setDefaultTimeout(15000)
     page.on('pageerror', error => errors.push(error.message)); page.on('console', message => { if (['error', 'warn'].includes(message.type())) errors.push(message.text()) })
+    page.on('response', response => { if (response.status() >= 400) httpErrors.push({ time: new Date().toISOString(), url: response.url().replace(/([?&]token=)[^&]+/gu, '$1[REDACTED]'), status: response.status(), method: response.request().method(), input: response.request().method() === 'POST' ? response.request().postDataJSON() : null }) })
     await page.addInitScript(() => { Object.defineProperty(window, '__ModuleLoader__', { configurable: true, set(target) {
       Object.defineProperty(window, '__ModuleLoader__', { configurable: true, writable: true, value: target })
       let load = target.load.bind(target)
@@ -51,7 +52,7 @@ export async function openNativeContext({ workspace, run, staged, cli, browserPa
       await page.locator(`.dsh-rp-workspace[data-rp-session="${sessionId}"]`).waitFor()
       await page.locator('.rp-empty').waitFor({ state: 'hidden' })
     }
-    return { name, home, installed, page, hostPid: host.child.pid, errors, actionProofs, api, studio, probe, request, openStudio, snapshot: sessionId => probe('snapshot', { sessionId }), idle: sessionId => probe('idle', { sessionId }), close: async () => { const failures = await closeOwnedResources(browser, host); if (failures.length) throw new Error(JSON.stringify(failures)) } }
+    return { name, home, installed, page, hostPid: host.child.pid, errors, httpErrors, actionProofs, api, studio, probe, request, openStudio, snapshot: sessionId => probe('snapshot', { sessionId }), idle: sessionId => probe('idle', { sessionId }), close: async () => { const failures = await closeOwnedResources(browser, host); if (failures.length) throw new Error(JSON.stringify(failures)) } }
   } catch (error) { throw await closeFailedContext(error, { name, installed, errors, browser, host }) }
 }
 

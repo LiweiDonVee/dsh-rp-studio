@@ -23,11 +23,14 @@ node scripts/native-integration/run.mjs --manifest ./reviewed-inputs.json --mode
 node scripts/native-integration/run.mjs --manifest ./reviewed-inputs.json --mode inspect --ui --browser <existing-headless-chromium>
 node scripts/native-integration/run.mjs --manifest ./reviewed-final-inputs.json --mode diagnose --browser <existing-headless-chromium>
 node scripts/native-integration/run.mjs --manifest ./reviewed-final-inputs.json --mode full --browser <existing-headless-chromium>
+node scripts/native-integration/run.mjs --manifest ./reviewed-final-inputs.json --mode approval --browser <existing-headless-chromium>
 node scripts/native-integration/readback-defaults.mjs --run <existing-passed-run> --browser <existing-headless-chromium>
 node --test scripts/native-integration/*.test.mjs
 ```
 
 Both scenario modes require a complete `stage: final` manifest. Run `full` only with the coordinator's currently approved final archive list; a revoked or superseded list may be used only for an explicitly authorized diagnostic. A manifest's stage alone does not establish approval.
+
+`approval` is the separate bounded A029 approval/regeneration workflow. The first source checkpoint implements default-off → terminal pending → cold pending observation only; remaining four groups stay `not-run`, and `checkpoint-passed` has `finalAcceptance:false`. It reuses the same installed owners, paths, browser and cleanup helpers. Approval fixtures are enabled only for this mode: bounded synthetic LLM input evidence, a tool-free `revise` model, real Loop routing and a scoped public command completion AbortSignal observer. They do not supply owner services or modify journals. Actual execution requires the coordinator's approved compatible manifest; a source/unit checkpoint is not native acceptance. Response observations retain error URLs and timestamps without filtering the original console-error array.
 
 Use `--cli` or `DSH_BIN` for a nondefault official launcher. The actual `--version` must equal `0.2.1-rc.3`. Before writing, the harness resolves the canonical checkout, physical `.runtime`, existing ancestors and target ownership; outward junction/reparse paths are rejected. Inspection creates its home exclusively: any existing `home-a` path is rejected, even without a root package manifest. `prepare` can still reuse verified immutable inputs. No production profile or default user sessions are read or changed.
 

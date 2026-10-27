@@ -77,5 +77,5 @@ export async function copyFixtureFiles(workspace, destination) {
   const run = await assertRunDirectory(workspace, dirname(destination))
   destination = await ownedRunPath(workspace, run, destination)
   await mkdir(destination, { recursive: true })
-  for (const file of ['fixture.mjs', 'model-fixture.mjs', 'requirements.mjs']) await writeFile(await ownedRunPath(workspace, run, join(destination, file)), await readFile(join(workspace, 'scripts/native-integration', file)))
+  for (const file of ['fixture.mjs', 'model-fixture.mjs', 'requirements.mjs', 'approval-model.mjs', 'approval-proof.mjs']) await writeFile(await ownedRunPath(workspace, run, join(destination, file)), await readFile(join(workspace, 'scripts/native-integration', file)))
 }
