@@ -43,7 +43,7 @@ export function createApprovalModels({ maxRequests = 192, maxRecords = 128 } = {
       const action = textOf(messages[human]); record.humanText = action.slice(0, 1200)
       if (action === 'NATIVE_C17_ORDINARY_LEGACY') {
         if (record.tools.includes('rp_gm_state')) throw new Error('ORDINARY_LEGACY_HAS_GM_TOOLS')
-        yield* text('NATIVE_C17_ORDINARY_LEGACY_BODY'); return
+        yield* text('旧故事阅读验证正文。'); return
       }
       if (action.includes('rp_begin_story')) { yield* base.stream(model, options); return }
       const owner = /rp_present\((\{[^\n]+?\})\)/u.exec(action)
