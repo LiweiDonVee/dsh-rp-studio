@@ -1,7 +1,10 @@
 import React from 'react'
+import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Workspace } from '../../../packages/plugin/src/Workspace.jsx'
+import { createStudioActions } from '../../../packages/plugin/src/actions.mjs'
 
 // Complete contracted DTO fixtures. No fixture is native product acceptance.
 const scene = { schemaVersion: 1, title: '抵港', location: '码头', presentActorIds: ['traveler'] }
@@ -24,7 +27,7 @@ function fixture({ pending = true, enabled = false } = {}) {
     action: async (action, input) => {
       calls.push({ action, input: structuredClone(input) })
       if (handlers[action]) return handlers[action](input)
-      if (action === 'capabilities') return { schemaVersion: 1, services, actions: { ...flags } }
+      if (action === 'capabilities') return { schemaVersion: 1, services, actions: { ...flags }, story: { generic: true, gm: { rollback: true, fork: true, autoplay: false } } }
       if (action === 'reviewState') return structuredClone(review)
       if (action === 'storyHistory') return structuredClone(history)
       if (action === 'narratives') return { records: [narrative] }
@@ -40,6 +43,36 @@ afterEach(cleanup)
 const mount = h => render(<Workspace sessionId="story" client={h.api} openSession={vi.fn()} />)
 
 describe('fact approval and separate regeneration controls (contract fixtures)', () => {
+  it.skipIf(!process.env.STUDIO_NATIVE_GM_REVIEW_URL)('BASE counterexample: real scoped legacy capabilities still lead FactTools to the real GM unbound refusal', async () => {
+    // Opt in with the independently fixed GM source URL; this never boots an owner or writes its state.
+    const { createFactReview } = createRequire(import.meta.url)(fileURLToPath(process.env.STUDIO_NATIVE_GM_REVIEW_URL))
+    const h = fixture({ pending: false }), bindingCalls = []
+    const binding = async ({ sessionId }) => { bindingCalls.push(sessionId); return null }
+    const review = createFactReview({ ctx: {}, runtime: { assertPlayable: async sessionId => { expect(sessionId).toBe('story') } }, bound: sessionId => binding({ sessionId }) })
+    const gm = { ...review, apiVersion: 1, capabilities: { factReview: 1 }, binding, storyState: async () => { throw new Error('unbound story must not read GM state') } }
+    const route = createStudioActions({ getService: name => name === 'rpGM' ? gm : undefined, authorize: async sessionId => { expect(sessionId).toBe('story') } })
+    const request = input => route.request(new Request('http://local/api/rp-studio/actions', { method: 'POST', body: JSON.stringify(input) }))
+    const capabilityResponse = await request({ action: 'capabilities', sessionId: 'story' })
+    const capabilities = await capabilityResponse.json()
+    expect(capabilityResponse.status).toBe(200)
+    expect(capabilities.story).toEqual({ generic: false })
+    expect(capabilities.actions.reviewState).toBe(true)
+    const direct = await request({ action: 'reviewState', sessionId: 'story' }), refusal = await direct.json()
+    expect(direct.status).toBe(404)
+    expect(refusal.error.code).toBe('STORY_NOT_FOUND')
+    delete h.state.extensions.gm
+    h.handlers.capabilities = async input => (await request({ action: 'capabilities', ...input })).json()
+    h.handlers.reviewState = async input => {
+      const response = await request({ action: 'reviewState', ...input }), body = await response.json()
+      if (!response.ok) throw Object.assign(new Error(body.error.message), { code: body.error.code, status: response.status })
+      return body
+    }
+    mount(h)
+    expect(await screen.findByRole('alert')).toHaveTextContent('STORY_NOT_FOUND')
+    expect(h.calls.filter(call => call.action === 'reviewState').map(call => call.input)).toEqual([{ sessionId: 'story' }])
+    expect(bindingCalls).toEqual(['story', 'story', 'story', 'story'])
+    route.close(); review.close()
+  })
   it('starts approval off and uses the GM settings revision for the per-story switch', async () => {
     const h = fixture({ pending: false }); mount(h)
     const toggle = await screen.findByRole('checkbox', { name: '本故事事实审批' })
