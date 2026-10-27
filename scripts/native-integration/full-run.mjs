@@ -10,7 +10,7 @@ import { SCENARIOS, assessServices } from './requirements.mjs'
 import { openNativeContext, waitForNative } from './contexts.mjs'
 import { ownedRunPath } from './paths.mjs'
 import { redact } from './host.mjs'
-import { verifyAction, verifyColdBeforeAction, verifyRetryGuard } from './action-proof.mjs'
+import { verifyAction, verifyColdBeforeAction, verifyRetryGuard, canonicalToolErrors } from './action-proof.mjs'
 import { verifyDocumentCache } from './document-proof.mjs'
 import { verifyUnchanged } from './witness-proof.mjs'
 
@@ -157,7 +157,7 @@ export async function executeFullNative({ workspace, run, staged, cli, browserPa
       assert.equal(successfulFacts(snapshot.events).length, 1)
       assert.equal(models.conflicts.length, 1); assert.equal(models.conflicts[0].isError, true); assert.equal(models.conflicts[0].code, 'TURN_ALREADY_COMMITTED'); assert.equal(models.conflicts[0].receiptId, state.lastFactReceipt.id)
       assert.equal(models.conflicts[0].firstDatabaseRevision, models.conflicts[0].postRejectedRevision); assert.deepEqual(models.conflicts[0].stateRefs, state.lastFactReceipt.stateRefs)
-      const errors = snapshot.events.filter(event => event.type === 'tool/result' && event.data.message?.isError === true).map(event => { try { return JSON.parse(body(event.data.message)) } catch { return null } })
+      const errors = canonicalToolErrors(snapshot.events)
       assert.ok(errors.some(value => value?.error?.code === 'TURN_ALREADY_COMMITTED' && value.error.receiptId === state.lastFactReceipt.id))
       await write('facts-once.json', { state, snapshot, models }); return { receiptId: state.lastFactReceipt.id, actualErrorJSON: models.conflicts[0] }
     })

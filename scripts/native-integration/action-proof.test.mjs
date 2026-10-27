@@ -66,3 +66,12 @@ test('invalid retry proof cannot use another tool, the selected ID, a foreign re
     assert.throws(() => verifyRetryGuard(value.attempt, value.rejection, 'selected-failed-id'))
   }
 })
+test('canonical structured errors stay readable alongside plain-text owner guard failures', () => {
+  assert.equal(typeof proof.canonicalToolErrors, 'function')
+  const events = [
+    { type: 'tool/result', data: { message: { isError: true, content: [{ type: 'text', text: '{"error":{"code":"TURN_ALREADY_COMMITTED","receiptId":"real-first"}}' }] } } },
+    { type: 'tool/result', data: { message: { isError: true, content: [{ type: 'text', text: 'Error: Only the exact selected rp_present operation is permitted for this owner request' }] } } },
+    { type: 'tool/result', data: { message: { isError: false, content: [{ type: 'text', text: '{"error":{"code":"NOT_A_TOOL_ERROR"}}' }] } } },
+  ]
+  assert.deepEqual(proof.canonicalToolErrors(events), [{ error: { code: 'TURN_ALREADY_COMMITTED', receiptId: 'real-first' } }])
+})

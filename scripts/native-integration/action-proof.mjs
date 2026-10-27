@@ -5,6 +5,11 @@ const successfulFacts = events => {
   const calls = new Map(events.filter(event => event.type === 'tool/call').map(event => [event.data.callId, event.data.name]))
   return events.filter(event => event.type === 'tool/result' && event.data.message?.isError !== true && calls.get(event.data.message?.toolCallId) === 'rp_commit_turn').length
 }
+export function canonicalToolErrors(events) {
+  return events.filter(event => event.type === 'tool/result' && event.data.message?.isError === true).flatMap(event => {
+    try { return [JSON.parse(textOf(event.data.message))] } catch { return [] }
+  })
+}
 export function verifyRetryGuard(attempt, rejection, selectedId) {
   assert.equal(attempt?.type, 'tool/call'); assert.equal(attempt.data.name, 'rp_present')
   const args = JSON.parse(attempt.data.arguments)
