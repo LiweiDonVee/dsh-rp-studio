@@ -41,13 +41,13 @@ export function createApprovalModels({ maxRequests = 192, maxRecords = 128 } = {
       }
       if (human < 0) throw new Error('APPROVAL_FIXTURE_NO_USER_ACTION')
       const action = textOf(messages[human]); record.humanText = action.slice(0, 1200)
+      if (action.includes('rp_begin_story')) { yield* base.stream(model, options); return }
       const owner = /rp_present\((\{[^\n]+?\})\)/u.exec(action)
       if (owner) {
         const args = JSON.parse(owner[1]); record.ownerDispatch = true
         if (forbiddenPatch) { const patch = forbiddenPatch; forbiddenPatch = null; yield* tool('rp_db_patch', patch, record); return }
         yield* tool('rp_present', args, record); return
       }
-      if (action.includes('rp_begin_story')) { yield* base.stream(model, options); return }
       const tail = results(messages.slice(human + 1)), last = name => tail.findLast(result => result.name === name)
       const committed = last('rp_commit_turn')
       if (committed?.value?.id) { yield* tool('rp_present', { factReceiptId: committed.value.id }, record); return }

@@ -4,6 +4,30 @@ import * as fixture from './approval-model.mjs'
 const human = text => ({ role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text }] })
 async function collect(iterator) { const values = []; for await (const value of iterator) values.push(value); return values }
 const callFrom = events => events.find(event => event.type === 'block-end' && event.block.type === 'tool-call')?.block
+test('the actual opening request treats documented presentation arguments as an opening before using the returned receipt ID', async () => {
+  const model = fixture.createApprovalModels()
+  // G1 diagnostic seq 8: the human action documents an argument name, not JSON.
+  const messages = [human('开始这个已审核的故事。先调用 rp_begin_story，然后仅以 rp_present({factReceiptId}) 呈现已选开场。')]
+  const opening = callFrom(await collect(model.stream('gm', { messages })))
+  assert.equal(opening.name, 'rp_begin_story'); assert.deepEqual(JSON.parse(opening.arguments), {})
+  messages.push({ role: 'assistant', content: [{ type: 'tool-call', id: 'opening-call', name: 'rp_begin_story', arguments: '{}' }] }, { role: 'tool', toolCallId: 'opening-call', content: [{ type: 'text', text: '{"id":"actual-opening-receipt"}' }] })
+  const presentation = callFrom(await collect(model.stream('gm', { messages })))
+  assert.equal(presentation.name, 'rp_present'); assert.deepEqual(JSON.parse(presentation.arguments), { factReceiptId: 'actual-opening-receipt' })
+  assert.equal(model.stats().total, 2); assert.equal(model.stats().counts.gm, 2)
+  assert.ok(model.stats().requests.every(record => record.ownerDispatch !== true && record.error === undefined))
+})
+test('explicit owner presentation dispatch retains its exact supplied receipt ID', async () => {
+  const model = fixture.createApprovalModels()
+  const call = callFrom(await collect(model.stream('gm', { messages: [human('仅调用 rp_present({"factReceiptId":"actual-owner-receipt"})。')] })))
+  assert.equal(call.name, 'rp_present'); assert.deepEqual(JSON.parse(call.arguments), { factReceiptId: 'actual-owner-receipt' })
+  assert.equal(model.stats().requests[0].ownerDispatch, true)
+})
+test('malformed explicit owner presentation JSON still fails and records its request', async () => {
+  const model = fixture.createApprovalModels()
+  await assert.rejects(collect(model.stream('gm', { messages: [human('仅调用 rp_present({factReceiptId})。')] })), SyntaxError)
+  assert.equal(model.stats().counts.gm, 1); assert.equal(model.stats().requests[0].index, 1)
+  assert.match(model.stats().requests[0].error, /JSON/u)
+})
 test('approval model derives proposal and next-state facts from actual gm state and retains fixed evidence tools', async () => {
   assert.equal(typeof fixture.createApprovalModels, 'function')
   const model = fixture.createApprovalModels(), state = { revision: 8, scene: { schemaVersion: 1, title: 'Dock', location: 'Quay', presentActorIds: [] }, facts: { schemaVersion: 1, items: [{ id: 'native-marker', text: 'CURRENT_REGENERATED' }] }, review: { enabled: true }, lastFactReceipt: { id: 'current-receipt' } }
