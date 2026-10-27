@@ -1,10 +1,10 @@
 # 原生 RP Studio 使用指南
 
-RP Studio 1.4.0 面向 DSH 0.2.1-rc.3，支持通用故事、事实审批与重新生成、候选与材料、Story Kit 转移操作，参见 [组合使用指南](agent-rp-integration.md)。本轮源码独立审查已完成，七包组合原生验收仍在进行；已有[验证记录](native-acceptance.md)仅对应其标注的历史组合。
+RP Studio 1.4.0 面向 DSH 0.2.1-rc.3，支持通用故事、事实审批与重新生成、候选与材料、Story Kit 转移操作，参见 [组合使用指南](agent-rp-integration.md)。V6 七包组合的旧九场景回归及同次默认依赖回读、审批与两层重生五组实际功能断言均已通过；[验证记录](native-acceptance.md#v6-approval-and-regeneration)列出各次受测包、计数和发行验证边界。
 
 ## 安装与升级
 
-宿主版本范围为 `DSH >=0.2.1-rc.3 <0.3.0-0`，当前验收使用 0.2.1-rc.3。待 1.4.0 在 [发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases) 实际提供后，下载 `dsh-rp-studio-1.4.0.tgz`，完全退出 DSH 后用 `dsh plugin --profile desktop add ./dsh-rp-studio-1.4.0.tgz` 安装，再重新启动。Web 模式改为 `--profile web`，升级时安装新版本。
+宿主版本范围为 `DSH >=0.2.1-rc.3 <0.3.0-0`，当前验收使用 0.2.1-rc.3。安装包为 `dsh-rp-studio-1.4.0.tgz`，下载入口为 [发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases)。完全退出 DSH 后用 `dsh plugin --profile desktop add ./dsh-rp-studio-1.4.0.tgz` 安装，再重新启动。Web 模式改为 `--profile web`，升级时安装新版本。
 
 发布包自包含，无需构建本仓库、安装 Electron、启动 Gateway 或复制 token。主 README 给出了找不到 `dsh` 命令时的 Windows 启动器路径。校验文件与安装包位于同一 Release。
 
@@ -28,7 +28,7 @@ Studio 展示已有 RP 数据，不生成角色卡或补建模拟引擎。没有
 
 ## 插件如何搭配
 
-以下是 1.4 的目标组合。各项目在不同仓库开发，待对应版本在各自发布页实际提供后下载，安装包名应与下列版本一致：
+以下是 1.4 的组合版本。各项目的下载入口位于各自发布页；核对安装包版本和同一发布页的 `SHA256SUMS.txt`，将所需包安装到同一个 profile：
 
 ```powershell
 dsh plugin --profile desktop add ./dsh-rp-studio-1.4.0.tgz

@@ -2,13 +2,13 @@
 
 DSH 内置角色扮演工作区。RP Studio 1.4.0 面向 **DSH 0.2.1-rc.3**。点击会话顶部的 **RP** 打开右侧页签；空白会话中，RP 位于输入区上方。工作区可以拉宽、全屏阅读或关闭，使用 dsh 本身的主题和会话导航。
 
-1.4 新增每故事事实审批（默认关闭）、事实重新生成和只重新写作，先确认事实，再生成正文。[审批与重新生成用法](docs/agent-rp-integration.md#事实审批与两层重新生成) · [使用与依赖](docs/agent-rp-integration.md) · [公开接口](docs/agent-rp/README.md) · [历史验证记录](docs/native-acceptance.md)。
+1.4 新增每故事事实审批（默认关闭）、事实重新生成和只重新写作，先确认事实，再生成正文。[审批与重新生成用法](docs/agent-rp-integration.md#事实审批与两层重新生成) · [使用与依赖](docs/agent-rp-integration.md) · [公开接口](docs/agent-rp/README.md) · [原生验证记录](docs/native-acceptance.md)。
 
-本轮源码独立审查已完成，七包组合原生验收仍在进行，尚未完成发布验收。
+V6 七包组合已在官方 rc.3 隔离环境完成旧九场景回归及同次默认依赖回读；审批与两层重新生成的五组实际功能断言全部通过。受测包、模型计数与发行验证边界见[当前原生证据](docs/native-acceptance.md#v6-approval-and-regeneration)。
 
 ## 项目与下载
 
-| 独立项目 | 职责 | 目标版本与发布页 |
+| 独立项目 | 职责 | 版本与发布页 |
 | --- | --- | --- |
 | **RP Studio（本仓库）** | 原生故事阅读、状态、事实审批与存档入口 | 1.4.0 · [Releases](https://github.com/LiweiDonVee/dsh-rp-studio/releases) |
 | [Loop Studio](https://github.com/LiweiDonVee/dsh-loop-studio) | 通用执行图、节点模型选择 | 0.1.0 · [Releases](https://github.com/LiweiDonVee/dsh-loop-studio/releases) |
@@ -46,13 +46,13 @@ DSH 内置角色扮演工作区。RP Studio 1.4.0 面向 **DSH 0.2.1-rc.3**。�
 
 插件自带原生预设编辑器和已提交稿件记录，可单独安装。配合 RP Studio 1.4 可在故事页管理预设、流式阅读正文；配合 Loop Studio 可分别给迁移、热组装和写作选择模型。三个包互相独立，不要求同时安装。第一版终止呈现需要原生工具模式，纯 PTC 会话仍可迁移、编辑和预览。
 
-本次目标安装包为 `dsh-rp-last-step-0.4.0.tgz`，以其 [Releases](https://github.com/LiweiDonVee/dsh-rp-last-step/releases) 实际发布为准。可选配合 Database 0.3 与 Context 0.3：GM 主动搜索、选择及编辑允许的会话条目，展开或折叠有效叙事，再将冻结材料交给 writer。失败正文可基于冻结材料只重试写作。当前窗口作用于中间 GM 与正文，主循环压缩仍由 DSH／对应版本验证的 ACP 管理。
+安装包为 `dsh-rp-last-step-0.4.0.tgz`，下载入口为其 [Releases](https://github.com/LiweiDonVee/dsh-rp-last-step/releases)。可选配合 Database 0.3 与 Context 0.3：GM 主动搜索、选择及编辑允许的会话条目，展开或折叠有效叙事，再将冻结材料交给 writer。失败正文可基于冻结材料只重试写作。当前窗口作用于中间 GM 与正文，主循环压缩仍由 DSH／对应版本验证的 ACP 管理。
 
 安装方式同下，将包名替换即可。源码、迁移 skill 与当前组合验收见 [独立仓库](https://github.com/LiweiDonVee/dsh-rp-last-step)。本仓库的 `pnpm rp:package`、`pnpm rp:smoke` 针对旧集成快照，历史验收见 [记录](docs/rp-last-step-acceptance.md)。
 
 ## 安装原生插件（推荐）
 
-本次目标安装包为 `dsh-rp-studio-1.4.0.tgz`。待对应版本在 [发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases) 实际提供后下载，完全退出 dsh 后执行；完整组合见 [原生指南](docs/native-usage.md#插件如何搭配)：
+安装包为 `dsh-rp-studio-1.4.0.tgz`，下载入口为 [发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases)。完全退出 dsh 后执行；完整组合见 [原生指南](docs/native-usage.md#插件如何搭配)：
 
 ```powershell
 dsh plugin --profile desktop add ./dsh-rp-studio-1.4.0.tgz
