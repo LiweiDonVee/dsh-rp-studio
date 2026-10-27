@@ -9,7 +9,7 @@ import { scenarioState } from './scenario-state.mjs'
 import { openNativeContext, finishNativeContext, restartNativeContext } from './contexts.mjs'
 import { ownedRunPath } from './paths.mjs'
 import { redact } from './host.mjs'
-import { modelDeltas, zeroModels, pendingWorld, durablePending, successfulToolResults, terminalProposal, acceptedProse, preservePrefix } from './approval-proof.mjs'
+import { modelDeltas, zeroModels, pendingWorld, durablePending, assertReceiptProjection, successfulToolResults, terminalProposal, acceptedProse, preservePrefix } from './approval-proof.mjs'
 
 export const APPROVAL_SCENARIOS = ['default-off-pending-cold', 'custom-regeneration-decision-resume', 'policy-off-generation-resume', 'effective-writer-scope', 'fork-saved-story-cold']
 export async function clickOwner(context, action, click, matches = () => true) {
@@ -99,6 +99,7 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       assert.deepEqual(baseline.gm.facts.items.filter(row => row.id !== 'native-marker'), initial.gm.facts.items)
       for (const ref of baseline.gm.lastFactReceipt.stateRefs) assert.equal(baseline.database.entries.find(entry => entry.ref.sourceKey === ref.sourceKey && entry.ref.entryId === ref.entryId)?.version, ref.version)
       assert.equal(baseline.review.latestRound.approvalRequired, false)
+      assertReceiptProjection(baseline, baseline.gm.lastFactReceipt)
       const reviewConfiguration = await configureApproval(source, sessionId, true)
       await setNote(source, sessionId, 'NATIVE_OLD_NOTE_CONSUMED_ON_CUSTOM')
       const before = await capture(source, sessionId)
@@ -108,6 +109,7 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       assert.deepEqual(pendingWorld(pending.database), pendingWorld(before.database)); assert.deepEqual(pending.gm.lastFactReceipt, before.gm.lastFactReceipt)
       assert.deepEqual(pending.history.records, before.history.records)
       const round = pending.review.latestRound, candidateId = round.pendingCandidateId; assert.ok(candidateId); assert.equal(round.approvalRequired, true)
+      assertReceiptProjection(pending, baseline.gm.lastFactReceipt)
       const added = pending.snapshot.events.slice(before.snapshot.events.length), call = added.find(row => row.type === 'tool/call' && row.data.name === 'rp_propose_turn')
       assert.ok(call); assert.ok(added.some(row => row.type === 'tool/call' && row.data.name === 'rp_db_read'))
       assert.equal(added.filter(row => row.type === 'tool/call' && ['rp_commit_turn', 'rp_present'].includes(row.data.name)).length, 0)
@@ -124,15 +126,18 @@ export async function executeApprovalNative({ workspace, run, staged, cli, brows
       pendingSnapshot = (await source.api('studio', 'exportSavedStory', { sessionId })).snapshot
       await source.probe('flush')
       const saved = await capture(source, sessionId), selectedSaved = pendingSnapshot.sessions.find(row => row.header.id === sessionId)
+      assertReceiptProjection(saved, baseline.gm.lastFactReceipt)
       assert.equal(pendingSnapshot.selectedSessionId, sessionId); assert.ok(selectedSaved)
       preservePrefix(selectedSaved, saved.snapshot); assert.deepEqual(selectedSaved.events, saved.snapshot.events)
       source = await restart(source)
       const coldBefore = await source.probe('models'); zeroModels(modelDeltas(coldBefore, coldBefore)); assert.equal(coldBefore.total, 0)
       const cold = await capture(source, sessionId); assert.equal(cold.models.total, 0); assert.equal(cold.review.enabled, true); assert.equal(cold.review.latestRound.pendingCandidateId, candidateId)
+      assertReceiptProjection(cold, baseline.gm.lastFactReceipt)
       assert.deepEqual(durablePending(cold), durablePending(saved)); zeroModels(cold.models.counts)
       const prefix = preservePrefix(cold.snapshot, saved.snapshot); assert.ok(cold.snapshot.events.slice(saved.snapshot.events.length).every(row => row.type === 'session/end-seed'))
       await source.openStudio(sessionId); await expect(source.page.getByText('候选事实 · 尚未写入', { exact: true })).toBeVisible()
       const afterColdUi = await capture(source, sessionId)
+      assertReceiptProjection(afterColdUi, baseline.gm.lastFactReceipt)
       assert.equal(afterColdUi.models.total, 0); zeroModels(afterColdUi.models.counts); assert.deepEqual(durablePending(afterColdUi), durablePending(saved))
       preservePrefix(afterColdUi.snapshot, saved.snapshot); assert.ok(afterColdUi.snapshot.events.slice(saved.snapshot.events.length).every(row => row.type === 'session/end-seed'))
       await write('pending-cold.json', { sessionId, initial, baseline, baselineBody, baselineDeltas, commits, presentations, reviewConfiguration, before, pending, pendingDeltas, proposal, saved, cold, afterColdUi, prefix, pendingSnapshot, layouts })

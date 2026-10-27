@@ -34,9 +34,23 @@ export function factWorld(database) {
   return database.entries.filter(entry => entry.ref?.sourceKey === '@session' && ['gm.scene', 'gm.facts'].includes(entry.ref.entryId)).map(entry => ({ ref: entry.ref, content: entry.content, version: entry.version }))
 }
 export const pendingWorld = database => ({ binding: database.binding, entries: database.entries, notes: database.notes })
+export function assertReceiptProjection(view, receipt) {
+  const projection = view.factReviewProjection, round = view.review.latestRound
+  assert.equal(projection?.schemaVersion, 1, 'missing public fact review projection'); assert.ok(Array.isArray(projection.groups))
+  assert.ok(receipt?.id && receipt.factRoundId); assert.equal(projection.latestRoundId, round.roundId)
+  const selected = projection.groups.filter(group => group.roundId === receipt.factRoundId); assert.equal(selected.length, 1, 'original receipt group missing or duplicated')
+  assert.equal(selected[0].activeReceiptId, receipt.id); assert.equal(selected[0].factRevision, receipt.factRevision); assert.deepEqual(selected[0].source, receipt.source)
+  if (round.pendingCandidateId) {
+    const pending = projection.groups.filter(group => group.roundId === round.roundId); assert.equal(pending.length, 1)
+    assert.equal(pending[0].activeReceiptId, null); assert.equal(pending[0].pendingCandidateId, round.pendingCandidateId); assert.deepEqual(pending[0].source, round.source)
+  }
+  if (Object.hasOwn(view.gm, 'lastFactReceipt')) assert.deepEqual(view.gm.lastFactReceipt, receipt)
+  return projection
+}
 export function durablePending(view) {
   const round = view.review.latestRound
-  return { enabled: view.review.enabled, round: round && Object.fromEntries(['roundId', 'version', 'sessionId', 'turnKey', 'source', 'base', 'capture', 'candidates', 'pendingCandidateId', 'activeReceiptId', 'approvalRequired'].map(key => [key, round[key]])), pendingDecision: view.review.pendingDecision, receipt: view.gm.lastFactReceipt, world: pendingWorld(view.database), history: view.history }
+  assert.equal(view.factReviewProjection?.schemaVersion, 1); assert.ok(Array.isArray(view.factReviewProjection.groups))
+  return { enabled: view.review.enabled, round: round && Object.fromEntries(['roundId', 'version', 'sessionId', 'turnKey', 'source', 'base', 'capture', 'candidates', 'pendingCandidateId', 'activeReceiptId', 'approvalRequired'].map(key => [key, round[key]])), pendingDecision: view.review.pendingDecision, projection: view.factReviewProjection, world: pendingWorld(view.database), history: view.history }
 }
 export function successfulToolResults(events, name, afterSeq = -1) {
   const calls = new Map(events.filter(event => event.type === 'tool/call' && event.data.name === name).map(event => [event.data.callId, event]))

@@ -63,11 +63,28 @@ test('terminal proof rejects a real extra request/header even without another as
   assert.equal(proof.terminalProposal(view, -1).result.seq, 4)
 })
 test('cold durable proof detects same-ID candidate payload or captured evidence changes', () => {
-  const view = { review: { enabled: true, latestRound: { roundId: 'round', pendingCandidateId: 'candidate', candidates: [{ id: 'candidate', payload: { facts: 'exact' } }], base: { facts: 'base' }, capture: { playerInput: 'real input' } }, pendingDecision: null }, gm: { lastFactReceipt: { id: 'receipt' } }, database: { entries: [], notes: [], binding: { sources: [] } }, history: { records: [{ id: 'selected' }] } }
-  for (const mutate of [value => value.review.latestRound.candidates[0].payload.facts = 'lost edit', value => value.review.latestRound.capture.playerInput = 'different', value => value.gm.lastFactReceipt.id = 'other', value => value.history.records = []]) {
+  const view = { review: { enabled: true, latestRound: { roundId: 'round', pendingCandidateId: 'candidate', candidates: [{ id: 'candidate', payload: { facts: 'exact' } }], base: { facts: 'base' }, capture: { playerInput: 'real input' } }, pendingDecision: null }, factReviewProjection: { schemaVersion: 1, groups: [{ activeReceiptId: 'receipt' }] }, gm: { lastFactReceipt: { id: 'receipt' } }, database: { entries: [], notes: [], binding: { sources: [] } }, history: { records: [{ id: 'selected' }] } }
+  for (const mutate of [value => value.review.latestRound.candidates[0].payload.facts = 'lost edit', value => value.review.latestRound.capture.playerInput = 'different', value => value.factReviewProjection.groups[0].activeReceiptId = 'other', value => value.history.records = []]) {
     const changed = structuredClone(view); mutate(changed)
     assert.notDeepEqual(proof.durablePending(changed), proof.durablePending(view))
   }
+})
+test('cold durable proof anchors the full Database projection to the original receipt without filling the optional GM field', () => {
+  assert.equal(typeof proof.assertReceiptProjection, 'function')
+  const source = { assistantMessageId: 'original', callId: 'commit', callSeq: 4, turnStartSeq: 1 }, pendingSource = { assistantMessageId: 'pending', callId: 'proposal', callSeq: 9, turnStartSeq: 6 }
+  const receipt = { id: 'baseline', factRoundId: 'baseline-round', factRevision: 1, source }
+  const projection = { schemaVersion: 1, latestRoundId: 'pending', groups: [{ roundId: 'baseline-round', activeReceiptId: 'baseline', factRevision: 1, source, pendingCandidateId: null }, { roundId: 'pending', activeReceiptId: null, factRevision: null, source: pendingSource, pendingCandidateId: 'candidate' }] }
+  const live = { review: { enabled: true, latestRound: { roundId: 'pending', pendingCandidateId: 'candidate', activeReceiptId: null, source: pendingSource, candidates: [{ id: 'candidate', payload: { facts: 'pending only' } }] }, pendingDecision: null }, factReviewProjection: projection, gm: { lastFactReceipt: receipt }, database: { entries: [], notes: [], binding: { sources: [] } }, history: { records: [{ factReceiptId: 'baseline' }] } }
+  const cold = structuredClone(live); delete cold.gm.lastFactReceipt
+  proof.assertReceiptProjection(live, receipt); proof.assertReceiptProjection(cold, receipt)
+  assert.deepEqual(proof.durablePending(cold), proof.durablePending(live))
+  assert.equal(Object.hasOwn(cold.gm, 'lastFactReceipt'), false)
+  for (const mutate of [value => delete value.factReviewProjection, value => value.factReviewProjection.groups.shift(), value => value.factReviewProjection.groups[0].activeReceiptId = 'other', value => value.factReviewProjection.groups[0].factRevision++, value => value.factReviewProjection.groups[0].source.callSeq++, value => value.factReviewProjection.groups[1].activeReceiptId = 'invented', value => value.gm.lastFactReceipt = { ...receipt, id: 'changed-carrier' }]) {
+    const changed = structuredClone(cold); mutate(changed)
+    assert.throws(() => proof.assertReceiptProjection(changed, receipt))
+  }
+  const changedProjection = structuredClone(cold); changedProjection.factReviewProjection.groups[0].pendingCandidateId = 'changed'
+  assert.notDeepEqual(proof.durablePending(changedProjection), proof.durablePending(live))
 })
 test('baseline suffix counting retains every actual successful commit, excluding error results and earlier calls', () => {
   const events = [{ seq: 1, type: 'tool/call', data: { name: 'rp_commit_turn', callId: 'old' } }, { seq: 2, type: 'tool/result', data: { message: { toolCallId: 'old', isError: false } } }, { seq: 3, type: 'tool/call', data: { name: 'rp_commit_turn', callId: 'first' } }, { seq: 4, type: 'tool/result', data: { message: { toolCallId: 'first', isError: false } } }, { seq: 5, type: 'tool/call', data: { name: 'rp_commit_turn', callId: 'second' } }, { seq: 6, type: 'tool/result', data: { message: { toolCallId: 'second', isError: false } } }]

@@ -70,8 +70,8 @@ export function apply(ctx) {
       else if (input.action === 'approvalCapture') {
         if (!approval) throw new Error('APPROVAL_FIXTURE_NOT_ENABLED')
         const args = { sessionId: input.sessionId, signal: request.signal }
-        const [gm, review, database, history, canonical] = await Promise.all([ctx.get('rpGM').storyState(args), ctx.get('rpGM').reviewState(args), ctx.get('rpDatabase').effectiveV2(args), ctx.get('rpLastStep').storyHistory(args), ctx.get('rpLastStep').narratives(args)])
-        result = { gm, review, database, history, canonical, snapshot: await snapshot(input.sessionId), models: local.stats() }
+        const [gm, review, database, factReviewProjection, history, canonical] = await Promise.all([ctx.get('rpGM').storyState(args), ctx.get('rpGM').reviewState(args), ctx.get('rpDatabase').effectiveV2(args), ctx.get('rpDatabase').factReviewProjection(args), ctx.get('rpLastStep').storyHistory(args), ctx.get('rpLastStep').narratives(args)])
+        result = { gm, review, database, factReviewProjection, history, canonical, snapshot: await snapshot(input.sessionId), models: local.stats() }
       }
       else if (input.action === 'abortFactDecision' || input.action === 'abortFactGeneration') {
         if (!approval) throw new Error('APPROVAL_FIXTURE_NOT_ENABLED')
