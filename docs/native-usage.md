@@ -1,10 +1,10 @@
 # 原生 RP Studio 使用指南
 
-RP Studio 1.3.0 面向 DSH 0.2.1-rc.3，支持通用故事、候选与材料、Story Kit 转移操作，参见 [组合使用指南](agent-rp-integration.md)。具体受测包、命令和原生执行结果见[验证记录](native-acceptance.md)。
+RP Studio 1.4.0 面向 DSH 0.2.1-rc.3，支持通用故事、事实审批与重新生成、候选与材料、Story Kit 转移操作，参见 [组合使用指南](agent-rp-integration.md)。V6 七包组合的旧九场景回归及同次默认依赖回读、审批与两层重生五组实际功能断言均已通过；[验证记录](native-acceptance.md#v6-approval-and-regeneration)列出各次受测包、计数和发行验证边界。
 
 ## 安装与升级
 
-使用 DSH 0.2.1-rc.3。下载 [RP Studio 1.3.0](https://github.com/LiweiDonVee/dsh-rp-studio/releases/tag/v1.3.0) 中的 tgz，完全退出 DSH 后用 `dsh plugin --profile desktop add ./dsh-rp-studio-1.3.0.tgz` 安装，再重新启动。Web 模式改为 `--profile web`，升级时安装新版本。
+宿主版本范围为 `DSH >=0.2.1-rc.3 <0.3.0-0`，当前验收使用 0.2.1-rc.3。安装包为 `dsh-rp-studio-1.4.0.tgz`，下载入口为 [发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases)。完全退出 DSH 后用 `dsh plugin --profile desktop add ./dsh-rp-studio-1.4.0.tgz` 安装，再重新启动。Web 模式改为 `--profile web`，升级时安装新版本。
 
 发布包自包含，无需构建本仓库、安装 Electron、启动 Gateway 或复制 token。主 README 给出了找不到 `dsh` 命令时的 Windows 启动器路径。校验文件与安装包位于同一 Release。
 
@@ -15,7 +15,7 @@ RP Studio 1.3.0 面向 DSH 0.2.1-rc.3，支持通用故事、候选与材料、S
 | 页面 | 用途 |
 | --- | --- |
 | 角色与剧情 | 通用 GM 当前场景与事实，或旧预设的公开角色状态 |
-| 沉浸阅读 | 玩家行动、正式正文、候选采用、冻结材料与失败重试 |
+| 沉浸阅读 | 玩家行动、事实审批与重新生成、正式正文、候选采用、冻结材料与失败重试 |
 | 故事档案 | Story Kit 开局与内容入口、旧预设导航、阅读稿和完整存档 |
 
 Studio 展示已有 RP 数据，不生成角色卡或补建模拟引擎。没有角色预设的新安装可以是空白状态，不会自动下载私人世界或角色。
@@ -28,16 +28,16 @@ Studio 展示已有 RP 数据，不生成角色卡或补建模拟引擎。没有
 
 ## 插件如何搭配
 
-各项目在不同仓库开发，版本化安装包分别下载：
+以下是 1.4 的组合版本。各项目的下载入口位于各自发布页；核对安装包版本和同一发布页的 `SHA256SUMS.txt`，将所需包安装到同一个 profile：
 
 ```powershell
-dsh plugin --profile desktop add ./dsh-rp-studio-1.3.0.tgz
+dsh plugin --profile desktop add ./dsh-rp-studio-1.4.0.tgz
 dsh plugin --profile desktop add ./dsh-loop-studio-0.1.0.tgz
-dsh plugin --profile desktop add ./dsh-rp-last-step-0.3.0.tgz
-dsh plugin --profile desktop add ./dsh-rp-database-0.2.0.tgz
-dsh plugin --profile desktop add ./dsh-rp-context-0.2.0.tgz
-dsh plugin --profile desktop add ./dsh-rp-gm-0.1.0.tgz
-dsh plugin --profile desktop add ./dsh-rp-story-kit-0.1.0.tgz
+dsh plugin --profile desktop add ./dsh-rp-last-step-0.4.0.tgz
+dsh plugin --profile desktop add ./dsh-rp-database-0.3.0.tgz
+dsh plugin --profile desktop add ./dsh-rp-context-0.3.0.tgz
+dsh plugin --profile desktop add ./dsh-rp-gm-0.2.0.tgz
+dsh plugin --profile desktop add ./dsh-rp-story-kit-0.2.0.tgz
 ```
 
 按需安装，安装前退出 DSH，完成后重启。需要联动的包必须装在实际使用的同一 profile。
@@ -47,10 +47,10 @@ dsh plugin --profile desktop add ./dsh-rp-story-kit-0.1.0.tgz
 - [**RP 最后一步**](https://github.com/LiweiDonVee/dsh-rp-last-step) 负责 ST 预设适配、用户锁、热组装和最终正文，不接管既有模拟/结算。
 - [**RP Database**](https://github.com/LiweiDonVee/dsh-rp-database) 负责可复用资料、会话覆盖、人类策略，以及关键词／向量／重排检索；人物知情使用叙事备注。
 - [**RP Context**](https://github.com/LiweiDonVee/dsh-rp-context) 让中间 GM 搜索候选之外的资料并整理历史材料，默认近轮全文、旧轮摘要，能主动展开或折叠原文。
-- [**RP GM**](https://github.com/LiweiDonVee/dsh-rp-gm) 负责通用开局、当前事实与合法前缀分支；通用故事使用明确的玩家行动继续。
+- [**RP GM**](https://github.com/LiweiDonVee/dsh-rp-gm) 负责通用开局、当前事实、审批与事实重新生成，以及合法前缀分支；通用故事使用明确的玩家行动继续。
 - [**Story Kit**](https://github.com/LiweiDonVee/dsh-rp-story-kit) 管理角色、身份、开场、内容包与精确保留 ID 的完整存档。
 
-安装最后一步后，Studio 故事页增加“故事预设”入口。导入、自建、迁移、保存并应用可用模块版本后，主 Agent 处理本轮事实，再以唯一终止工具 `rp_present` 进入独立正文调用。终止呈现要求原生工具模式，纯 PTC 仍可迁移和预览。
+安装最后一步后，Studio 故事页增加“故事预设”入口，可导入、自建、迁移、保存并应用可用模块版本。通用故事先确认事实，再写作；按故事开启审批后的操作见[审批与两层重新生成](agent-rp-integration.md#事实审批与两层重新生成)。旧预设仍由主 Agent 处理本轮事实，再以唯一终止工具 `rp_present` 进入独立正文调用。终止呈现要求原生工具模式，纯 PTC 仍可迁移和预览。
 
 绑定最后一步期间，主 Agent 的处理文字不会成为 GM 旁白；Studio 接收安全正文流，规范结果确认后成为可回放叙事。历史普通故事继续按原有方式显示。独立生成记录页保存稿件档案，当前分支以 Studio 故事页为准。
 

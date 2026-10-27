@@ -71,6 +71,18 @@ test('browser cleanup failure does not skip terminating the owned process or hid
     assert.deepEqual(errors.map(error => error.resource), ['browser', 'host'])
   } finally { await stopOwned(child) }
 })
+
+test('host shutdown waits until browser close settles', async () => {
+  let releaseBrowser, browserSettled = false, hostStarted = false
+  const held = new Promise(done => { releaseBrowser = done })
+  const closing = closeOwnedResources({ async close() { await held; browserSettled = true } }, { close() { hostStarted = true } })
+  try {
+    await new Promise(done => setImmediate(done))
+    assert.equal(browserSettled, false)
+    assert.equal(hostStarted, false, 'host shutdown must wait while browser close is unresolved')
+  } finally { releaseBrowser(); await closing }
+  assert.equal(browserSettled, true); assert.equal(hostStarted, true)
+})
 test('launch credentials are removed before host logs become evidence', () => {
   assert.equal(redact('http://127.0.0.1:1/?token=synthetic-secret\nBearer synthetic-key'), 'http://127.0.0.1:1/?token=[REDACTED]\nBearer [REDACTED]')
 })

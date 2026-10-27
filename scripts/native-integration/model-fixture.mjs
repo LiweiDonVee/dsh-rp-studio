@@ -58,7 +58,7 @@ export function createLocalModels({ maxRequests = 64, maxRecords = 64 } = {}) {
         if (human < 0) throw new Error('FIXTURE_NO_USER_ACTION')
         const action = textOf(messages[human]), tail = results(messages.slice(human + 1)), last = name => tail.findLast(result => result.name === name)
         const rewrite = /"rewriteOf"\s*:\s*("(?:[^"\\]|\\.)*")/u.exec(action)
-        if (action.startsWith('仅重试已冻结正文') && rewrite) { yield* tool('rp_present', { rewriteOf: retry === 'wrong' ? 'not-the-selected-failed-presentation' : JSON.parse(rewrite[1]) }); return }
+        if (rewrite) { yield* tool('rp_present', { rewriteOf: retry === 'wrong' ? 'not-the-selected-failed-presentation' : JSON.parse(rewrite[1]) }); return }
         const firstCommit = tail.find(result => result.name === 'rp_commit_turn' && !result.isError && typeof result.value?.id === 'string')
         if (conflicting && firstCommit) {
           const error = tail.find(result => result.name === 'rp_commit_turn' && result.isError)

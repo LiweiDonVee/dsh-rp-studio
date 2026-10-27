@@ -1,6 +1,6 @@
 {
   "name": "dsh-rp-studio",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "DSH 内置角色扮演工作区：角色、剧情状态与沉浸阅读",
   "license": "MIT",
   "type": "module",

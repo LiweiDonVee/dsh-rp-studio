@@ -1,10 +1,13 @@
 // Test-only owner-authenticated probe. All product services remain installed tgz owners.
 import { createLocalModels, MODELS } from './model-fixture.mjs'
 import { SERVICES } from './requirements.mjs'
+import { createApprovalModels, APPROVAL_MODELS } from './approval-model.mjs'
+import { commandBoundary, ownerRequestHash, validOwnerPatch } from './approval-proof.mjs'
 export const name = 'studio-native-probe'
 export const inject = ['llm', 'agents', 'connection', 'typertGateway', 'agentPresets', 'sessionQuery', 'sessionPersistence']
 export function apply(ctx) {
-  const local = createLocalModels({ maxRequests: 192, maxRecords: 96 }), disposers = []
+  const approval = process.env.STUDIO_NATIVE_APPROVAL === '1', availableModels = approval ? APPROVAL_MODELS : MODELS
+  const local = approval ? createApprovalModels({ maxRequests: 192, maxRecords: 128 }) : createLocalModels({ maxRequests: 192, maxRecords: 96 }), disposers = []
   let metadataPause
   async function modelCatalogPause() {
     if (!metadataPause || !ctx.agents.get(metadataPause.sessionId)) return
@@ -19,8 +22,8 @@ export function apply(ctx) {
   const adapter = {
     providerInfo: id => ({ id, name: 'Studio native local test provider' }), providerRetryPolicy: () => undefined,
     imageRequestPricing: () => undefined, imageRequestTarget: (_provider, _model, value) => value,
-    listModels: async provider => { await modelCatalogPause(); return MODELS.map(id => ({ provider, id, name: id })) },
-    resolveModel: async (provider, id) => { if (provider !== 'studio-native-local' || !MODELS.includes(id)) throw new Error('FIXTURE_UNKNOWN_MODEL'); return { provider, id, name: id } },
+    listModels: async provider => { await modelCatalogPause(); return availableModels.map(id => ({ provider, id, name: id })) },
+    resolveModel: async (provider, id) => { if (provider !== 'studio-native-local' || !availableModels.includes(id)) throw new Error('FIXTURE_UNKNOWN_MODEL'); return { provider, id, name: id } },
     async prepareCall(provider, id) { return { model: await this.resolveModel(provider, id), stream: options => local.stream(id, options) } },
   }
   disposers.push(ctx.llm.registerAdapter(['studio-native-local'], adapter))
@@ -47,7 +50,7 @@ export function apply(ctx) {
   disposers.push(ctx.connection.fetch.register({ path: '/api/studio-native-probe', methods: ['POST'], requestBody: 'buffered', fetch: async request => {
     try {
       const input = await request.json()
-      if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['action', 'sessionId', 'sessionIds', 'text', 'style', 'renderModel', 'mode'].includes(key))) throw new Error('FIXTURE_INVALID_REQUEST')
+      if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['action', 'sessionId', 'sessionIds', 'text', 'style', 'renderModel', 'mode', 'decision', 'operationId', 'roundId', 'expectedRoundVersion', 'instruction', 'atSeq'].includes(key))) throw new Error('FIXTURE_INVALID_REQUEST')
       let result
       if (input.action === 'ready') result = await ready(request.signal)
       else if (input.action === 'witness') {
@@ -64,6 +67,48 @@ export function apply(ctx) {
         const models = local.stats(); result = { sessions, revisions, audit, modelCounts: models.counts, modelTotal: models.total }
       }
       else if (input.action === 'models') result = local.stats()
+      else if (input.action === 'approvalFork') {
+        if (!approval || !Number.isSafeInteger(input.atSeq) || input.atSeq < 0) throw new Error('INVALID_APPROVAL_FORK')
+        result = await ctx.get('rpGM').forkStory({ sessionId: input.sessionId, atSeq: input.atSeq, signal: request.signal })
+      }
+      else if (input.action === 'reviseRoute') {
+        if (!approval) throw new Error('APPROVAL_FIXTURE_NOT_ENABLED')
+        result = await ctx.get('loopStudio').resolveRoute({ sessionId: input.sessionId, nodeId: 'rp-gm.revise' })
+      }
+      else if (input.action === 'approvalCapture') {
+        if (!approval) throw new Error('APPROVAL_FIXTURE_NOT_ENABLED')
+        const args = { sessionId: input.sessionId, signal: request.signal }
+        const [gm, review, database, factReview, factReviewProjection, history, canonical] = await Promise.all([ctx.get('rpGM').storyState(args), ctx.get('rpGM').reviewState(args), ctx.get('rpDatabase').effectiveV2(args), ctx.get('rpDatabase').factReviewState(args), ctx.get('rpDatabase').factReviewProjection(args), ctx.get('rpLastStep').storyHistory(args), ctx.get('rpLastStep').narratives(args)])
+        result = { gm, review, database, factReview, factReviewProjection, history, canonical, snapshot: await snapshot(input.sessionId), models: local.stats() }
+      }
+      else if (input.action === 'abortFactDecision' || input.action === 'abortFactGeneration') {
+        if (!approval) throw new Error('APPROVAL_FIXTURE_NOT_ENABLED')
+        const controller = new AbortController(), operationId = input.action === 'abortFactDecision' ? input.decision?.operationId : input.operationId
+        const sessionId = input.action === 'abortFactDecision' ? input.decision?.sessionId : input.sessionId
+        if (typeof operationId !== 'string' || typeof sessionId !== 'string') throw new Error('INVALID_BOUNDARY_REQUEST')
+        const review = await ctx.get('rpGM').reviewState({ sessionId, signal: request.signal }), round = review.latestRound
+        if (!round || round.roundId !== (input.decision?.roundId ?? input.roundId)) throw new Error('BOUNDARY_ROUND_MISMATCH')
+        let requestHash
+        if (input.action === 'abortFactDecision') {
+          const decision = input.decision, candidate = round.candidates.find(row => row.id === decision.candidateId)
+          if (!candidate) throw new Error('BOUNDARY_CANDIDATE_MISSING')
+          requestHash = ownerRequestHash({ sessionId, roundId: round.roundId, candidateId: candidate.id, action: decision.action, candidatePayloadHash: candidate.payloadHash, ...(decision.custom === undefined ? {} : { custom: decision.custom }) })
+        } else requestHash = ownerRequestHash({ schemaVersion: 1, sessionId, roundId: round.roundId, operationId, expectedRoundVersion: input.expectedRoundVersion, instruction: input.instruction ?? '', approvalRequired: round.pendingCandidateId ? round.approvalRequired : review.enabled })
+        const observer = commandBoundary({ sessionId, operationId, requestHash, name: input.action === 'abortFactDecision' ? 'rp-gm-fact-decision' : 'rp-gm-fact-regenerate', abort: () => controller.abort(new DOMException('Explicit public command completion interruption', 'AbortError')) })
+        const dispose = ctx.on('session/event', observer)
+        try {
+          const signal = AbortSignal.any([request.signal, controller.signal])
+          const outcome = input.action === 'abortFactDecision' ? await ctx.get('rpGM').decideFacts({ ...input.decision, signal }) : await ctx.get('rpGM').regenerateFacts({ sessionId, roundId: input.roundId, operationId, expectedRoundVersion: input.expectedRoundVersion, instruction: input.instruction ?? '', signal })
+          result = { outcome, boundary: observer.evidence() }
+        } catch (error) { result = { error: { name: error.name, code: error.code, message: String(error.message).slice(0, 600) }, boundary: observer.evidence() } }
+        finally { dispose() }
+      }
+      else if (input.action === 'armOwnerPatch') {
+        if (!approval) throw new Error('APPROVAL_FIXTURE_NOT_ENABLED')
+        const args = { sessionId: input.sessionId, signal: request.signal }, database = ctx.get('rpDatabase')
+        const armed = validOwnerPatch(await database.effectiveV2(args), await database.catalogV2(args))
+        local.armOwnerPatch(armed.args); result = { armed: true, ...armed }
+      }
       else if (input.action === 'failWriterOnce') { local.failWriterOnce(); result = { armed: true } }
       else if (input.action === 'failAssemblyOnce') { local.failAssemblyOnce(); result = { armed: true } }
       else if (input.action === 'armConflict') { local.armConflict(); result = { armed: true } }
@@ -79,6 +124,7 @@ export function apply(ctx) {
         else {
           if (!['writer', 'writer-alt'].includes(input.renderModel ?? 'writer')) throw new Error('FIXTURE_ROUTE_INVALID')
           const models = { 'rp-context.prepare': 'prepare', 'rp-context.summarize': 'summarize', 'rp-last-step.assemble': 'assembly', 'rp-last-step.render': input.renderModel ?? 'writer' }
+          if (approval) models['rp-gm.revise'] = 'revise'
           for (const id of ['host.first', 'host.continuation']) if (view.graph?.nodes?.some(node => node.id === id && node.control === 'route')) models[id] = 'gm'
           for (const id of Object.keys(models)) if (!view.graph?.nodes?.some(node => node.id === id && node.control === 'route')) throw new Error(`LOOP_NODE_VALIDATION:${id}`)
           result = await loop.savePolicy({ sessionId: input.sessionId, scope: 'session', expectedRevision: view.revision, policy: { enabled: true, routes: Object.fromEntries(Object.entries(models).map(([id, model]) => [id, { provider: 'studio-native-local', model }])) } }, request.signal)

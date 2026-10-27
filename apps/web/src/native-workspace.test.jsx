@@ -206,7 +206,7 @@ describe('unified owner operations', () => {
     const actions = Object.fromEntries(['narratives', 'presentationSummaries', 'drafts', 'createDraft', 'editDraft', 'adoptDraft', 'material', 'authorNote', 'exportReading', 'exportSavedStory', 'previewSavedStory', 'restoreSavedStory'].map(key => [key, true]))
     api.action = async (action, input) => {
       calls.push({ action, input })
-      if (action === 'capabilities') return { schemaVersion: 1, services: { gm: { available: true, apiVersion: 1 }, storyKit: { available: true, apiVersion: 1 }, database: { available: true, apiVersion: 2 }, context: { available: true, apiVersion: null }, lastStep: { available: true, apiVersion: null }, loop: { available: false, apiVersion: null } }, actions: { ...actions, retryPresentation: retryDispatch } }
+      if (action === 'capabilities') return { schemaVersion: 1, services: { gm: { available: true, apiVersion: 1 }, storyKit: { available: true, apiVersion: 1 }, database: { available: true, apiVersion: 2 }, context: { available: true, apiVersion: null }, lastStep: { available: true, apiVersion: null }, loop: { available: false, apiVersion: null } }, actions: { ...actions, reviewState: false, storyHistory: false, retryPresentation: retryDispatch }, story: { generic: false } }
       if (action === 'narratives') return { records: [adopted] }
       if (action === 'drafts') return { drafts: [...drafts] }
       if (action === 'presentationSummaries') return { presentations: [{ presentationId: 'failed-a', status: 'failed', createdAt: '2026-10-25T00:00:00Z', canRetry: true, errorCode: 'MODEL_UNAVAILABLE' }], capabilities: { retryDispatch } }

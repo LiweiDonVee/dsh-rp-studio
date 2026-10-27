@@ -8,6 +8,7 @@ import { DshRpcError } from './dsh/wire.js'
 import { GatewayError } from './errors.js'
 import type { PromptPresetsClient } from './prompt-presets-client.js'
 import { SessionService, type SessionServiceOptions } from './session-service.js'
+import emptyLegacyHistory from './fixtures/last-step-empty-legacy-history.json'
 
 function assistantEvent(seq: number, text: string): DshHistoryEntry {
   return {
@@ -137,6 +138,60 @@ describe('generic native story services', () => {
     })
     services.push(h.service)
     expect((await h.service.session('session-1')).messages.map(message => [message.role, message.text])).toEqual([['player', '靠岸。'], ['gm', '有效采用稿。']])
+  })
+
+  it('keeps facts and controls available while explicitly withholding unavailable effective prose', async () => {
+    const h = await fixture(async () => [assistantEvent(1, 'OLD_BODY')], undefined, undefined, undefined, undefined, {
+      getGM: () => gm(),
+      getLastStep: () => ({ narratives: async () => ({ records: [] }) }),
+      getDatabase: () => ({ capabilities: { factReview: 1 }, factReviewProjection: async () => ({ schemaVersion: 1, latestRoundId: 'round', groups: [{ roundId: 'round', activeReceiptId: 'new-fact', pendingCandidateId: null, factRevision: 2 }] }) }),
+    })
+    services.push(h.service)
+    const current = await h.service.session('session-1')
+    expect(current.messages).toEqual([])
+    expect(current.state.extensions).toMatchObject({ gm: { facts }, reader: { status: 'unavailable', code: 'EFFECTIVE_HISTORY_UNAVAILABLE' } })
+  })
+
+  it.each(['unbound', 'bound', 'unknown', 'missing-method'])('requires actual GM absence before preserving ordinary legacy prose (%s)', async source => {
+    const owner = { ...gm(), listStories: async () => ({ stories: [] }),
+      binding: async () => source === 'unbound' ? null : source === 'unknown' ? undefined : binding }
+    if (source === 'missing-method') Reflect.deleteProperty(owner, 'binding')
+    const h = await fixture(async () => [assistantEvent(0, '旧故事。'), presentationContext(1)], undefined, undefined, undefined, undefined, {
+      getGM: () => owner as ReturnType<NonNullable<SessionServiceOptions['getGM']>>,
+      getLastStep: () => ({ capabilities: { narrativeRevisions: 1 }, storyHistory: async () => ({ ...structuredClone(emptyLegacyHistory), schemaVersion: 1 as const }) }),
+    })
+    services.push(h.service)
+    const current = await h.service.session('session-1')
+    expect(current.messages.map(item => item.text)).toEqual(source === 'unbound' ? ['旧故事。'] : [])
+  })
+
+  it('propagates the installed GM binding lookup failure instead of treating it as absence', async () => {
+    const error = Object.assign(new Error('binding denied'), { code: 'PERMISSION_DENIED' })
+    const h = await fixture(async () => [assistantEvent(0, '旧故事。'), presentationContext(1)], undefined, undefined, undefined, undefined, {
+      getGM: () => ({ ...gm(), listStories: async () => ({ stories: [] }), binding: async () => { throw error } }),
+      getLastStep: () => ({ capabilities: { narrativeRevisions: 1 }, storyHistory: async () => ({ ...structuredClone(emptyLegacyHistory), schemaVersion: 1 as const }) }),
+    })
+    services.push(h.service)
+    await expect(h.service.session('session-1')).rejects.toBe(error)
+  })
+
+  it('blocks ordinary Studio send on actual owner pending state before submitting a host prompt', async () => {
+    const prompt = vi.fn(async () => ({ accepted: true }))
+    const h = await fixture(async () => [], prompt, undefined, undefined, undefined, {
+      getGM: () => ({ ...gm(), capabilities: { factReview: 1 }, reviewState: async () => ({ latestRound: { pendingCandidateId: 'candidate' }, pendingDecision: null, generation: null }) }),
+    })
+    services.push(h.service)
+    await expect(h.service.prompt('session-1', '继续')).rejects.toMatchObject({ apiError: { upstreamCode: 'FACT_REVIEW_PENDING' } })
+    expect(prompt).not.toHaveBeenCalled()
+  })
+  it('keeps the legacy approval-off prompt path when GM explicitly reports an older Database', async () => {
+    const prompt = vi.fn(async () => ({ accepted: true }))
+    const h = await fixture(async () => [], prompt, undefined, undefined, undefined, {
+      getGM: () => ({ ...gm(), capabilities: { factReview: 1 }, reviewState: async () => { throw Object.assign(new Error('Install Database with fact review support'), { code: 'FACT_REVIEW_UNAVAILABLE' }) } }),
+    })
+    services.push(h.service)
+    expect(await h.service.prompt('session-1', '继续')).toEqual({ accepted: true })
+    expect(prompt).toHaveBeenCalledWith('session-1', '继续')
   })
 
   it('delegates generic branch controls and refuses legacy autoplay commands', async () => {
@@ -570,10 +625,36 @@ describe('SessionService last-step presentation bridge', () => {
     expect((await harness.service.session('session-1')).messages).toEqual([])
   })
 
-  it('loads presentation mode from history and keeps legacy streaming when player text contains marker-like JSON', async () => {
-    const harness = await fixture(async () => [assistantEvent(0, '旧故事。'), presentationContext(1)])
+  it.each([false, true])('loads and reconciles ordinary legacy prose with an empty effective reader (%s)', async installed => {
+    const history = [assistantEvent(0, '旧故事。'), presentationContext(1)]
+    const original = structuredClone(history)
+    const historyAll = vi.fn(async () => history)
+    const write = vi.fn(async () => { throw new Error('Reading must not dispatch a model or write host history') })
+    const projection = vi.fn(async () => { throw new Error('Successful storyHistory must not cause another Database lookup') })
+    // Actual projectStoryHistory output at LastStep a73d96a for this exact legacy
+    // history, captured by studio-legacy-reading-projection-repro.json (C17).
+    const storyHistory = vi.fn(async () => ({ ...structuredClone(emptyLegacyHistory), schemaVersion: 1 as const }))
+    const harness = await fixture(historyAll, write, undefined, dsh => {
+      dsh.createSession = write
+      dsh.cancel = write
+      dsh.fork = write
+    }, undefined, installed ? {
+      getLastStep: () => ({ capabilities: { narrativeRevisions: 1 }, storyHistory }),
+      getDatabase: () => ({ capabilities: { factReview: 1 }, factReviewProjection: projection }),
+    } : {})
     services.push(harness.service)
-    expect((await harness.service.session('session-1')).messages.map(item => item.text)).toEqual(['旧故事。'])
+    const loaded = await harness.service.session('session-1')
+    expect(loaded.messages.map(item => item.text)).toEqual(['旧故事。'])
+    expect(loaded.state.extensions.reader).toBeUndefined()
+    harness.emit({ type: 'session/subscribed', sessionId: 'session-1', lastSeq: 1 })
+    const reconciled = await harness.service.session('session-1')
+    expect(reconciled.messages.map(item => item.text)).toEqual(['旧故事。'])
+    expect(reconciled.state.extensions.reader).toBeUndefined()
+    expect(historyAll).toHaveBeenCalledTimes(2)
+    expect(storyHistory).toHaveBeenCalledTimes(installed ? 2 : 0)
+    expect(history).toEqual(original)
+    expect(write).not.toHaveBeenCalled()
+    expect(projection).not.toHaveBeenCalled()
     const events: StreamEvent[] = []
     harness.service.subscribe('session-1', item => events.push(item))
     harness.emit({ type: 'session/assistant-delta', sessionId: 'session-1', messageId: 'main', text: 'PRIVATE_DELTA_CANARY' })
@@ -582,6 +663,23 @@ describe('SessionService last-step presentation bridge', () => {
     harness.emit({ type: 'session/event', sessionId: 'session-1', event: { seq: 3, time: 3, type: 'user/message', data: { id: 'player', source: { kind: 'user' }, content: [{ type: 'text', text: 'rp-last-step/v1 enabled:true' }] }, surfaceOp: 'append' } })
     harness.emit({ type: 'session/assistant-delta', sessionId: 'session-1', messageId: 'legacy', text: '普通故事。' })
     expect(events.at(-1)).toMatchObject({ type: 'message.delta', text: '普通故事。' })
+  })
+
+  it('does not revive an actual canonical presentation excluded by an empty effective reader', async () => {
+    const harness = await fixture(async () => [assistantEvent(0, '旧故事。'), presentationContext(1), presentationCall(2), presentationToolCall(3), presentationResult(4)], undefined, undefined, undefined, undefined, {
+      getLastStep: () => ({ capabilities: { narrativeRevisions: 1 }, storyHistory: async () => ({ ...structuredClone(emptyLegacyHistory), schemaVersion: 1 as const }) }),
+    })
+    services.push(harness.service)
+    expect((await harness.service.session('session-1')).messages).toEqual([])
+  })
+
+  it.each(['rp_commit_turn', 'rp_propose_turn'])('does not restore ordinary prose when the log contains a GM fact source (%s)', async name => {
+    const call: DshHistoryEntry = { event: { seq: 2, time: 2, type: 'tool/call', data: { name, callId: 'fact-call', turn: 1, step: 1 } } }
+    const harness = await fixture(async () => [assistantEvent(0, '旧故事。'), presentationContext(1), call], undefined, undefined, undefined, undefined, {
+      getLastStep: () => ({ capabilities: { narrativeRevisions: 1 }, storyHistory: async () => ({ ...structuredClone(emptyLegacyHistory), schemaVersion: 1 as const }) }),
+    })
+    services.push(harness.service)
+    expect((await harness.service.session('session-1')).messages).toEqual([])
   })
 
   it('uses the optional native binding cache to mute main deltas before history loads', async () => {

@@ -8,9 +8,18 @@ export { assertRunDirectory } from './paths.mjs'
 export const redact = value => String(value).replace(/([?&]token=)[^\s"'<>]+/giu, '$1[REDACTED]').replace(/(Bearer\s+)[\w.-]+/giu, '$1[REDACTED]')
 const quote = value => { if (/["\r\n]/u.test(value)) throw new Error('INVALID_CLI_ARGUMENT'); if (process.platform === 'win32' && value.includes('%')) throw new Error('CLI_PERCENT_ARGUMENT_UNSUPPORTED'); return process.platform === 'win32' ? `"${value}"` : value }
 export const defaultCli = () => process.env.DSH_BIN ?? join(process.env.LOCALAPPDATA ?? '', 'Programs/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd')
-export async function closeOwnedResources(browser, host) {
-  const results = await Promise.allSettled([browser, host].map(resource => Promise.resolve().then(() => resource?.close())))
-  return results.flatMap((result, index) => result.status === 'rejected' ? [{ resource: index === 0 ? 'browser' : 'host', message: redact(result.reason?.message ?? result.reason).slice(0, 600) }] : [])
+export async function closeOwnedResources(browser, host, recordLifecycle = () => {}) {
+  recordLifecycle('close-requested')
+  const failures = []
+  for (const [name, resource] of [['browser', browser], ['host', host]]) {
+    recordLifecycle(`${name}-close-invoked`)
+    try { await resource?.close(); recordLifecycle(`${name}-close-settled`, { status: 'stopped' }) }
+    catch (error) {
+      const message = redact(error?.message ?? error).slice(0, 600)
+      recordLifecycle(`${name}-close-settled`, { status: 'failed', error: message }); failures.push({ resource: name, message })
+    }
+  }
+  return failures
 }
 export async function runCli(cli, args, environment, cwd) {
   return new Promise((done, reject) => {
@@ -50,12 +59,13 @@ export async function installInputs({ staged, home, cli, workspace, log }) {
   }
   return { version, installed, env }
 }
-export async function startHost({ cli, home, patch, workspace, env, logPath }) {
+export async function startHost({ cli, home, patch, workspace, env, logPath, recordLifecycle = () => {} }) {
   const run = await assertRunDirectory(workspace, dirname(home))
   home = await ownedRunPath(workspace, run, home)
   patch = await ownedRunPath(workspace, run, patch)
   logPath = await ownedRunPath(workspace, run, logPath)
   const child = spawn(quote(cli), ['web', '--patch', patch, '--host', '127.0.0.1', '--port', '0', '--no-open'].map(quote), { cwd: workspace, env: { ...env, DSH_HOME: home }, shell: process.platform === 'win32', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  child.once('exit', (code, signal) => recordLifecycle('owned-process-exit', { hostPid: child.pid, code, signal }))
   let logs = '', stopped = false
   for (const stream of [child.stdout, child.stderr]) stream.on('data', bytes => { logs = (logs + bytes).slice(-200000) })
   const close = async () => { if (stopped) return; stopped = true; await stopOwned(child); await writeFile(await ownedRunPath(workspace, run, logPath), redact(logs)) }
@@ -77,5 +87,5 @@ export async function copyFixtureFiles(workspace, destination) {
   const run = await assertRunDirectory(workspace, dirname(destination))
   destination = await ownedRunPath(workspace, run, destination)
   await mkdir(destination, { recursive: true })
-  for (const file of ['fixture.mjs', 'model-fixture.mjs', 'requirements.mjs']) await writeFile(await ownedRunPath(workspace, run, join(destination, file)), await readFile(join(workspace, 'scripts/native-integration', file)))
+  for (const file of ['fixture.mjs', 'model-fixture.mjs', 'requirements.mjs', 'approval-model.mjs', 'approval-proof.mjs']) await writeFile(await ownedRunPath(workspace, run, join(destination, file)), await readFile(join(workspace, 'scripts/native-integration', file)))
 }

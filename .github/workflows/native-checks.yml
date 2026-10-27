@@ -32,6 +32,8 @@ jobs:
         run: pnpm -r --filter @dsh-rp/gateway --filter @dsh-rp/domain --filter @dsh-rp/protocol --filter @dsh-rp/local-data --filter @dsh-rp/web test
       - name: Test native host contracts
         run: pnpm plugin:test
+      - name: Install Chromium for native harness
+        run: pnpm exec playwright install --with-deps chromium
       - name: Test isolated native harness
         run: node --test scripts/native-integration/*.test.mjs
       - name: Build native dependencies and web

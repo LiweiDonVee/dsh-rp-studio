@@ -22,7 +22,7 @@ export function createNativeApi(send = globalThis.fetch.bind(globalThis)) {
     async action(action, input = {}, signal) {
       const response = await send(new URL('api/rp-studio/actions', document.baseURI), {
         method: 'POST', headers: { 'content-type': 'application/json' }, signal,
-        body: JSON.stringify({ ...input, action }),
+        body: JSON.stringify(action === 'decideFacts' ? { action, decision: input } : { ...input, action }),
       })
       let result
       try { result = await response.json() } catch { throw new Error('无法读取 RP 操作响应，请检查插件是否启用。') }

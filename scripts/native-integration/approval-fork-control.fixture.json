@@ -1,0 +1,399 @@
+{
+  "provenance": {
+    "report": "native-approval-g5-child-suffix-readback.json",
+    "parentSessionId": "904da6a8-6d62-4e9d-8767-343b5d66fc9e",
+    "parentEventCount": 178,
+    "closedCut": 106,
+    "openCut": 116,
+    "actualOpenInheritedEventCount": 117,
+    "description": "Exact public control records from the last closed turn and the next open turn; unchanged actual cut-result event and child suffix. This is a control projection, not a reconstructed owner/session snapshot."
+  },
+  "controls": [
+    {
+      "type": "turn/start",
+      "seq": 92,
+      "time": 1793089220972,
+      "data": {
+        "turn": 5
+      }
+    },
+    {
+      "type": "step/start",
+      "seq": 94,
+      "time": 1793089220999,
+      "data": {
+        "turn": 5,
+        "step": 1
+      }
+    },
+    {
+      "type": "step/end",
+      "seq": 100,
+      "time": 1793089221328,
+      "data": {
+        "turn": 5,
+        "step": 1
+      }
+    },
+    {
+      "type": "turn/end",
+      "seq": 101,
+      "time": 1793089221611,
+      "data": {
+        "turn": 5,
+        "reason": {
+          "kind": "completed"
+        }
+      }
+    },
+    {
+      "type": "turn/start",
+      "seq": 109,
+      "time": 1793089222530,
+      "data": {
+        "turn": 6
+      }
+    },
+    {
+      "type": "step/start",
+      "seq": 111,
+      "time": 1793089222560,
+      "data": {
+        "turn": 6,
+        "step": 1
+      }
+    }
+  ],
+  "cutEvent": {
+    "type": "tool/result",
+    "seq": 116,
+    "time": 1793089222895,
+    "data": {
+      "turn": 6,
+      "step": 1,
+      "message": {
+        "role": "tool",
+        "source": {
+          "kind": "tool",
+          "callId": "71cc794d-7f9c-410b-978b-53c474aaf420"
+        },
+        "toolCallId": "71cc794d-7f9c-410b-978b-53c474aaf420",
+        "content": [
+          {
+            "type": "text",
+            "text": "本地合成正文：FACT_REVISION_B"
+          }
+        ],
+        "isError": false,
+        "id": "923e417e-4fcd-4307-bfe4-d03a6075e139"
+      },
+      "meta": {
+        "rpLastStep": {
+          "schemaVersion": 1,
+          "record": {
+            "id": "21a47f57-1a41-412f-b617-fd79873bf702",
+            "status": "complete",
+            "createdAt": "2026-10-27T08:20:22.834Z",
+            "profileId": "5fd46001-fe26-416e-850f-cd89ffa2e0bc",
+            "profileVersion": 1,
+            "profileHash": "0cdc716f7e55a4b24fdcf6879921492a2257fdb0c893539de40dda7e2fce8b10",
+            "text": "本地合成正文：FACT_REVISION_B",
+            "playerAction": "NATIVE_APPROVAL_PENDING",
+            "factReceiptId": "9006c18e-9247-4617-a23b-5ebfa4565a53",
+            "narrativeVersion": {
+              "schemaVersion": 1,
+              "groupId": "bd70e677-a1d8-47fb-b246-fb6c700c4044",
+              "kind": "original",
+              "factRoundId": "bd70e677-a1d8-47fb-b246-fb6c700c4044",
+              "factRevision": 3
+            },
+            "ownerOperation": {
+              "schemaVersion": 1,
+              "kind": "present-fact",
+              "operationId": "84b43afb-3138-4f8b-9b60-2a0667b89677",
+              "requestHash": "88d4b277e707e205a720b546576d0c4be3ce3b3b75ce4d76b16e3a3d7c34952e"
+            },
+            "models": {
+              "migrate": {
+                "provider": "studio-native-local",
+                "model": "gm"
+              },
+              "assemble": {
+                "provider": "studio-native-local",
+                "model": "assembly"
+              },
+              "render": {
+                "provider": "studio-native-local",
+                "model": "writer"
+              }
+            },
+            "context": {
+              "id": "4cc60cd5-0f77-44db-a294-86d7ccfa02c8",
+              "database": {
+                "binding": {
+                  "schemaVersion": 2,
+                  "sources": [
+                    {
+                      "key": "world",
+                      "databaseId": "2738588a-529d-4733-aed4-831bb0420608",
+                      "version": 1
+                    }
+                  ],
+                  "factEntryRefs": [
+                    {
+                      "sourceKey": "@session",
+                      "entryId": "gm.scene"
+                    },
+                    {
+                      "sourceKey": "@session",
+                      "entryId": "gm.facts"
+                    }
+                  ]
+                },
+                "revision": 18,
+                "entryRefs": [
+                  {
+                    "sourceKey": "world",
+                    "entryId": "0",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-0",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-1",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-2",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-3",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-4",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-5",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-6",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-7",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-8",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-9",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-10",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-11",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-12",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-13",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-14",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-15",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-16",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-17",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "decoy-18",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "readonly",
+                    "version": 1
+                  },
+                  {
+                    "sourceKey": "world",
+                    "entryId": "outside",
+                    "version": 1
+                  }
+                ]
+              },
+              "historyProjection": {
+                "schemaVersion": 1,
+                "projectionKey": "988006c44d94ff0e9a7e6b8e3bb4bcbfc98fcd88e98108d4cea0f1b851f54fd5",
+                "selectedPresentationIds": [
+                  "03d42d4e-19c9-46eb-a4a8-14f4cd1820fc",
+                  "e18189de-ff8e-4637-a184-3fac3e0e9ff7"
+                ],
+                "activeFactReceiptIds": [
+                  "0fbbd2ef-4954-40e6-9d27-464d4dc6d250",
+                  "2c99c074-fb0a-4c7a-abcd-a7b6d7b90796",
+                  "9006c18e-9247-4617-a23b-5ebfa4565a53"
+                ]
+              },
+              "history": [
+                {
+                  "id": "[\"03d42d4e-19c9-46eb-a4a8-14f4cd1820fc\",21]",
+                  "mode": "summary",
+                  "source": {
+                    "sessionId": "904da6a8-6d62-4e9d-8767-343b5d66fc9e",
+                    "presentationId": "03d42d4e-19c9-46eb-a4a8-14f4cd1820fc",
+                    "assistantMessageId": "4a062cbe-aea8-419b-b3ea-4841e654f892",
+                    "callSeq": 20,
+                    "baseResultSeq": 21,
+                    "resultSeq": 21
+                  }
+                },
+                {
+                  "id": "[\"e18189de-ff8e-4637-a184-3fac3e0e9ff7\",43]",
+                  "mode": "full",
+                  "source": {
+                    "sessionId": "904da6a8-6d62-4e9d-8767-343b5d66fc9e",
+                    "presentationId": "e18189de-ff8e-4637-a184-3fac3e0e9ff7",
+                    "assistantMessageId": "6b3728ac-f7e2-4fd2-8cf2-6d9ce420d620",
+                    "callSeq": 42,
+                    "baseResultSeq": 43,
+                    "resultSeq": 43
+                  }
+                }
+              ],
+              "chars": 5686,
+              "models": {
+                "prepare": {
+                  "provider": "studio-native-local",
+                  "model": "prepare"
+                },
+                "summarize": {
+                  "provider": "studio-native-local",
+                  "model": "summarize"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sourceEventSeqs": [
+      115
+    ],
+    "surfaceOp": "append"
+  },
+  "closedCutEvent": {
+    "type": "command/done",
+    "seq": 106,
+    "time": 1793089222192,
+    "data": {
+      "commandId": "cmd-74a51b63-8",
+      "kind": "success",
+      "text": "{\"schemaVersion\":1,\"operationId\":\"87e7c0f9-fbb1-4f01-84cc-defb0be7ce58\",\"requestHash\":\"cb2f0527e62292329a9fe3a605196631b66bb7ab0c913c9f1520f6d53b9fd01a\"}"
+    }
+  },
+  "laterEnds": [
+    {
+      "type": "step/end",
+      "seq": 117,
+      "time": 1793089222895,
+      "data": {
+        "turn": 6,
+        "step": 1
+      }
+    },
+    {
+      "type": "turn/end",
+      "seq": 118,
+      "time": 1793089223178,
+      "data": {
+        "turn": 6,
+        "reason": {
+          "kind": "completed"
+        }
+      }
+    }
+  ],
+  "openSuffix": [
+    {
+      "type": "session/end-seed",
+      "seq": 117,
+      "time": 1793089222895,
+      "data": {
+        "inherited": true
+      }
+    },
+    {
+      "type": "step/end",
+      "seq": 118,
+      "time": 1793089222895,
+      "data": {
+        "turn": 6,
+        "step": 1
+      }
+    },
+    {
+      "type": "turn/end",
+      "seq": 119,
+      "time": 1793089222895,
+      "data": {
+        "turn": 6,
+        "reason": {
+          "kind": "forked"
+        }
+      }
+    }
+  ],
+  "closedSuffix": [
+    {
+      "type": "session/end-seed",
+      "seq": 107,
+      "time": 1793089222192,
+      "data": {
+        "inherited": true
+      }
+    }
+  ]
+}

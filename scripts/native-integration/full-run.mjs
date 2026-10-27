@@ -10,7 +10,7 @@ import { SCENARIOS, assessServices } from './requirements.mjs'
 import { openNativeContext, waitForNative } from './contexts.mjs'
 import { ownedRunPath } from './paths.mjs'
 import { redact } from './host.mjs'
-import { verifyAction, verifyColdBeforeAction } from './action-proof.mjs'
+import { verifyAction, verifyColdBeforeAction, verifyRetryGuard, canonicalToolErrors } from './action-proof.mjs'
 import { verifyDocumentCache } from './document-proof.mjs'
 import { verifyUnchanged } from './witness-proof.mjs'
 
@@ -81,7 +81,7 @@ export async function executeFullNative({ workspace, run, staged, cli, browserPa
   const open = async (name, existing) => {
     try {
       const context = await openNativeContext({ workspace, run, staged, cli, browserPath, providerURL: provider.baseURL, name, existing })
-      segments.push({ name, hostPid: context.hostPid, installed: context.installed.installed, browserErrors: context.errors, actionProofs: context.actionProofs })
+      segments.push({ name, hostPid: context.hostPid, installed: context.installed.installed, browserErrors: context.errors, httpErrors: context.httpErrors, actionProofs: context.actionProofs })
       return context
     } catch (error) { if (error.nativeStartup) segments.push({ ...error.nativeStartup, startupFailed: true, modelStatus: 'unavailable-during-startup' }); throw error }
   }
@@ -157,7 +157,7 @@ export async function executeFullNative({ workspace, run, staged, cli, browserPa
       assert.equal(successfulFacts(snapshot.events).length, 1)
       assert.equal(models.conflicts.length, 1); assert.equal(models.conflicts[0].isError, true); assert.equal(models.conflicts[0].code, 'TURN_ALREADY_COMMITTED'); assert.equal(models.conflicts[0].receiptId, state.lastFactReceipt.id)
       assert.equal(models.conflicts[0].firstDatabaseRevision, models.conflicts[0].postRejectedRevision); assert.deepEqual(models.conflicts[0].stateRefs, state.lastFactReceipt.stateRefs)
-      const errors = snapshot.events.filter(event => event.type === 'tool/result' && event.data.message?.isError === true).map(event => { try { return JSON.parse(body(event.data.message)) } catch { return null } })
+      const errors = canonicalToolErrors(snapshot.events)
       assert.ok(errors.some(value => value?.error?.code === 'TURN_ALREADY_COMMITTED' && value.error.receiptId === state.lastFactReceipt.id))
       await write('facts-once.json', { state, snapshot, models }); return { receiptId: state.lastFactReceipt.id, actualErrorJSON: models.conflicts[0] }
     })
@@ -217,7 +217,7 @@ export async function executeFullNative({ workspace, run, staged, cli, browserPa
       const deniedSnapshot = await source.snapshot(primaryId), attempt = deniedSnapshot.events.find(event => event.seq > beforeDenial.events.at(-1).seq && event.type === 'tool/call' && event.data.name === 'rp_present')
       assert.ok(attempt); assert.deepEqual(JSON.parse(attempt.data.arguments), { rewriteOf: 'not-the-selected-failed-presentation' })
       const rejection = deniedSnapshot.events.find(event => event.type === 'tool/result' && event.data.message?.toolCallId === attempt.data.callId)
-      assert.equal(rejection?.data.message.isError, true); assert.match(body(rejection.data.message), /Only rp_present with the selected failed presentation rewriteOf is permitted for this retry request/u)
+      verifyRetryGuard(attempt, rejection, failure.presentationId)
       assert.match(denied.result.text, /^RETRY_DISPATCH_FAILED:/u)
       assert.deepEqual((await source.api('database', 'effectiveV2', { sessionId: primaryId })).entries, dbBefore.entries)
       await source.probe('retryMode', { mode: 'proper' }); await storyView(source, primaryId)

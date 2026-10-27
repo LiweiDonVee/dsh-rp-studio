@@ -1,20 +1,22 @@
 # DSH RP Studio
 
-DSH 内置角色扮演工作区。RP Studio 1.3.0 面向 **DSH 0.2.1-rc.3**。点击会话顶部的 **RP** 打开右侧页签；空白会话中，RP 位于输入区上方。工作区可以拉宽、全屏阅读或关闭，使用 dsh 本身的主题和会话导航。
+DSH 内置角色扮演工作区。RP Studio 1.4.0 面向 **DSH 0.2.1-rc.3**。点击会话顶部的 **RP** 打开右侧页签；空白会话中，RP 位于输入区上方。工作区可以拉宽、全屏阅读或关闭，使用 dsh 本身的主题和会话导航。
 
-1.3 接入通用 GM、Story Kit、正文候选与采用、冻结材料、作者注和多库入口，以及阅读稿、内容包与精确保留 ID 的完整存档。[使用与依赖](docs/agent-rp-integration.md) · [公开接口](docs/agent-rp/README.md) · [验证记录](docs/native-acceptance.md)。
+1.4 新增每故事事实审批（默认关闭）、事实重新生成和只重新写作，先确认事实，再生成正文。[审批与重新生成用法](docs/agent-rp-integration.md#事实审批与两层重新生成) · [使用与依赖](docs/agent-rp-integration.md) · [公开接口](docs/agent-rp/README.md) · [原生验证记录](docs/native-acceptance.md)。
+
+V6 七包组合已在官方 rc.3 隔离环境完成旧九场景回归及同次默认依赖回读；审批与两层重新生成的五组实际功能断言全部通过。受测包、模型计数与发行验证边界见[当前原生证据](docs/native-acceptance.md#v6-approval-and-regeneration)。
 
 ## 项目与下载
 
-| 独立项目 | 职责 | 安装包 |
+| 独立项目 | 职责 | 版本与发布页 |
 | --- | --- | --- |
-| **RP Studio（本仓库）** | 原生故事阅读、状态、候选采用与存档入口 | [v1.3.0](https://github.com/LiweiDonVee/dsh-rp-studio/releases/tag/v1.3.0) |
-| [Loop Studio](https://github.com/LiweiDonVee/dsh-loop-studio) | 通用执行图、节点模型选择 | [Releases](https://github.com/LiweiDonVee/dsh-loop-studio/releases/latest) |
-| [RP 最后一步](https://github.com/LiweiDonVee/dsh-rp-last-step) | ST 预设迁移、模块热组装、最终正文 | [Releases](https://github.com/LiweiDonVee/dsh-rp-last-step/releases/latest) |
-| [RP Database](https://github.com/LiweiDonVee/dsh-rp-database) | 资料条目、来源版本、会话覆盖与检索 | [Releases](https://github.com/LiweiDonVee/dsh-rp-database/releases/latest) |
-| [RP Context](https://github.com/LiweiDonVee/dsh-rp-context) | 中间 GM 选材、历史摘要与主动展开/折叠 | [Releases](https://github.com/LiweiDonVee/dsh-rp-context/releases/latest) |
-| [RP GM](https://github.com/LiweiDonVee/dsh-rp-gm) | 通用故事开局、事实提交与合法前缀分支 | [Releases](https://github.com/LiweiDonVee/dsh-rp-gm/releases/latest) |
-| [Story Kit](https://github.com/LiweiDonVee/dsh-rp-story-kit) | 角色与身份、开场、内容包与精确存档 | [Releases](https://github.com/LiweiDonVee/dsh-rp-story-kit/releases/latest) |
+| **RP Studio（本仓库）** | 原生故事阅读、状态、事实审批与存档入口 | 1.4.0 · [Releases](https://github.com/LiweiDonVee/dsh-rp-studio/releases) |
+| [Loop Studio](https://github.com/LiweiDonVee/dsh-loop-studio) | 通用执行图、节点模型选择 | 0.1.0 · [Releases](https://github.com/LiweiDonVee/dsh-loop-studio/releases) |
+| [RP 最后一步](https://github.com/LiweiDonVee/dsh-rp-last-step) | ST 预设迁移、模块热组装、最终正文 | 0.4.0 · [Releases](https://github.com/LiweiDonVee/dsh-rp-last-step/releases) |
+| [RP Database](https://github.com/LiweiDonVee/dsh-rp-database) | 资料条目、来源版本、会话覆盖与检索 | 0.3.0 · [Releases](https://github.com/LiweiDonVee/dsh-rp-database/releases) |
+| [RP Context](https://github.com/LiweiDonVee/dsh-rp-context) | 中间 GM 选材、历史摘要与主动展开/折叠 | 0.3.0 · [Releases](https://github.com/LiweiDonVee/dsh-rp-context/releases) |
+| [RP GM](https://github.com/LiweiDonVee/dsh-rp-gm) | 通用故事开局、事实审批与合法前缀分支 | 0.2.0 · [Releases](https://github.com/LiweiDonVee/dsh-rp-gm/releases) |
+| [Story Kit](https://github.com/LiweiDonVee/dsh-rp-story-kit) | 角色与身份、开场、内容包与精确存档 | 0.2.0 · [Releases](https://github.com/LiweiDonVee/dsh-rp-story-kit/releases) |
 
 这些项目可独立安装；需要组合联动时，把所需包安装到同一个 DSH profile。新插件的主仓库、独立构建和问题跟踪位于上表对应项目。本仓库保留 `packages/loop-plugin`、`packages/rp-last-step` 和迁移 skill 的历史集成快照；后续开发、当前验收与正式发布以独立仓库为准。
 
@@ -42,27 +44,27 @@ DSH 内置角色扮演工作区。RP Studio 1.3.0 面向 **DSH 0.2.1-rc.3**。�
 
 导入原件独立保存，迁移 skill 生成待审阅的 agent 范式草稿。用户可指定必用、Agent 只读模块；模型按需读取、启停、填充和改写其余模块，变化只进入会话覆盖层。故事固定到所选预设版本，保存新版本不会自动替换正在使用的版本。
 
-插件自带原生预设编辑器和已提交稿件记录，可单独安装。配合 RP Studio 1.3 可在故事页管理预设、流式阅读正文；配合 Loop Studio 可分别给迁移、热组装和写作选择模型。三个包互相独立，不要求同时安装。第一版终止呈现需要原生工具模式，纯 PTC 会话仍可迁移、编辑和预览。
+插件自带原生预设编辑器和已提交稿件记录，可单独安装。配合 RP Studio 1.4 可在故事页管理预设、流式阅读正文；配合 Loop Studio 可分别给迁移、热组装和写作选择模型。三个包互相独立，不要求同时安装。第一版终止呈现需要原生工具模式，纯 PTC 会话仍可迁移、编辑和预览。
 
-安装包：`dsh-rp-last-step-0.3.0.tgz`，从其 [Releases](https://github.com/LiweiDonVee/dsh-rp-last-step/releases/latest) 下载。0.3 可选接入 Database 与 Context：GM 主动搜索、选择及编辑允许的会话条目，展开或折叠有效叙事，再将冻结材料交给 writer。失败正文可基于冻结材料只重试写作。当前窗口作用于中间 GM 与正文，主循环压缩仍由 DSH／对应版本验证的 ACP 管理。
+安装包为 `dsh-rp-last-step-0.4.0.tgz`，下载入口为其 [Releases](https://github.com/LiweiDonVee/dsh-rp-last-step/releases)。可选配合 Database 0.3 与 Context 0.3：GM 主动搜索、选择及编辑允许的会话条目，展开或折叠有效叙事，再将冻结材料交给 writer。失败正文可基于冻结材料只重试写作。当前窗口作用于中间 GM 与正文，主循环压缩仍由 DSH／对应版本验证的 ACP 管理。
 
 安装方式同下，将包名替换即可。源码、迁移 skill 与当前组合验收见 [独立仓库](https://github.com/LiweiDonVee/dsh-rp-last-step)。本仓库的 `pnpm rp:package`、`pnpm rp:smoke` 针对旧集成快照，历史验收见 [记录](docs/rp-last-step-acceptance.md)。
 
 ## 安装原生插件（推荐）
 
-从 [v1.3.0 发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases/tag/v1.3.0) 下载 `dsh-rp-studio-1.3.0.tgz`，完全退出 dsh 后执行：
+安装包为 `dsh-rp-studio-1.4.0.tgz`，下载入口为 [发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases)。完全退出 dsh 后执行；完整组合见 [原生指南](docs/native-usage.md#插件如何搭配)：
 
 ```powershell
-dsh plugin --profile desktop add ./dsh-rp-studio-1.3.0.tgz
+dsh plugin --profile desktop add ./dsh-rp-studio-1.4.0.tgz
 ```
 
 重新启动 dsh 即可。Web 模式将 `desktop` 换为 `web`。也可以通过右侧面板的新增页签导航找到 **RP Studio**。插件不附带角色卡；RP 预设仍需单独安装。具体说明见 [插件文档](packages/plugin/README.md)。
 
-发布页附 `SHA256SUMS.txt`，可用 `Get-FileHash ./dsh-rp-studio-1.3.0.tgz -Algorithm SHA256` 核对。Windows 找不到 `dsh` 命令时，默认安装可执行：
+安装时对照同一发布页的 `SHA256SUMS.txt`，可用 `Get-FileHash ./dsh-rp-studio-1.4.0.tgz -Algorithm SHA256` 核对。Windows 找不到 `dsh` 命令时，默认安装可执行：
 
 ```powershell
 $dshCli = Join-Path $env:LOCALAPPDATA 'Programs/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd'
-& $dshCli plugin --profile desktop add ./dsh-rp-studio-1.3.0.tgz
+& $dshCli plugin --profile desktop add ./dsh-rp-studio-1.4.0.tgz
 ```
 
 源码构建：Node 24、pnpm 11，执行 `pnpm install` 与 `pnpm plugin:package`。安装包生成在 `packages/plugin/artifacts/`。仅构建原生插件时，若不需要下载旧 Electron 客户端，可以在安装依赖前设置 `ELECTRON_SKIP_BINARY_DOWNLOAD=1`。
@@ -77,13 +79,13 @@ Studio 不附带私有角色卡。新安装的隔离 DSH home 可以没有可玩
 
 ## 独立客户端与 Gateway
 
-v1.3.0 提供原生插件。历史独立客户端保留源码，Windows portable 的构建输出位于 `apps/desktop/artifacts/`。它内置 Gateway/Web 构建资源，自动发现本机官方 DSH 启动器和独立 Node 24，并将用户数据保存在 Electron `userData`；不会在 portable 内捆绑或替代官方 DSH。构建旧客户端需要另外安装 Electron 二进制。
+当前版本提供原生插件。历史独立客户端保留源码，Windows portable 的构建输出位于 `apps/desktop/artifacts/`。它内置 Gateway/Web 构建资源，自动发现本机官方 DSH 启动器和独立 Node 24，并将用户数据保存在 Electron `userData`；不会在 portable 内捆绑或替代官方 DSH。构建旧客户端需要另外安装 Electron 二进制。
 
 开发环境可运行 `pnpm start:stack`：使用官方 DSH 0.2.0-rc.2 Web profile，启动 DSH Web 与 Studio，并在进程内自动交换认证 token。先运行 `pnpm build`。默认 DSH home 位于项目忽略的 `.runtime/dsh-home`，`DSH_RUNTIME_ROOT` 可覆盖官方安装目录，`DSH_HOME` 可指定隔离测试目录，`DSH_PORT` / `DSH_RP_PORT` 可调整端口。已有服务占用端口时不会关闭其他进程。
 
 开发构建要求 Node.js 24 和 pnpm 11；portable 运行使用官方 DSH 自带的独立 Node，不要求单独启动 3080/3091 服务。Supervisor 在 loopback 上为 DSH/Gateway 分配端口。可选叙事方法由配置的 DSH Web profile 提供，缺失时仅禁用方法面板。
 
-RP Studio 1.3 的宿主范围为 **DSH >=0.2.1-rc.3 <0.3.0-0**；历史 1.2 的验证目标为 rc.2；独立客户端的运行时发现同时接受 0.2.0-rc.2 与 0.2.1-rc.2。Gateway 使用 Remote RPC、`remote.mux`、`session/follow` 和 `session/page`；旧版 `ApiProxy` 的点号 RPC 已不再支持。详细接口与版本边界见 [DSH 兼容说明](docs/dsh-compatibility.md)。
+RP Studio 1.4 的宿主范围为 **DSH >=0.2.1-rc.3 <0.3.0-0**；历史 1.2 的验证目标为 rc.2；独立客户端的运行时发现同时接受 0.2.0-rc.2 与 0.2.1-rc.2。Gateway 使用 Remote RPC、`remote.mux`、`session/follow` 和 `session/page`；旧版 `ApiProxy` 的点号 RPC 已不再支持。详细接口与版本边界见 [DSH 兼容说明](docs/dsh-compatibility.md)。
 
 DSH Web 的 HTTP API 和 WebSocket 在 loopback 上也需要认证。先启动相应 DSH Web profile，将其启动 URL 中 `token` 的值设为 Gateway 进程环境变量（下面为占位示例）：
 

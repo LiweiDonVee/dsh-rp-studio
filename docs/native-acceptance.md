@@ -1,5 +1,66 @@
 # Native RP Studio acceptance
 
+## RP Studio 1.4 / DSH 0.2.1-rc.3 — V6, 2026-10-27
+
+The V6 nine-scenario native regression passed on the official DSH **0.2.1-rc.3** host: **9/9 scenarios, `fullChain.status: passed`, `finalAcceptance: true`**. The unchanged strict gate recorded **zero console/page errors and zero HTTP errors** in all five process segments. The subsequent public defaults readback passed against the **same run and two homes**, with **zero model requests in both readback processes**.
+
+The run used harness commit `df50136c08a30e052d1ad33ca5845f207ac34730` and frozen local manifest `native-inputs-v6.json`, SHA256 `79aa41cb6b3602b3fa2a02cf27cdd6b0bd3b72f34c7ba6a2b078a620b765aeeb`. All seven actual archive hashes and six recorded files per installed package matched the frozen identities: **84 installed file hashes across the two homes**. Product owners, Session operations, factual tools and restore jobs came from these installed packages; only the bounded local model/retrieval providers were substitutes.
+
+| Product | Version | Archive SHA256 |
+| --- | --- | --- |
+| RP Studio | 1.4.0 | `147d1441973cd4fa7e7a70e8fb4f012602dbe674143a75890d20f3d3d7d992fc` |
+| RP Database | 0.3.0 | `3852262c3b7fa12af30fdba893ca5ce9ba3fe8c1502da19bef6f6098338cfc1a` |
+| RP Context | 0.3.0 | `02639877cacb551f52c48f9d69acca20dcbb1eb56ab520fd3a16ff960645a446` |
+| RP last step | 0.4.0 | `45d7bb2028d34266fc5b21382d97cebec0bf7665759861c60ba8fa38f6203716` |
+| RP GM | 0.2.0 | `b4738a787e6f30ce2e00c81e11307a0e5c65071bbb2799acb1b51ff66de4b38a` |
+| Story Kit | 0.2.0 | `d4ab826a1bd00337bb4f47a534ae6d186a0dbefa45fb5d4ee2b3e5a225335f5d` |
+| Loop Studio | 0.1.0 | `aee2ccb93b23795139ae8a6dbd2a8e7f3300542e589ea8f7530326030f37f566` |
+
+These hashes identify the archives used for native testing. Check downloaded release archives against that release's `SHA256SUMS.txt`.
+
+The run covered the selected PNG opening, factual conflict recovery, Context/material policies, frozen writer retry, draft adoption, document caching, content-pack defaults and exact-ID second-home restoration. Both [supplementary combination gates](agent-rp/acceptance-boundaries.md) passed in this run:
+
+| Gate | Actual V6 evidence |
+| --- | --- |
+| A1: pending same-job cold continuation and occupied identities | The real pending restore retained exact Session prefixes and gated GM bindings, then completed through actual Loop validation/activation after a process restart. A different job rejected occupied IDs without changing the public target witness. |
+| A2: rollback followed by a new cold action | The actual cold action produced one new factual commit and one accepted presentation; the withdrawn queued action was excluded. Continued play, rollback and fork also passed after second-home restoration. |
+
+Same-run readback confirmed exact pinned character defaults, Database/source/document bytes and draft profile V1 in the destination while source latest versions were V2. Both current minimal-story bindings retained explicit `sources:[]` and the ready builtin profile. The generic-false legacy UI issued no `reviewState` request and retained its LastStep reads.
+
+All model starts, including failed attempts, totalled **80**: source before/after cold restart **61 / 10**, destination staging/cold restore/explicit continued action **0 / 0 / 9**. Totals by stage were GM 33, prepare 25, summarize 5, assembly 8, writer 6 and alternate writer 3. Historical read/restore work stayed at zero until explicit new actions. All five full-run browsers closed before their owned hosts; all five main and two readback processes cleaned up successfully. The observer sidecars retain 79 request-failure records and six explicit body-read failures, with no pending or truncated recorded bodies.
+
+Retained local evidence for `old9-v6-final-20261027T082109284Z`:
+
+- `full-result.json`: SHA256 `f4e7a0ed48cd5301f215cfe43c5c0c3e5fc4d55af52e4eea0722ac0f229ff3c6`.
+- Same-run `public-defaults-readback.json`: SHA256 `d9a08d9ba189431311ba8fdd72af1fa03657fc18ed944935556a73061fa7c8b3`.
+- Archive/installed-file identity record: SHA256 `e460b9c6adecf338df3fea793fd58b8f52bf1e6c564fe7180742688ba1c46978`.
+
+See the [public owner/interface contracts](agent-rp/README.md) and [native harness commands](../scripts/native-integration/README.md), including the separate approval mode and passed-run-only defaults helper.
+
+This acceptance covers the nine-scenario regression and its defaults readback. The later five-group approval/regeneration run is recorded separately below. Earlier V4 and V5 runs each passed 9/9 individual scenarios but failed the overall gate (`finalAcceptance: false`); their raw SHA256 values remain `bde0a0a9f04619f51982c99f47718f0c7fef246a849c34c7f67b9794a490ff32` and `315946d847792464c2010b25d543d9f65911f0512e6752a3b023d70cf16b5266`. V6 does not retroactively explain those failures or the historical V4 503 responses. The RP Studio 1.3 record below remains its own historical result.
+
+## V6 approval and regeneration
+
+On 2026-10-27, all **5/5 groups of actual functional assertions passed** in the official DSH **0.2.1-rc.3** run `full-approval-v6-plain-final-20261027T094036341Z-6f2747e2`. Its clean harness source was `22cfb231ed3f865ff92a1232fd93168439e2511e`. It used the same frozen V6 manifest, SHA256 `79aa41cb6b3602b3fa2a02cf27cdd6b0bd3b72f34c7ba6a2b078a620b765aeeb`, and the seven tested archive identities listed above. Archive and installed-file hashes also matched after shutdown.
+
+| Group | Actual functional evidence |
+| --- | --- |
+| G1 — default OFF, pending and cold UI | One ordinary factual commit/presentation; enabling approval left a terminal pending candidate without changing current facts. Cold history/UI reads made no model requests; sidebar, full and narrow layouts passed. |
+| G2 — custom, retry and approval ON | Exact human payload, retry and fact regeneration used the real owners and revise route. The public decision interruption window was hit; original-operation resume and replay made zero requests at every model stage. Writing continued explicitly. |
+| G3 — approval OFF generation recovery | The public generation interruption window was hit. The original generation and separately mapped decision resumed without model requests or automatic writing; explicit writing then used the accepted facts. |
+| G4 — frozen writer and current facts | Alternate writer routing reused frozen materials without factual, Context or assembly replay. Actual owner guards, scope disposal, next-turn Database facts and author-note timing passed. |
+| G5 — forks, transfer and reading | Four causal cuts retained exact prefixes/control closures; child writing used a fresh child-owned operation. Opaque pending/completed transfers to different homes cold-read with all model stages zero, then actual route activation, UI approval and a new-state action passed. Ordinary legacy prose matched both the API and immersive reader; legacy and restored read-only passes kept events and counters unchanged. |
+
+All model starts, including restricted main dispatches and failed attempts, totalled **72**: GM **23**, revise **3**, prepare **24**, summarize **4**, assembly **8**, writer **5** and alternate writer **5**. The six process segments recorded **13 / 42 / 0 / 7 / 0 / 10** starts. Console/page and HTTP error arrays were empty; all owned processes stopped. Both public interruption windows were observed, and the run's `limitations` array was empty.
+
+The zero-model claim belongs to the two settlement-resume endpoints and their replays. Custom facts bypass fact-model rewriting; normal approval/custom presentation can still call the main dispatcher, Context, assembly and writer. Frozen prose regeneration reruns only the writer generation stage, while any native main dispatch is counted separately. Settlement recovery does not start writing automatically; [the usage guide](agent-rp-integration.md#事实审批与两层重新生成) describes the explicit continuation.
+
+Retained local evidence includes `native-approval-all-v6-plain-final-report.md` and its JSON companion. The raw result SHA256 is `b183000725ab6673b75def3ae3b3271db47b4223f6d92ce40dde5ec027754a83`; `source-identity.json` is `03fd5fc8db21b4eb376d7585c742bd55af285524101a211ced542c9104caf8d5`, and `raw-hashes.json` is `f15c35ff183df4718587eeafa55d18f9739169b0d8b42d2ac4dcd9090b7b3675`. All 38 saved-evidence checks passed. The raw runner deliberately retains `fullChain.status: checkpoint-passed` and `finalAcceptance: false`; the five passed functional groups do not claim final release/archive or CI acceptance.
+
+The separate Story Kit V6 default-OFF transfer regression passed **13/13 existing phases**, including current-style B, source pins and zero historical model work during cold restore/read. Its raw SHA256 is `60f848230a1bcaf07182836fc0fc60d0fe321cbc321711004d651b63d6f8ab70`; browser and cleanup errors were empty. See [Story Kit's acceptance record](https://github.com/LiweiDonVee/dsh-rp-story-kit/blob/main/docs/acceptance.md). Those 13 phases, the nine-scenario regression above and these five groups remain separately attributed runs.
+
+These are local deterministic model/retrieval fixtures exercising real installed product owners, native commands and Session logs, rather than a model prose-quality benchmark. Fact regeneration remains limited to the latest eligible ordinary round with captured baseline; old uncaptured receipts cannot be regenerated. Original prose may remain in the host's main history; the owners select current Database facts and effective Context/writer materials without rewriting native history. Final release archives and final CI are verified separately.
+
 ## RP Studio 1.3 / DSH 0.2.1-rc.3
 
 Verified 2026-10-25 on official DSH **0.2.1-rc.3**: the rev5 seven-package native run exited 0, with **9/9 scenarios passed** and `finalAcceptance:true`. Source and destination used exclusive homes and SHA-named immutable archives. Each process verified the installed manifest, host/client entries and patch: **28 file hashes per home**. Only bounded local model and embedding/rerank providers were substitutes; all product owners and canonical Session operations were real installed packages.
