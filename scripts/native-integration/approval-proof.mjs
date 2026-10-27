@@ -2,14 +2,18 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 export const MODEL_STAGES = ['gm', 'revise', 'prepare', 'summarize', 'assembly', 'writer', 'writer-alt']
 export const sha = value => createHash('sha256').update(typeof value === 'string' || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest('hex')
+export function ownerRequestHash(value) {
+  const ordered = item => Array.isArray(item) ? item.map(ordered) : item && typeof item === 'object' ? Object.fromEntries(Object.keys(item).sort().map(key => [key, ordered(item[key])])) : item
+  return sha(ordered(value))
+}
 export const textOf = message => (message?.content ?? []).filter(block => block.type === 'text').map(block => block.text).join('\n')
-export function commandBoundary({ sessionId, operationId, name, abort }) {
+export function commandBoundary({ sessionId, operationId, name, requestHash, abort }) {
   let run, done, aborted = false
   const observe = (session, event) => {
     if (session.id !== sessionId || aborted) return
     if (event.type === 'command/run' && event.data.name === name && event.data.source?.kind === 'user') {
       const tokens = String(event.data.args ?? '').trim().split(/\s+/u)
-      if (tokens.length === 2 && tokens[0] === operationId && /^[a-f0-9]{64}$/u.test(tokens[1])) run = structuredClone(event)
+      if (tokens.length === 2 && tokens[0] === operationId && /^[a-f0-9]{64}$/u.test(tokens[1]) && (requestHash === undefined || tokens[1] === requestHash)) run = structuredClone(event)
     }
     if (!run || event.type !== 'command/done' || event.seq <= run.seq || event.data.commandId !== run.data.commandId || event.data.kind !== 'success') return
     let value
@@ -90,6 +94,38 @@ export function preservePrefix(actual, expected, { fork = false } = {}) {
 export function commandProof(events, operationId, name) {
   const runs = events.filter(event => event.type === 'command/run' && event.data.name === name && event.data.source?.kind === 'user' && String(event.data.args ?? '').trim().split(/\s+/u)[0] === operationId)
   const run = runs.at(-1); assert.ok(run, 'real owner command run missing')
-  const done = events.find(event => event.type === 'command/done' && event.data.commandId === run.data.commandId); assert.equal(done?.data.kind, 'success')
+  const tokens = String(run.data.args ?? '').trim().split(/\s+/u); assert.equal(tokens.length, 2); assert.match(tokens[1], /^[a-f0-9]{64}$/u)
+  const done = events.find(event => event.seq > run.seq && event.type === 'command/done' && event.data.commandId === run.data.commandId); assert.equal(done?.data.kind, 'success')
+  const output = JSON.parse(done.data.text); assert.equal(output.schemaVersion, 1); assert.equal(output.operationId, operationId)
+  if (name === 'rp-gm-fact-decision') assert.equal(output.requestHash, tokens[1])
+  else { assert.equal(name, 'rp-gm-fact-regenerate'); assert.ok(output.candidateId); assert.match(output.payloadHash, /^[a-f0-9]{64}$/u) }
   return { run, done }
+}
+export function generatedCandidate(before, after, { operationId, instruction, marker }) {
+  const deltas = modelDeltas(before.models, after.models); assert.equal(deltas.revise, 1); zeroModels({ ...deltas, revise: 0 })
+  assert.deepEqual(pendingWorld(after.database), pendingWorld(before.database)); assert.deepEqual(after.gm.lastFactReceipt, before.gm.lastFactReceipt); assert.deepEqual(after.history.records, before.history.records)
+  const round = after.review.latestRound, original = before.review.latestRound
+  assert.equal(round.roundId, original.roundId); assert.deepEqual(round.base, original.base); assert.deepEqual(round.capture, original.capture); assert.deepEqual(round.source, original.source)
+  for (const candidate of original.candidates) assert.deepEqual(round.candidates.find(row => row.id === candidate.id), candidate)
+  const candidate = round.candidates.find(row => row.operationId === operationId)
+  assert.ok(candidate?.generationConfirmed); assert.equal(candidate.id, round.pendingCandidateId); assert.notEqual(candidate.id, original.pendingCandidateId)
+  assert.ok(candidate.payload.facts.items.some(row => row.id === 'native-marker' && row.text === marker))
+  const requests = after.models.requests.slice(before.models.requests.length); assert.equal(requests.length, 1)
+  const request = requests[0]; assert.equal(request.model, 'revise'); assert.deepEqual(request.tools, []); assert.deepEqual(request.input.base, original.base); assert.deepEqual(request.input.capture, original.capture)
+  assert.equal(request.input.instruction, instruction)
+  assert.equal(after.snapshot.events.slice(before.snapshot.events.length).filter(row => row.type === 'tool/call').length, 0, 'fact generation repeated a native tool')
+  return { candidate, request, deltas }
+}
+export function approvedWithoutPresentation(before, after, result, operationId) {
+  zeroModels(modelDeltas(before.models, after.models))
+  assert.equal(result.operationId, operationId); assert.equal(result.status, 'approved'); assert.equal(result.presentation.status, 'not-requested')
+  const receipt = after.gm.lastFactReceipt, prior = before.gm.lastFactReceipt, round = after.review.latestRound, intent = after.review.pendingDecision
+  assert.equal(receipt.id, result.factReceiptId); assert.notEqual(receipt.id, prior.id); assert.equal(receipt.factRoundId, round.roundId); assert.equal(result.roundId, round.roundId)
+  assert.ok(Number.isSafeInteger(prior.factRevision)); assert.equal(receipt.factRevision, prior.factRevision + 1)
+  assert.equal(round.activeReceiptId, receipt.id); assert.equal(round.pendingCandidateId, null)
+  assert.equal(intent?.status, 'applied'); assert.equal(intent.operationId, operationId); assert.equal(intent.factReceiptId, receipt.id)
+  const stored = after.factReview.decisions.find(row => row.operationId === operationId)
+  assert.equal(stored?.status, 'applied'); assert.equal(stored.factReceiptId, receipt.id)
+  assert.equal(after.history.records.some(row => row.factReceiptId === prior.id || row.factReceiptId === receipt.id), false, 'superseded or unwritten body selected')
+  return { receipt, intent, deltas: modelDeltas(before.models, after.models) }
 }

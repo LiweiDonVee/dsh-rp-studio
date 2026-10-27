@@ -2,7 +2,7 @@
 import { createLocalModels, MODELS } from './model-fixture.mjs'
 import { SERVICES } from './requirements.mjs'
 import { createApprovalModels, APPROVAL_MODELS } from './approval-model.mjs'
-import { commandBoundary } from './approval-proof.mjs'
+import { commandBoundary, ownerRequestHash } from './approval-proof.mjs'
 export const name = 'studio-native-probe'
 export const inject = ['llm', 'agents', 'connection', 'typertGateway', 'agentPresets', 'sessionQuery', 'sessionPersistence']
 export function apply(ctx) {
@@ -70,15 +70,23 @@ export function apply(ctx) {
       else if (input.action === 'approvalCapture') {
         if (!approval) throw new Error('APPROVAL_FIXTURE_NOT_ENABLED')
         const args = { sessionId: input.sessionId, signal: request.signal }
-        const [gm, review, database, factReviewProjection, history, canonical] = await Promise.all([ctx.get('rpGM').storyState(args), ctx.get('rpGM').reviewState(args), ctx.get('rpDatabase').effectiveV2(args), ctx.get('rpDatabase').factReviewProjection(args), ctx.get('rpLastStep').storyHistory(args), ctx.get('rpLastStep').narratives(args)])
-        result = { gm, review, database, factReviewProjection, history, canonical, snapshot: await snapshot(input.sessionId), models: local.stats() }
+        const [gm, review, database, factReview, factReviewProjection, history, canonical] = await Promise.all([ctx.get('rpGM').storyState(args), ctx.get('rpGM').reviewState(args), ctx.get('rpDatabase').effectiveV2(args), ctx.get('rpDatabase').factReviewState(args), ctx.get('rpDatabase').factReviewProjection(args), ctx.get('rpLastStep').storyHistory(args), ctx.get('rpLastStep').narratives(args)])
+        result = { gm, review, database, factReview, factReviewProjection, history, canonical, snapshot: await snapshot(input.sessionId), models: local.stats() }
       }
       else if (input.action === 'abortFactDecision' || input.action === 'abortFactGeneration') {
         if (!approval) throw new Error('APPROVAL_FIXTURE_NOT_ENABLED')
         const controller = new AbortController(), operationId = input.action === 'abortFactDecision' ? input.decision?.operationId : input.operationId
         const sessionId = input.action === 'abortFactDecision' ? input.decision?.sessionId : input.sessionId
         if (typeof operationId !== 'string' || typeof sessionId !== 'string') throw new Error('INVALID_BOUNDARY_REQUEST')
-        const observer = commandBoundary({ sessionId, operationId, name: input.action === 'abortFactDecision' ? 'rp-gm-fact-decision' : 'rp-gm-fact-regenerate', abort: () => controller.abort(new DOMException('Explicit public command completion interruption', 'AbortError')) })
+        const review = await ctx.get('rpGM').reviewState({ sessionId, signal: request.signal }), round = review.latestRound
+        if (!round || round.roundId !== (input.decision?.roundId ?? input.roundId)) throw new Error('BOUNDARY_ROUND_MISMATCH')
+        let requestHash
+        if (input.action === 'abortFactDecision') {
+          const decision = input.decision, candidate = round.candidates.find(row => row.id === decision.candidateId)
+          if (!candidate) throw new Error('BOUNDARY_CANDIDATE_MISSING')
+          requestHash = ownerRequestHash({ sessionId, roundId: round.roundId, candidateId: candidate.id, action: decision.action, candidatePayloadHash: candidate.payloadHash, ...(decision.custom === undefined ? {} : { custom: decision.custom }) })
+        } else requestHash = ownerRequestHash({ schemaVersion: 1, sessionId, roundId: round.roundId, operationId, expectedRoundVersion: input.expectedRoundVersion, instruction: input.instruction ?? '', approvalRequired: round.pendingCandidateId ? round.approvalRequired : review.enabled })
+        const observer = commandBoundary({ sessionId, operationId, requestHash, name: input.action === 'abortFactDecision' ? 'rp-gm-fact-decision' : 'rp-gm-fact-regenerate', abort: () => controller.abort(new DOMException('Explicit public command completion interruption', 'AbortError')) })
         const dispose = ctx.on('session/event', observer)
         try {
           const signal = AbortSignal.any([request.signal, controller.signal])

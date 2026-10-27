@@ -24,6 +24,56 @@ test('generation boundary needs real candidate output and does not confuse decis
   const done = { seq: 3, type: 'command/done', data: { commandId: 'g', kind: 'success', text: '{"schemaVersion":1,"operationId":"generation","candidateId":"candidate","payloadHash":"' + 'b'.repeat(64) + '"}' } }
   observer({ id: 'story' }, done); assert.equal(aborted, 1)
 })
+test('an expected public request hash rejects a same-operation run with different raw args', () => {
+  let aborted = 0
+  const requestHash = 'a'.repeat(64), observer = proof.commandBoundary({ sessionId: 'story', operationId: 'decision', name: 'rp-gm-fact-decision', requestHash, abort: () => aborted++ })
+  const run = { seq: 2, type: 'command/run', data: { commandId: 'wrong', name: 'rp-gm-fact-decision', source: { kind: 'user' }, args: `decision ${'b'.repeat(64)}` } }
+  observer({ id: 'story' }, run)
+  observer({ id: 'story' }, { seq: 3, type: 'command/done', data: { commandId: 'wrong', kind: 'success', text: JSON.stringify({ schemaVersion: 1, operationId: 'decision', requestHash: 'b'.repeat(64) }) } })
+  assert.equal(aborted, 0)
+})
+test('owner proof rejects malformed hashes, mismatched done output and a placeholder success', () => {
+  const run = { seq: 2, type: 'command/run', data: { commandId: 'real', name: 'rp-gm-fact-decision', source: { kind: 'user' }, args: `decision ${'a'.repeat(64)}` } }
+  const done = { seq: 3, type: 'command/done', data: { commandId: 'real', kind: 'success', text: JSON.stringify({ schemaVersion: 1, operationId: 'decision', requestHash: 'a'.repeat(64) }) } }
+  assert.deepEqual(proof.commandProof([run, done], 'decision', 'rp-gm-fact-decision'), { run, done })
+  for (const changed of [
+    [{ ...run, data: { ...run.data, args: 'decision invalid' } }, done],
+    [run, { ...done, data: { ...done.data, text: '{"status":"approved"}' } }],
+    [run, { ...done, data: { ...done.data, text: JSON.stringify({ schemaVersion: 1, operationId: 'decision', requestHash: 'b'.repeat(64) }) } }],
+  ]) assert.throws(() => proof.commandProof(changed, 'decision', 'rp-gm-fact-decision'))
+})
+test('tool-free generation evidence catches repeated tools and mutated writable entries', () => {
+  assert.equal(typeof proof.generatedCandidate, 'function')
+  const counts = Object.fromEntries(proof.MODEL_STAGES.map(stage => [stage, 0]))
+  const round = { roundId: 'round', source: { callSeq: 4 }, base: { scene: { title: 'captured base' }, facts: { items: [] } }, capture: { playerInput: { seq: 1, messageId: 'player', text: 'Actual player action' }, observations: [{ callSeq: 2, resultSeq: 3, toolName: 'rp_db_read', text: 'Actual evidence' }] }, candidates: [{ id: 'original', payload: { facts: { items: [] } } }], pendingCandidateId: 'original' }
+  const before = { review: { latestRound: round }, gm: { lastFactReceipt: { id: 'old' } }, database: { entries: [{ ref: { sourceKey: 'world', entryId: '0' }, content: 'fixed work', version: 1 }], notes: [], binding: { sources: ['world'] } }, history: { records: [] }, snapshot: { events: [{ seq: 1 }] }, models: { counts, requests: [] } }
+  const after = structuredClone(before), candidate = { id: 'generated', operationId: 'generation', generationConfirmed: true, payloadHash: 'b'.repeat(64), payload: { facts: { items: [{ id: 'native-marker', text: 'NEW_FACTS' }] } } }
+  after.review.latestRound.candidates.push(candidate); after.review.latestRound.pendingCandidateId = candidate.id
+  after.models.counts.revise = 1; after.models.requests.push({ model: 'revise', tools: [], input: { base: round.base, capture: round.capture, instruction: 'NEW_FACTS' } })
+  assert.equal(proof.generatedCandidate(before, after, { operationId: 'generation', instruction: 'NEW_FACTS', marker: 'NEW_FACTS' }).candidate.id, 'generated')
+  for (const mutate of [value => value.database.entries[0].version++, value => value.snapshot.events.push({ seq: 2, type: 'tool/call', data: { name: 'rp_db_read' } }), value => value.models.counts.gm++, value => value.models.requests[0].input.capture.playerInput.text = 'invented']) {
+    const changed = structuredClone(after); mutate(changed)
+    assert.throws(() => proof.generatedCandidate(before, changed, { operationId: 'generation', instruction: 'NEW_FACTS', marker: 'NEW_FACTS' }))
+  }
+})
+test('owner request hashing recursively sorts objects without reordering arrays', () => {
+  assert.equal(typeof proof.ownerRequestHash, 'function')
+  assert.equal(proof.ownerRequestHash({ z: [{ b: 2, a: 1 }, false], a: 'x' }), proof.sha('{"a":"x","z":[{"a":1,"b":2},false]}'))
+  assert.notEqual(proof.ownerRequestHash({ a: [1, 2] }), proof.ownerRequestHash({ a: [2, 1] }))
+})
+test('settlement proof requires original applied identity, a new receipt and folded old prose with every model stage zero', () => {
+  assert.equal(typeof proof.approvedWithoutPresentation, 'function')
+  const counts = Object.fromEntries(proof.MODEL_STAGES.map(stage => [stage, 0])), old = { id: 'old', factRoundId: 'round', factRevision: 1 }, receipt = { id: 'new', factRoundId: 'round', factRevision: 2 }
+  const before = { gm: { lastFactReceipt: old }, models: { counts }, history: { records: [{ factReceiptId: 'old' }] } }
+  const applied = { operationId: 'original', roundId: 'round', status: 'applied', factReceiptId: 'new' }, result = { operationId: 'original', roundId: 'round', status: 'approved', factReceiptId: 'new', presentation: { status: 'not-requested' } }
+  const after = { gm: { lastFactReceipt: receipt }, review: { latestRound: { roundId: 'round', activeReceiptId: 'new', pendingCandidateId: null }, pendingDecision: applied }, factReview: { decisions: [applied] }, models: { counts: { ...counts } }, history: { records: [] } }
+  assert.doesNotThrow(() => proof.approvedWithoutPresentation(before, after, result, 'original'))
+  for (const mutate of [value => value.models.counts.gm++, value => value.models.counts.prepare++, value => value.review.pendingDecision.operationId = 'new-operation', value => value.gm.lastFactReceipt.factRevision++, value => value.history.records.push({ factReceiptId: 'old' })]) {
+    const changed = structuredClone(after); mutate(changed)
+    assert.throws(() => proof.approvedWithoutPresentation(before, changed, result, 'original'))
+  }
+  assert.throws(() => proof.approvedWithoutPresentation(before, after, { ...result, presentation: { status: 'complete' } }, 'original'))
+})
 test('zero model recovery rejects an omitted stage and every real nonzero stage', () => {
   assert.equal(typeof proof.modelDeltas, 'function')
   const counts = { gm: 2, revise: 1, prepare: 1, summarize: 0, assembly: 1, writer: 1, 'writer-alt': 0 }
