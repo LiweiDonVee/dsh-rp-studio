@@ -50,7 +50,7 @@ export function apply(ctx) {
   disposers.push(ctx.connection.fetch.register({ path: '/api/studio-native-probe', methods: ['POST'], requestBody: 'buffered', fetch: async request => {
     try {
       const input = await request.json()
-      if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['action', 'sessionId', 'sessionIds', 'text', 'style', 'renderModel', 'mode', 'decision', 'operationId', 'roundId', 'expectedRoundVersion', 'instruction'].includes(key))) throw new Error('FIXTURE_INVALID_REQUEST')
+      if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['action', 'sessionId', 'sessionIds', 'text', 'style', 'renderModel', 'mode', 'decision', 'operationId', 'roundId', 'expectedRoundVersion', 'instruction', 'atSeq'].includes(key))) throw new Error('FIXTURE_INVALID_REQUEST')
       let result
       if (input.action === 'ready') result = await ready(request.signal)
       else if (input.action === 'witness') {
@@ -67,6 +67,14 @@ export function apply(ctx) {
         const models = local.stats(); result = { sessions, revisions, audit, modelCounts: models.counts, modelTotal: models.total }
       }
       else if (input.action === 'models') result = local.stats()
+      else if (input.action === 'approvalFork') {
+        if (!approval || !Number.isSafeInteger(input.atSeq) || input.atSeq < 0) throw new Error('INVALID_APPROVAL_FORK')
+        result = await ctx.get('rpGM').forkStory({ sessionId: input.sessionId, atSeq: input.atSeq, signal: request.signal })
+      }
+      else if (input.action === 'reviseRoute') {
+        if (!approval) throw new Error('APPROVAL_FIXTURE_NOT_ENABLED')
+        result = await ctx.get('loopStudio').resolveRoute({ sessionId: input.sessionId, nodeId: 'rp-gm.revise' })
+      }
       else if (input.action === 'approvalCapture') {
         if (!approval) throw new Error('APPROVAL_FIXTURE_NOT_ENABLED')
         const args = { sessionId: input.sessionId, signal: request.signal }

@@ -243,3 +243,17 @@ export function effectiveMaterialAudit(view, material, requests) {
   for (const old of forbidden) assert.equal(strings(material).some(value => value.includes(old)), false, 'material audit selected superseded content')
   return { receiptId: receipt.id, marker, superseded, forbidden, projection, requests: stages }
 }
+export function forkPrefix(actual, parent, atSeq) {
+  assert.ok(parent.events.some(row => row.seq === atSeq), 'fork cut is not an actual source event')
+  const events = parent.events.filter(row => row.seq <= atSeq)
+  assert.equal(actual.header.parentSession, parent.header.id); assert.notEqual(actual.header.id, parent.header.id); assert.equal(actual.inheritedEventCount, events.length)
+  const prefix = preservePrefix(actual, { ...parent, events }, { fork: true })
+  assert.ok(actual.events.slice(events.length).every(row => row.type === 'session/end-seed'), 'unexpected child work before explicit action')
+  return { ...prefix, atSeq, parentSessionId: parent.header.id, childSessionId: actual.header.id }
+}
+export function restoredReviseRoute(policy, loop, route, binding) {
+  assert.equal(policy?.enabled, true); assert.ok(policy.routes?.['rp-gm.revise']); assert.deepEqual(loop.policies.session, policy)
+  const node = loop.graph?.nodes?.find(row => row.id === 'rp-gm.revise'); assert.equal(node?.control, 'route')
+  assert.equal(route?.provider, policy.routes['rp-gm.revise'].provider); assert.equal(route?.model, policy.routes['rp-gm.revise'].model); assert.equal(binding.status, 'active')
+  return { node, route, policy, bindingStatus: binding.status }
+}

@@ -55,3 +55,9 @@ test('a failed main request after a terminal proposal is recorded even before it
   assert.equal(model.stats().requests[0].index, 1)
   assert.match(model.stats().requests[0].error, /MAIN_RAN_AFTER_TERMINAL_PROPOSAL/u)
 })
+test('ordinary unbound legacy text is normal native model output and cannot claim an owner receipt or run GM tools', async () => {
+  const model = fixture.createApprovalModels(), chunks = await collect(model.stream('gm', { messages: [human('NATIVE_C17_ORDINARY_LEGACY')], tools: [] }))
+  assert.equal(chunks.find(row => row.type === 'block-end').block.text, 'NATIVE_C17_ORDINARY_LEGACY_BODY')
+  assert.equal(callFrom(chunks), undefined); assert.equal(model.stats().counts.gm, 1)
+  await assert.rejects(collect(model.stream('gm', { messages: [human('NATIVE_C17_ORDINARY_LEGACY')], tools: [{ name: 'rp_gm_state' }] })), /ORDINARY_LEGACY_HAS_GM_TOOLS/u)
+})
