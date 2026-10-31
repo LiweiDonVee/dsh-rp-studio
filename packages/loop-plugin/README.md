@@ -1,16 +1,16 @@
 # DSH Loop Studio
 
-独立的 DSH 0.2.1-rc.2 原生插件，用图形查看预设的组成和实际 agent loop，并为支持的模型节点配置不同 provider/model。无需安装 RP Studio。
+DSH 原生插件，用图形查看预设的组成和实际 agent loop，并为支持的模型节点配置不同 provider/model。0.1.1 在 DSH 0.2.1-rc.5 上验证；无需安装 RP Studio，也适用于普通 DSH 会话。
 
 ## 安装
 
 完全退出 dsh 后执行：
 
 ```powershell
-dsh plugin --profile desktop add ./dsh-loop-studio-0.1.0.tgz
+dsh plugin --profile desktop add ./dsh-loop-studio-0.1.1.tgz
 ```
 
-Web 模式将 `desktop` 换为 `web`。重新启动后，从会话的 Loop 按钮或右侧新增页签导航打开。空白会话也有入口。侧栏的宽度和全屏由宿主管理。
+Web 模式将 `desktop` 换为 `web`。单独安装时，从会话的 Loop 按钮或右侧新增页签导航打开，空白会话也有入口。搭配 RP Studio 1.5.0 时，入口收进 `RP ▾ → 流程与模型`，独立的 Loop 顶栏按钮自动隐藏；停用 Studio 后恢复。该菜单在普通会话中也可使用，模型配置功能仍是通用功能。侧栏的宽度和全屏由宿主管理。
 
 ## 查看与配置
 
@@ -37,7 +37,7 @@ pnpm loop:package
 pnpm loop:smoke
 ```
 
-产物：`packages/loop-plugin/artifacts/dsh-loop-studio-0.1.0.tgz`。真实宿主验收使用官方 dsh 启动器、隔离测试 home 和模拟模型适配器，不发送付费请求，不修改已有用户配置。Playwright 需要 Chromium，可通过 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 指定已有浏览器；`DSH_BIN` 可指定 dsh 启动器。截图与验收结果位于 `.runtime/loop-evidence/`。
+产物：`packages/loop-plugin/artifacts/dsh-loop-studio-0.1.1.tgz`。真实宿主验收使用官方 dsh 启动器、隔离测试 home 和模拟模型适配器，不发送付费请求，不修改已有用户配置。Playwright 需要 Chromium，可通过 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 指定已有浏览器；`DSH_BIN` 可指定 dsh 启动器。截图与验收结果位于 `.runtime/loop-evidence/`。0.1.1 的入口和表单使用宿主字体及正文字号，支持随宿主设置放大。
 
 ## 架构
 

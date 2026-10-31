@@ -6,6 +6,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Workspace } from '../../../packages/plugin/src/Workspace.jsx'
 import { createStudioActions } from '../../../packages/plugin/src/actions.mjs'
 
+function selectWorkspaceView(label) {
+  fireEvent.click(screen.getByRole('button', { name: /^工作区 ·/u }))
+  fireEvent.click(screen.getByRole('menuitemradio', { name: label }))
+}
+
 // Complete contracted DTO fixtures. No fixture is native product acceptance.
 const scene = { schemaVersion: 1, title: '抵港', location: '码头', presentActorIds: ['traveler'] }
 const facts = { schemaVersion: 1, items: [{ id: 'letter', text: '信仍未拆开。' }] }
@@ -80,7 +85,7 @@ describe('fact approval and separate regeneration controls (contract fixtures)',
     fireEvent.click(writer)
     await screen.findByText('新的正文已完成，旧版本保留审计。')
     expect(h.calls.find(call => call.action === 'regenerateProse')?.input).toEqual({ sessionId: 'story', basedOn: ref, operationId: expect.any(String) })
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     expect(await screen.findByText('有效正文。')).toBeTruthy()
     const input = screen.getByRole('textbox', { name: '写下你的行动' })
     fireEvent.change(input, { target: { value: '旧故事继续行动' } })
@@ -218,7 +223,7 @@ describe('fact approval and separate regeneration controls (contract fixtures)',
     const history = { schemaVersion: 1, records: [], folded: [{ groupId: 'round', factRoundId: 'round', activeFactReceiptId: 'fact-2', selectedPresentationId: null, pendingFacts: true, versions: [{ presentationId: 'prose', factReceiptId: 'fact', resultSeq: 3 }] }], projectionKey: 'fact-2-without-prose' }
     h.setHistory(history); h.state.extensions.reader = { status: 'available', pendingFacts: true, folded: history.folded, projectionKey: history.projectionKey }
     mount(h); await screen.findByText('事实审批与重新生成')
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     expect(await screen.findByText('当前事实已生效，等待写作。')).toBeTruthy()
     fireEvent.click(await screen.findByText('正文与材料'))
     expect(await screen.findByText('已由正式正文采用 · v1')).toBeTruthy()
@@ -233,7 +238,7 @@ describe('fact approval and separate regeneration controls (contract fixtures)',
     h.setHistory({ schemaVersion: 1, records: [], folded: [], projectionKey: 'none' })
     h.state.extensions.reader = { status: 'unavailable', code: 'EFFECTIVE_HISTORY_UNAVAILABLE', message: '需要有效历史所属服务。' }
     mount(h); await screen.findByRole('checkbox', { name: '本故事事实审批' })
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     expect(await screen.findByText('需要有效历史所属服务。')).toBeTruthy()
     expect(screen.getByRole('textbox', { name: '写下你的行动' })).toBeTruthy()
     fireEvent.click(await screen.findByText('正文与材料'))
@@ -279,7 +284,7 @@ describe('fact approval and separate regeneration controls (contract fixtures)',
     const h = fixture({ pending: false })
     h.handlers.material = async () => ({ presentationId: 'prose', factReceiptRef: 'fact', status: 'complete', packet: payload.packet, narrativeVersion: narrative.narrativeVersion, ownerOperation: { schemaVersion: 1, kind: 'regenerate-prose', operationId: 'writer-op', requestHash: 'e'.repeat(64) }, contextPreparation: { historyProjection: { schemaVersion: 1, projectionKey: 'frozen-projection', selectedPresentationIds: ['prose'], activeFactReceiptIds: ['fact'] } }, compiled: { text: '真正冻结的模块' }, models: { render: { provider: 'local', model: 'measured-writer' } } })
     mount(h); await screen.findByRole('checkbox', { name: '本故事事实审批' })
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' })); fireEvent.click(await screen.findByText('正文与材料'))
+    selectWorkspaceView('沉浸阅读'); fireEvent.click(await screen.findByText('正文与材料'))
     fireEvent.click(await screen.findByRole('button', { name: '查看当前正文材料' }))
     const material = await screen.findByRole('region', { name: '实际冻结材料' })
     expect(material.textContent).toContain('frozen-projection')
@@ -342,7 +347,7 @@ describe('fact approval and separate regeneration controls (contract fixtures)',
     expect(editor).toHaveValue('等待响应时继续编辑的地点')
     expect(screen.getByRole('textbox', { name: '写下你的行动' })).toBe(playerInput)
     expect(playerInput).toHaveValue('仍未发送的玩家行动')
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     expect(await screen.findByText('当前事实已生效，等待写作。')).toBeTruthy()
     expect(screen.queryByText('OLD_PROSE_NOW_SUPERSEDED')).toBeNull()
   })

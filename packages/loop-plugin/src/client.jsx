@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useSyncExternalStore } from 'react'
 import { HeaderEntry, LoopWorkspace } from './LoopWorkspace.jsx'
 import css from './styles.css'
 
@@ -7,6 +7,12 @@ export const TAB_ID = 'dsh-loop-studio/workspace'
 export const TAB_KIND = 'loop-studio'
 
 export function apply(ctx) {
+  const subscribeStudio = listener => ctx.sidebarRightTabs.subscribe(listener)
+  const studioInstalled = () => ctx.sidebarRightTabs.get('rp-studio') !== undefined
+  function IndependentEntry(props) {
+    const installed = useSyncExternalStore(subscribeStudio, studioInstalled, studioInstalled)
+    return installed ? null : <HeaderEntry {...props} />
+  }
   ctx.effect(() => {
     const style = document.createElement('style')
     style.dataset.dshLoopStudio = ''
@@ -29,6 +35,6 @@ export function apply(ctx) {
     ctx.effect(() => ctx.slots.inject(name, () => ctx.slots.register({
       name, id: TAB_ID, order: 36,
       inject: () => ({ openLoop: () => ctx.sidebarRight.openTab(TAB_KIND) }),
-    }, HeaderEntry)), `Loop Studio ${name}`)
+    }, IndependentEntry)), `Loop Studio ${name}`)
   }
 }
