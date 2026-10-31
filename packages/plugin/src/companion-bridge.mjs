@@ -105,7 +105,10 @@ export function createCompanionBridge(ctx, { approveEscalation } = {}) {
   async function readyProfile(owner, profile, signal) {
     if (profile.status !== 'ready') fail('PROFILE_NOT_READY', '请选择已审阅并保存就绪的预设版本。', 409)
     for (const phase of ['agent', 'render']) {
-      const preview = await owner.preview({ profile, phase }, signal)
+      // LastStep agentContext guarantees only this fixed agent-phase variable.
+      // Render receives per-turn packet variables; none are guaranteed at setup.
+      const variables = phase === 'agent' ? { user: '玩家' } : {}
+      const preview = await owner.preview({ profile, phase, variables }, signal)
       if (preview.blocked || preview.diagnostics?.some(item => item.severity === 'error')) fail('PROFILE_NOT_READY', '预设编译仍有阻塞，请保留草稿并查看 agent/render 预览。', 409)
     }
   }

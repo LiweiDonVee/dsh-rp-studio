@@ -112,6 +112,48 @@ test('normal switch to an independent ready profile succeeds, while same-source 
   assert.equal(writes, 1)
 })
 
+test('save and bind readiness use LastStep guaranteed agent variables without inventing render variables', async () => {
+  let saves = 0, binds = 0
+  const previews = []
+  const ready = { ...profile, status: 'ready', entries: [{ ...entry, locked: false, content: '以 {{user}} 的行动为准。', phase: 'agent' }] }
+  const owner = {
+    apiVersion: 1,
+    profile: async () => ({ revision: 5, profile: ready }),
+    state: async () => ({ revision: 5, binding: null }),
+    preview: async (input, signal) => { previews.push(input); assert.ok(signal instanceof AbortSignal); return { blocked: false, diagnostics: [] } },
+    saveProfile: async () => { saves++; return { profileId: ready.id, version: 3 } },
+    bindSession: async () => { binds++; return {} },
+  }
+  const h = harness({ rpLastStep: owner })
+  await h.bridge.apply({ operation: 'presets.save', input: { profile: ready, expectedRevision: 5 } }, h.exec)
+  await h.bridge.apply({ operation: 'presets.bind', input: { sessionId: 'story', profileId: ready.id, version: ready.version, expectedRevision: 5 } }, h.exec)
+  assert.equal(saves, 1)
+  assert.equal(binds, 1)
+  assert.deepEqual(previews.map(({ phase, variables }) => ({ phase, variables })), [
+    { phase: 'agent', variables: { user: '玩家' } }, { phase: 'render', variables: {} },
+    { phase: 'agent', variables: { user: '玩家' } }, { phase: 'render', variables: {} },
+  ])
+})
+
+test('readiness still rejects blocked or error diagnostics before owner save or bind', async () => {
+  let writes = 0
+  const ready = { ...profile, status: 'ready' }
+  const owner = {
+    apiVersion: 1, profile: async () => ({ revision: 5, profile: ready }),
+    preview: async ({ phase }) => ({ blocked: phase === 'render', diagnostics: [] }),
+    saveProfile: async () => { writes++; return {} }, bindSession: async () => { writes++; return {} },
+  }
+  const h = harness({ rpLastStep: owner })
+  const save = { operation: 'presets.save', input: { profile: ready, expectedRevision: 5 } }
+  const bind = { operation: 'presets.bind', input: { sessionId: 'story', profileId: ready.id, version: ready.version, expectedRevision: 5 } }
+  await assert.rejects(h.bridge.apply(save, h.exec), { code: 'PROFILE_NOT_READY' })
+  await assert.rejects(h.bridge.apply(bind, h.exec), { code: 'PROFILE_NOT_READY' })
+  owner.preview = async () => ({ blocked: false, diagnostics: [{ severity: 'error', code: 'UNRESOLVED_MACRO' }] })
+  await assert.rejects(h.bridge.apply(save, h.exec), { code: 'PROFILE_NOT_READY' })
+  await assert.rejects(h.bridge.apply(bind, h.exec), { code: 'PROFILE_NOT_READY' })
+  assert.equal(writes, 0)
+})
+
 test('removing a read-only source from an authorized composition keeps overlay and is allowed', async () => {
   let actual
   const h = harness({ rpDatabase: { apiVersion: 2, state: async () => ({ revision: 2, binding: { binding: { sources: [{ key: 'old', databaseId: 'readonly', version: 1 }] } } }), bindSources: async input => { actual = input; return { revision: 3 } } } })
