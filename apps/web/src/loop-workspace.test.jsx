@@ -358,7 +358,7 @@ describe('Loop Studio native entry points', () => {
     const registrations = new Map()
     const ctx = {
       effect: callback => { const dispose = callback(); if (dispose) releases.push(dispose) },
-      sidebarRightTabs: { register: vi.fn(() => vi.fn()) },
+      sidebarRightTabs: { register: vi.fn(() => vi.fn()), get: () => undefined, subscribe: () => () => {} },
       sidebarRight: { openTab: vi.fn() },
       slots: {
         inject: (_name, callback) => callback(),

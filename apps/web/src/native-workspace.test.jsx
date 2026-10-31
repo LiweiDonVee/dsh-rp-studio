@@ -17,54 +17,62 @@ function client() {
 }
 afterEach(cleanup)
 
+function selectWorkspaceView(label) {
+  fireEvent.click(screen.getByRole('button', { name: /^工作区 ·/u }))
+  fireEvent.click(screen.getByRole('menuitemradio', { name: label === '故事档案' ? '故事档案与开局' : label }))
+}
+
 describe('native RP workspace', () => {
-  it('renders contributed workspace actions beside the refresh button', async () => {
+  it('keeps contributed workspace actions inside the closed umbrella menu', async () => {
     const api = client()
     const configure = vi.fn()
     render(<Workspace sessionId="a" openSession={vi.fn()} client={api} extraActions={<button type="button" onClick={configure}>配置故事预设</button>} />)
     await screen.findByText('山间驿站')
+    expect(screen.queryByRole('button', { name: '配置故事预设' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /^工作区 ·/u }))
     fireEvent.click(screen.getByRole('button', { name: '配置故事预设' }))
     expect(configure).toHaveBeenCalledOnce()
-    expect(screen.getByRole('button', { name: '刷新 RP 工作区' }).parentElement).toBe(screen.getByRole('button', { name: '配置故事预设' }).parentElement)
+    expect(screen.queryByRole('menu')).toBeNull()
   })
 
   it('passes the session child slot from the registered native body into the workspace', async () => {
     const entries = []
-    const disposers = []
+    const disposers = [], extensionEntries = [{ options: { id: 'test-extension' } }]
     applyNativeClient({
       effect(fn) { disposers.push(fn()) },
-      sidebarRightTabs: { register() { return () => {} } },
+      sidebarRightTabs: { register() { return () => {} }, subscribe: () => () => {} },
       sidebarRight: {}, uiWorkspace: {},
-      slots: { inject(_name, register) { return register() }, register(options, component) { entries.push({ options, component }); return () => {} } },
+      slots: { entries: () => extensionEntries, subscribe: () => () => {}, inject(_name, register) { return register() }, register(options, component) { entries.push({ options, component }); return () => {} } },
     })
     const Body = entries.find(entry => entry.options.name === 'sidebar.right.pane.tab').component
     const renderSlot = vi.fn(() => <button type="button">配置故事预设</button>)
-    const body = Body({ sessionId: 'a', useTabInfo: () => ({ tab: { visible: true } }), openSession: vi.fn(), renderSlot })
-    render(React.cloneElement(body, { client: client() }))
+    const api = client()
+    function InjectedBody() { return React.cloneElement(Body({ sessionId: 'a', useTabInfo: () => ({ tab: { visible: true } }), openSession: vi.fn(), renderSlot }), { client: api }) }
+    render(<InjectedBody />)
     await screen.findByText('山间驿站')
+    fireEvent.click(screen.getByRole('button', { name: /^工作区 ·/u }))
     expect(screen.getByRole('button', { name: '配置故事预设' })).toBeTruthy()
-    expect(renderSlot).toHaveBeenCalledWith('rp.studio.workspace.actions', {})
+    expect(renderSlot).toHaveBeenCalledWith('rp.studio.workspace.actions', {}, { only: 'test-extension' })
     for (const dispose of disposers.reverse()) dispose?.()
   })
 
   it('opens only registered owner tabs even when server services are connected', async () => {
-    const entries = [], disposers = [], opened = []
+    const entries = [], disposers = [], opened = [], extensionEntries = []
     applyNativeClient({
-      effect(fn) { disposers.push(fn()) }, sidebarRightTabs: { register() { return () => {} }, get: kind => kind === 'rp-story-kit' ? { id: 'dsh-rp-story-kit/workspace' } : undefined },
+      effect(fn) { disposers.push(fn()) }, sidebarRightTabs: { register() { return () => {} }, subscribe: () => () => {}, get: kind => kind === 'rp-story-kit' ? { id: 'dsh-rp-story-kit/workspace' } : undefined },
       sidebarRight: { openTab: kind => opened.push(kind) }, uiWorkspace: {},
-      slots: { inject(_name, register) { return register() }, register(options, component) { entries.push({ options, component }); return () => {} } },
+      slots: { entries: () => extensionEntries, subscribe: () => () => {}, inject(_name, register) { return register() }, register(options, component) { entries.push({ options, component }); return () => {} } },
     })
     const api = client()
     api.action = async () => ({ schemaVersion: 1, services: Object.fromEntries(['gm', 'storyKit', 'database', 'context', 'lastStep', 'loop'].map(key => [key, { available: true, apiVersion: null }])), actions: {} })
     const Body = entries.find(entry => entry.options.name === 'sidebar.right.pane.tab').component
-    const body = Body({ sessionId: 'a', useTabInfo: () => ({ tab: { visible: true } }), openSession: vi.fn(), renderSlot: () => null })
-    render(React.cloneElement(body, { client: api }))
+    function InjectedBody() { return React.cloneElement(Body({ sessionId: 'a', useTabInfo: () => ({ tab: { visible: true } }), openSession: vi.fn(), renderSlot: () => null }), { client: api }) }
+    render(<InjectedBody />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
-    fireEvent.click(await screen.findByText('正文与材料'))
-    fireEvent.click(await screen.findByRole('button', { name: '角色、玩家身份、开场与内容包' }))
+    fireEvent.click(screen.getByRole('button', { name: /^工作区 ·/u }))
+    expect(screen.getByRole('menuitem', { name: '写作预设与正文' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('menuitem', { name: '角色与素材' }))
     expect(opened).toEqual(['rp-story-kit'])
-    expect(screen.queryByRole('button', { name: '打开 RP 最后一步' })).toBeNull()
     for (const dispose of disposers.reverse()) dispose?.()
   })
 
@@ -72,7 +80,7 @@ describe('native RP workspace', () => {
     const api = client()
     render(<Workspace sessionId="a" openSession={vi.fn()} client={api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     act(() => api.listeners.get('a')({ type: 'message.delta', sessionId: 'a', messageId: 'writer', text: '未完成的故事草稿。' }))
     expect(screen.getByText('未完成的故事草稿。')).toBeTruthy()
     act(() => api.listeners.get('a')({ type: 'error', sessionId: 'a', error: { code: 'upstream-unavailable', upstreamCode, message: '故事生成已停止。' } }))
@@ -85,7 +93,7 @@ describe('native RP workspace', () => {
     const api = client()
     render(<Workspace sessionId="a" openSession={vi.fn()} client={api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     act(() => api.listeners.get('a')({ type: 'message.delta', sessionId: 'a', messageId: 'writer', text: '正在写下的故事。' }))
     act(() => api.listeners.get('a')({ type: 'error', sessionId: 'a', error: { code: 'agent-busy', message: '正在处理另一条请求。' } }))
     expect(screen.getByText('正在写下的故事。')).toBeTruthy()
@@ -99,7 +107,7 @@ describe('native RP workspace', () => {
     fireEvent.change(screen.getByRole('textbox', { name: '写下你的行动' }), { target: { value: '  推开门  ' } })
     fireEvent.click(screen.getByRole('button', { name: '发送行动 ↑' }))
     await waitFor(() => expect(api.send).toHaveBeenCalledWith('a', '推开门'))
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     act(() => api.listeners.get('a')({ type: 'message.delta', sessionId: 'a', messageId: 'delta', text: '门后亮起烛光。' }))
     expect(screen.getByText('门后亮起烛光。')).toBeTruthy()
     view.rerender(<Workspace {...props} visible={false} />)
@@ -164,7 +172,7 @@ describe('native snapshot handoff', () => {
       resolveSnapshot({ ...detail('a'), session: { ...detail('a').session, running: true } })
     })
     await screen.findByRole('button', {name:'发送行动 ↑'})
-    fireEvent.click(screen.getByRole('button', {name:'沉浸阅读'}))
+    selectWorkspaceView('沉浸阅读')
     expect(screen.getByText('旅程已经抵达下一站。')).toBeTruthy()
   })
 
@@ -228,7 +236,7 @@ describe('unified owner operations', () => {
     const h = ecosystem()
     render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     fireEvent.click(await screen.findByText('正文与材料'))
     fireEvent.click(await screen.findByRole('button', { name: '手改当前正文' }))
     const editor = await screen.findByRole('textbox', { name: '候选正文' })
@@ -248,7 +256,7 @@ describe('unified owner operations', () => {
     const h = ecosystem()
     render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     fireEvent.click(await screen.findByText('正文与材料'))
     expect(await screen.findByRole('button', { name: '重试该次正文' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: '手改当前正文' }))
@@ -272,7 +280,7 @@ describe('unified owner operations', () => {
     }
     render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     fireEvent.click(await screen.findByText('正文与材料'))
     fireEvent.click(await screen.findByRole('button', { name: '手改当前正文' }))
     const editor = await screen.findByRole('textbox', { name: '候选正文' })
@@ -299,7 +307,7 @@ describe('unified owner operations', () => {
     h.api.action = (name, input, signal) => name === 'editDraft' ? new Promise(resolve => { finishSave = async () => resolve(await action(name, input, signal)) }) : action(name, input, signal)
     render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     fireEvent.click(await screen.findByText('正文与材料'))
     fireEvent.click(await screen.findByRole('button', { name: '手改当前正文' }))
     const editor = await screen.findByRole('textbox', { name: '候选正文' })
@@ -321,7 +329,7 @@ describe('unified owner operations', () => {
     const h = ecosystem()
     render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     fireEvent.click(await screen.findByText('正文与材料'))
     fireEvent.click(await screen.findByRole('button', { name: '查看当前正文材料' }))
     expect(await screen.findByText(/原始冻结模块/u)).toBeTruthy()
@@ -336,7 +344,7 @@ describe('unified owner operations', () => {
     const h = ecosystem(), open = vi.fn()
     render(<Workspace sessionId="a" openSession={open} client={h.api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '故事档案' }))
+    selectWorkspaceView('故事档案')
     fireEvent.click(await screen.findByRole('button', { name: '导出阅读稿' }))
     expect(await screen.findByText(/# 阅读稿/u)).toBeTruthy()
     expect(h.calls.filter(call => call.action === 'restoreSavedStory')).toHaveLength(0)
@@ -358,7 +366,7 @@ describe('unified owner operations', () => {
     h.api.action = (name, input, signal) => name === 'previewSavedStory' ? Promise.resolve({ supported: false, identityMode: 'preserve', conflicts: [{ code: 'RESTORE_ID_CONFLICT', id: 'existing' }], requirements: [] }) : action(name, input, signal)
     render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '故事档案' }))
+    selectWorkspaceView('故事档案')
     const file = new File([JSON.stringify(savedStory)], 'conflict.json', { type: 'application/json' })
     const upload = await screen.findByLabelText('完整存档文件')
     await waitFor(() => expect(upload).not.toBeDisabled())
@@ -373,7 +381,7 @@ describe('unified owner operations', () => {
     api.action = async () => ({ schemaVersion: 1, services: Object.fromEntries(['gm', 'storyKit', 'database', 'context', 'lastStep', 'loop'].map(key => [key, { available: false, apiVersion: null }])), actions: {} })
     render(<Workspace sessionId="a" openSession={vi.fn()} client={api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     fireEvent.click(await screen.findByText('正文与材料'))
     expect(await screen.findByText('RP 最后一步：未连接')).toBeTruthy()
     expect(screen.getByRole('button', { name: '手改当前正文' })).toBeDisabled()
@@ -385,7 +393,7 @@ describe('unified owner operations', () => {
     const h = ecosystem()
     render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     fireEvent.click(await screen.findByText('正文与材料'))
     fireEvent.click(await screen.findByRole('button', { name: '手改当前正文' }))
     const editor = await screen.findByRole('textbox', { name: '候选正文' })
@@ -403,7 +411,7 @@ describe('unified owner operations', () => {
     h.enableRetry()
     render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     fireEvent.click(await screen.findByText('正文与材料'))
     const retry = await screen.findByRole('button', { name: '重试该次正文' })
     await waitFor(() => expect(retry).not.toBeDisabled())
@@ -417,7 +425,7 @@ describe('unified owner operations', () => {
     const h = ecosystem()
     render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     fireEvent.click(await screen.findByText('正文与材料'))
     fireEvent.click(await screen.findByRole('button', { name: '手改当前正文' }))
     const editor = await screen.findByRole('textbox', { name: '候选正文' })
@@ -435,7 +443,7 @@ describe('unified owner operations', () => {
     h.api.action = async (name, input, signal) => { const result = await action(name, input, signal); if (name === 'material') delete result.storySnapshot; return result }
     render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '沉浸阅读' }))
+    selectWorkspaceView('沉浸阅读')
     fireEvent.click(await screen.findByText('正文与材料'))
     fireEvent.click(await screen.findByRole('button', { name: '查看当前正文材料' }))
     expect(await screen.findByText('未记录固定来源')).toBeTruthy()
@@ -447,7 +455,7 @@ describe('unified owner operations', () => {
     h.api.action = (name, input, signal) => name === 'previewSavedStory' ? Promise.resolve({ supported: true, identityMode: 'preserve', conflicts: [], requirements: [], deferredChecks: [{ code: 'LOOP_NODE_VALIDATION', sessionId: 'restored', nodeIds: ['render'] }] }) : action(name, input, signal)
     render(<Workspace sessionId="a" openSession={open} client={h.api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '故事档案' }))
+    selectWorkspaceView('故事档案')
     const upload = await screen.findByLabelText('完整存档文件')
     await waitFor(() => expect(upload).not.toBeDisabled())
     fireEvent.change(upload, { target: { files: [new File([JSON.stringify(savedStory)], 'conditional.json', { type: 'application/json' })] } })
@@ -463,7 +471,7 @@ describe('unified owner operations', () => {
     h.api.action = (name, input, signal) => name === 'exportSavedStory' ? Promise.resolve({ snapshot: { ...savedStory, dependencySummary } }) : action(name, input, signal)
     render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '故事档案' }))
+    selectWorkspaceView('故事档案')
     const button = await screen.findByRole('button', { name: '导出完整存档' })
     await waitFor(() => expect(button).not.toBeDisabled()); fireEvent.click(button)
     const summary = await screen.findByRole('region', { name: '记录的依赖用途' })
@@ -481,7 +489,7 @@ describe('unified owner operations', () => {
     h.api.action = (name, input, signal) => name === 'exportSavedStory' ? Promise.resolve({ snapshot }) : action(name, input, signal)
     render(<Workspace sessionId="a" openSession={vi.fn()} client={h.api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '故事档案' }))
+    selectWorkspaceView('故事档案')
     const button = await screen.findByRole('button', { name: '导出完整存档' })
     await waitFor(() => expect(button).not.toBeDisabled()); fireEvent.click(button)
     expect(await screen.findByText('依赖用途：未记录')).toBeTruthy()
@@ -494,7 +502,7 @@ describe('unified owner operations', () => {
     h.api.action = (name, input, signal) => name === 'previewSavedStory' ? Promise.resolve({ supported: false, identityMode: 'preserve', conflicts: [{ code: 'RESTORE_ID_CONFLICT', id: 'restored' }], requirements: [], dependencySummary }) : action(name, input, signal)
     render(<Workspace sessionId="a" openSession={open} client={h.api} />)
     await screen.findByText('山间驿站')
-    fireEvent.click(screen.getByRole('button', { name: '故事档案' }))
+    selectWorkspaceView('故事档案')
     const upload = await screen.findByLabelText('完整存档文件')
     await waitFor(() => expect(upload).not.toBeDisabled())
     const snapshot = { ...savedStory, dependencySummary: { databases: [], profiles: [{ profileId: 'file-only', version: 1, uses: ['asset-default'] }] } }

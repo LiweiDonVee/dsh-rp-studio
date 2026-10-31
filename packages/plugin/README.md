@@ -1,6 +1,6 @@
 # DSH RP Studio
 
-RP Studio 1.4.0 是面向 DSH 0.2.1-rc.3 的原生角色扮演工作区。在会话顶部点击 RP 打开右侧页签，支持宿主的拖动宽度、全屏和关闭操作。
+RP Studio 1.5.0 是面向 DSH 0.2.1-rc.5 的原生角色扮演工作区。在会话顶部或空白会话点击 `RP ▾`，从菜单打开故事页面、各插件的完整管理页或独立 RP 助手。支持宿主的拖动宽度、全屏和关闭操作。
 
 - 角色与剧情：通用 GM 的当前场景与事实，以及旧预设的关系、任务、物品和记忆。
 - 沉浸阅读：玩家行动、事实审批与重新生成、正式正文、候选手改与采用、冻结材料、失败重试和作者注入口。
@@ -20,10 +20,10 @@ RP Studio 1.4.0 是面向 DSH 0.2.1-rc.3 的原生角色扮演工作区。在会
 
 “继续审批结算”和“继续候选结算”均不调用模型，也不自动写作；结算完成后明确点击“继续已批准事实的写作”。完整步骤见[审批与重新生成用法](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/agent-rp-integration.md#事实审批与两层重新生成)。
 
-安装包为 `dsh-rp-studio-1.4.0.tgz`，下载入口为 [发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases)。先完全退出 dsh，再在终端执行：
+安装包为 `dsh-rp-studio-1.5.0.tgz`，下载入口为 [发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases)。先完全退出 dsh，再在终端执行：
 
 ```powershell
-dsh plugin --profile desktop add ./dsh-rp-studio-1.4.0.tgz
+dsh plugin --profile desktop add ./dsh-rp-studio-1.5.0.tgz
 ```
 
 Web 模式请把 `desktop` 改为 `web`。重新打开 dsh，进入任一会话，点击会话顶部的 RP 按钮。新故事沿用 dsh 自己的模型、权限审批和登录状态。
@@ -34,10 +34,20 @@ Windows 找不到 `dsh` 命令时，可使用默认官方启动器：
 
 ```powershell
 $dshCli = Join-Path $env:LOCALAPPDATA 'Programs/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd'
-& $dshCli plugin --profile desktop add ./dsh-rp-studio-1.4.0.tgz
+& $dshCli plugin --profile desktop add ./dsh-rp-studio-1.5.0.tgz
 ```
 
 安装时核对同一发布页的 SHA256SUMS。完整使用、角色预设和插件搭配见 [原生指南](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/native-usage.md)。
+
+## RP 助手
+
+Studio 安装包同时提供真正的 `rp-companion` Agent Preset，无需另装助手包。在 `RP ▾ → RP 助手` 打开独立管理草稿，或在新会话的 Agent Preset 中选择“RP 助手”。入口只填入引导，不自动发送；检查目标故事 ID 与需求后发送即可。原故事会话继续使用 `rp-gm`。
+
+完整使用时，将 Studio、Loop、Story Kit、Database、Context、GM 和 RP 最后一步七包安装到同一个 profile。助手复用各插件的公共业务服务，支持角色与身份创建/编辑、角色卡/世界书/资料/内容包导入、ST 写作预设导入与迁移、写作预设草稿调整、上下文与节点模型配置，以及经 Story Kit 审阅配置开局和读回。某个插件未启用时只报告该能力缺失，不伪造成功。
+
+文件导入使用正式宿主文件服务读取原始 JSON/PNG/PDF 字节。原始导入留在所属插件；助手不直接改 owner 数据或宿主 profile。管理写入沿用 DSH 的权限审批；非完全访问模式可能出现一次原生批准请求。锁定、必用和默认关闭的模块策略保留，迁移仍交付待审阅草稿；故事事实审批继续默认关闭。更多约束见[助手操作合同](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/rp-companion.md)。
+
+助手基于 rc.5 的创造模式组成，保留官方组成编辑、插件开发和 API 检查能力，并增加 RP skill 与固定的管理工具。此预设默认不挂载 web 工具。上游许可见随包的 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
 
 ## 从源码构建
 

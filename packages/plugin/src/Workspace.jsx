@@ -3,9 +3,9 @@ import { createRenderer } from 'dsh-tavern-renderer/core'
 import { createNativeApi } from './api.js'
 import { StoryTools } from './StoryTools.jsx'
 import { FactTools } from './FactTools.jsx'
+import { RpMenu, readStudioView } from './RpMenu.jsx'
 
 const api = createNativeApi()
-const tabs = [['state', '角色与剧情'], ['story', '沉浸阅读'], ['archive', '故事档案']]
 const text = value => typeof value === 'string' || typeof value === 'number' ? String(value) : ''
 const title = item => ['name', 'title', 'label', 'npcName', 'npc', 'item', 'id'].map(key => text(item[key])).find(Boolean) || '未命名'
 const describe = item => ['description', 'summary', 'status', 'objective', 'location', 'role'].map(key => text(item[key])).filter(Boolean).join(' · ')
@@ -14,8 +14,8 @@ export function BookIcon({ size = 18 }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 6c-3-2-6-2-9-1v14c3-1 6-1 9 1 3-2 6-2 9-1V5c-3-1-6-1-9 1Zm0 0v14M6 9h3m-3 4h3m6-4h3m-3 4h3" /></svg>
 }
 
-export function HeaderEntry({ openRp }) {
-  return <button className="dsh-rp-entry" type="button" aria-label="打开 RP Studio" title="打开 RP Studio" onClick={openRp}><BookIcon /><span>RP</span></button>
+export function HeaderEntry({ openRp, ...props }) {
+  return <RpMenu {...props} onSelectView={openRp} />
 }
 
 function Group({ label, items = [] }) {
@@ -58,11 +58,11 @@ function Story({ detail, streaming, children }) {
   </div>
 }
 
-export function Workspace({ sessionId, visible = true, openSession, client = api, extraActions = null, openOwner, hasOwnerTab }) {
+export function Workspace({ sessionId, visible = true, openSession, client = api, extraActions = null, openOwner, hasOwnerTab, registry, navigation, navigateView, onOpenCompanion, onMenuOpen, companionReason }) {
   const [detail, setDetail] = useState(null)
   const [cards, setCards] = useState([])
   const [sessions, setSessions] = useState([])
-  const [tab, setTab] = useState('state')
+  const [tab, setTab] = useState(() => readStudioView(navigation?.params?.view))
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -77,6 +77,7 @@ export function Workspace({ sessionId, visible = true, openSession, client = api
   const scope = useRef(sessionId)
   const refreshSnapshot = useRef(null)
   scope.current = sessionId
+  useEffect(() => { if (navigation) setTab(readStudioView(navigation.params?.view)) }, [navigation?.params?.view, navigation?.revision])
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   useEffect(() => { setBusy(false); setDraft(''); setNotice('') }, [sessionId, client])
   useEffect(() => {
@@ -155,8 +156,7 @@ export function Workspace({ sessionId, visible = true, openSession, client = api
   const gm = detail?.state.extensions?.gm
   const narrativeRevision = detail?.messages.filter(message => message.role === 'gm').map(message => JSON.stringify([message.id, message.seq])).join('|') ?? ''
   return <div className="dsh-rp-workspace" data-rp-session={sessionId}>
-    <header className="rp-heading"><div><span className="rp-eyebrow">RP STUDIO</span><h1>{detail?.card.title || '让故事发生'}</h1></div><div className="rp-heading-actions">{extraActions}<button type="button" className="rp-icon" aria-label="刷新 RP 工作区" title="刷新" onClick={() => setRevision(value => value + 1)} disabled={loading}>↻</button></div></header>
-    <nav className="rp-tabs" aria-label="RP 工作区视图">{tabs.map(([id, label]) => <button type="button" key={id} aria-pressed={tab === id} onClick={() => setTab(id)}>{label}</button>)}</nav>
+    <header className="rp-heading"><div><span className="rp-eyebrow">RP STUDIO</span><h1>{detail?.card.title || '让故事发生'}</h1></div><div className="rp-heading-actions"><RpMenu workspace view={tab} registry={registry} hasOwnerTab={hasOwnerTab} onSelectView={navigateView || setTab} onOpenOwner={openOwner} onOpenCompanion={onOpenCompanion} onMenuOpen={onMenuOpen} companionReason={companionReason} extensions={extraActions} /><button type="button" className="rp-icon" aria-label="刷新 RP 工作区" title="刷新" onClick={() => setRevision(value => value + 1)} disabled={loading}>↻</button></div></header>
     {error && <div role="alert" className="rp-error"><span>{error}</span><button type="button" aria-label="关闭错误提示" onClick={() => setError('')}>×</button></div>}
     {notice && <p role="status" className="rp-tool-notice">{notice}</p>}
     {loading ? <div className="rp-empty" role="status">正在翻开故事…</div> : tab === 'archive' || !detail ? <div className="rp-scroll">
