@@ -112,13 +112,16 @@ export function apply(ctx) {
       } else if (input.action === 'dispose') {
         const agent = ctx.agents.get(input.sessionId), handle = handles.get(input.sessionId)
         if (!handle) throw new Error('UMBRELLA_OWNED_HANDLE_REQUIRED')
+        const retired = { agent, callerId: agent.id, callerSessionId: agent.session.id }
         await handle.dispose(); handles.delete(input.sessionId)
-        retiredAgents.set(input.sessionId, agent)
+        retiredAgents.set(input.sessionId, retired)
         result = { live: !!ctx.agents.get(input.sessionId), remainingTools: ctx.tools.schemas(agent), globalTools: ctx.tools.schemas(), activeScopes: ctx.agents.list().map(value => ({ id: value.id, tools: ctx.tools.schemas(value) })) }
       } else if (input.action === 'retiredTool') {
-        const agent = retiredAgents.get(input.sessionId)
-        if (!agent || ctx.agents.get(input.sessionId)) throw new Error('UMBRELLA_DISPOSED_AGENT_REQUIRED')
-        result = await ctx.tools.execute({ callId: randomUUID(), name: 'rp_companion_apply', arguments: input.arguments, agent, signal: request.signal })
+        const retired = retiredAgents.get(input.sessionId)
+        if (!retired || ctx.agents.get(retired.callerId)) throw new Error('UMBRELLA_DISPOSED_AGENT_REQUIRED')
+        const signalAbortedBefore = request.signal.aborted
+        const outcome = await ctx.tools.execute({ callId: randomUUID(), name: 'rp_companion_apply', arguments: input.arguments, agent: retired.agent, signal: request.signal })
+        result = { outcome, callerId: retired.callerId, callerSessionId: retired.callerSessionId, signalAbortedBefore, signalAbortedAfter: request.signal.aborted }
       } else if (input.action === 'catalog') {
         const agent = ctx.agents.get(input.sessionId)
         if (!agent) throw new Error('UMBRELLA_REAL_AGENT_REQUIRED')

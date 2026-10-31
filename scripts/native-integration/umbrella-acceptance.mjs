@@ -14,7 +14,7 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex')
 const workspace = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const ownerPages = [
   { name: 'dsh-rp-story-kit', kind: 'rp-story-kit', label: '角色与素材', root: '.rpsk', heading: 'h1', ordinary: '.rpsk-field > span', entry: '.rpsk-native-entry' },
-  { name: 'dsh-rp-database', kind: 'rp-database', label: '数据库', root: '.rpdb', heading: '.rpdb-heading h2', ordinary: 'label', entry: '.rpdb-open-entry' },
+  { name: 'dsh-rp-database', kind: 'rp-database', label: '数据库', root: '.rpdb', heading: '.rpdb-heading h2', ordinary: '.rpdb-field > span', entry: '.rpdb-open-entry' },
   { name: 'dsh-rp-context', kind: 'rp-context', label: '上下文', root: '.rpc-workspace', heading: 'h1', ordinary: 'label', entry: '.rpc-open-entry' },
   { name: 'dsh-rp-gm', kind: 'rp-gm', label: '故事 GM', root: '.rpgm-workspace', heading: '.rpgm-heading h2', ordinary: '.rpgm-card p', entry: '.rpgm-open-entry' },
   { name: 'dsh-rp-last-step', kind: 'rp-last-step', label: '写作预设与正文', root: '.dsh-rp-last-step', heading: '.rpls-heading h1', ordinary: '.rpls-field > span', entry: '.rpls-open-entry' },
@@ -288,17 +288,24 @@ async function fontMatrix({ page, report, scenario, shot, choose }) {
           await root.getByRole('button', { name: '新建角色资产', exact: true }).click()
           await root.locator('.rpsk-field > span').first().waitFor()
         }
+        if (owner.kind === 'rp-database') {
+          const summary = root.locator('summary').filter({ hasText: '新建数据库' })
+          await summary.waitFor()
+          if (!await summary.evaluate(el => el.parentElement.open)) await summary.click()
+        }
+        await root.locator(owner.ordinary).filter({ visible: true }).first().waitFor()
+        await root.locator('input:not([type=hidden]):not([type=checkbox]):not([type=file]),textarea:not([readonly]),select').filter({ visible: true }).first().waitFor()
         const row = await root.evaluate((el, owner) => {
           const visible = value => !!value && value.getBoundingClientRect().width > 0 && value.getBoundingClientRect().height > 0
           const read = value => { if (!value) return null; const css = getComputedStyle(value); return { tag: value.tagName, class: value.className, text: value.textContent?.trim().slice(0, 120), fontFamily: css.fontFamily, fontSize: css.fontSize, fontWeight: css.fontWeight, lineHeight: css.lineHeight } }
           const pick = selector => [...el.querySelectorAll(selector)].find(visible)
-          return { root: read(el), heading: read(pick(owner.heading)), ordinary: read(pick(owner.ordinary) ?? pick('button') ?? pick('p')), input: read(pick('input:not([type=hidden]):not([type=checkbox]):not([type=file]), textarea:not([readonly]), select')), allHeadings: [...el.querySelectorAll('h1,h2,h3')].filter(visible).map(read), inputs: [...el.querySelectorAll('input:not([type=hidden]),textarea,select')].filter(visible).map(read) }
+          return { root: read(el), heading: read(pick(owner.heading)), ordinary: read(pick(owner.ordinary)), input: read(pick('input:not([type=hidden]):not([type=checkbox]):not([type=file]), textarea:not([readonly]), select')), allHeadings: [...el.querySelectorAll('h1,h2,h3')].filter(visible).map(read), inputs: [...el.querySelectorAll('input:not([type=hidden]),textarea,select')].filter(visible).map(read) }
         }, owner)
         report.fonts.push({ theme, size, kind: owner.kind, ...row })
         assert(row.root.fontSize === `${size}px`, `${owner.kind} root font ${row.root.fontSize} != ${size}px`)
         assert(row.ordinary?.fontSize === `${size}px`, `${owner.kind} ordinary font ${row.ordinary?.fontSize} != ${size}px`)
         assert(row.heading && row.heading.fontSize === `${size + 5}px`, `${owner.kind} heading ${row.heading?.fontSize} != ${size + 5}px`)
-        assert(!row.input || row.input.fontSize === `${size}px`, `${owner.kind} input ${row.input?.fontSize} != ${size}px`)
+        assert(row.input && row.input.fontSize === `${size}px`, `${owner.kind} input ${row.input?.fontSize} != ${size}px`)
         assert([row.root, row.ordinary, row.heading, row.input].filter(Boolean).every(item => item.fontFamily === row.root.fontFamily), `${owner.kind} UI font families differ`)
       }
       await shot(`font-${theme}-${size}`)

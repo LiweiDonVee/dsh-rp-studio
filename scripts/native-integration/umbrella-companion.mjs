@@ -311,11 +311,16 @@ export async function nativeCompanion({ page, report, out, scenario, shot, reque
     state.scopeDisposal = await probe('dispose', { sessionId: managerId })
     assert(state.scopeDisposal.live === false && !state.scopeDisposal.globalTools.some(row => names.includes(row.name)) && state.scopeDisposal.activeScopes.every(scope => !scope.tools.some(row => names.includes(row.name))), 'Disposed manager still owns a live management capability')
     const beforeRetired = { note: await owner('context', 'authorNote', { sessionId: launchedId }), revision: (await owner('context', 'state', { sessionId: launchedId })).revision }
-    const retiredCall = await probe('retiredTool', { sessionId: managerId, arguments: { operation: 'context.setAuthorNote', input: { sessionId: launchedId, text: 'DISPOSED_SCOPE_MUST_NOT_WRITE', expectedRevision: beforeRetired.revision } } })
+    const retiredAttempt = await probe('retiredTool', { sessionId: managerId, arguments: { operation: 'context.setAuthorNote', input: { sessionId: launchedId, text: 'DISPOSED_SCOPE_MUST_NOT_WRITE', expectedRevision: beforeRetired.revision } } })
+    const retiredCall = retiredAttempt.outcome
     const retiredValue = valueOf(retiredCall)
     const afterRetired = { note: await owner('context', 'authorNote', { sessionId: launchedId }), revision: (await owner('context', 'state', { sessionId: launchedId })).revision }
-    assert(retiredCall.isError === true && retiredValue.error?.code === 'COMPANION_SCOPE_REQUIRED' && JSON.stringify(beforeRetired) === JSON.stringify(afterRetired), 'A disposed Agent reference could still mutate an owner')
-    state.disposedScopeCall = { before: beforeRetired, outcome: retiredCall, value: retiredValue, after: afterRetired, cachedGenerationSchemaRetained: state.scopeDisposal.remainingTools.some(row => names.includes(row.name)) }
+    const rejectedByHost = retiredCall.error?.code === undefined && retiredCall.error?.message === `session "${retiredAttempt.callerSessionId}" is not live in this store`
+    const rejectedByCompanion = retiredValue.error?.code === 'COMPANION_SCOPE_REQUIRED'
+    assert(retiredAttempt.callerSessionId === managerId && retiredAttempt.signalAbortedBefore === false && retiredAttempt.signalAbortedAfter === false, 'Disposed-caller probe did not use the saved identity with a fresh live signal')
+    assert(retiredCall.isError === true && (rejectedByHost || rejectedByCompanion), 'Disposed caller was not rejected by the exact native/Companion lifecycle boundary')
+    assert(JSON.stringify(beforeRetired) === JSON.stringify(afterRetired), 'Disposed caller changed the owner note or revision')
+    state.disposedScopeCall = { before: beforeRetired, ...retiredAttempt, value: retiredValue, after: afterRetired, rejectedBy: rejectedByHost ? 'host-session-store' : 'companion-scope', cachedGenerationSchemaRetained: state.scopeDisposal.remainingTools.some(row => names.includes(row.name)) }
   })
   await scenario('companion-official-preset-disable-and-restore', async () => {
     const entries = await probe('companionPluginEntry')
