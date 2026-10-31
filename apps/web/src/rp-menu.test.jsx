@@ -110,7 +110,7 @@ describe('RP umbrella menu', () => {
 
   it('enables the real helper only after Host readiness and carries the selected story into its unsent draft', async () => {
     let available = false
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ schemaVersion: 1, presetId: 'rp-companion', available, reason: '助手预设未启用' }) })))
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ schemaVersion: 1, presetId: 'rp-companion', available, reason: '助手预设未启用', tools: available ? ['rp_companion_inspect', 'rp_companion_apply', 'rp_companion_import_file'] : [], owners: { storyKit: false, database: false, lastStep: false, context: false, gm: false, loop: false } }) })))
     const registrations = [], effects = [], startSession = vi.fn()
     apply({ effect(fn) { effects.push(fn()) }, sidebarRightTabs: registry(), sidebarRight: {}, uiWorkspace: { startSession }, slots: { inject: (_key, fn) => fn(), register(options, component) { registrations.push({ options, component }); return () => {} } } })
     const entry = registrations.find(row => row.options.name === 'conversation.session.header.actions'), Header = entry.component
@@ -129,7 +129,7 @@ describe('RP umbrella menu', () => {
   })
 
   it('rechecks the mounted story inside the navigation frame before opening Studio', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ schemaVersion: 1, presetId: 'rp-companion', available: false }) })))
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ schemaVersion: 1, presetId: 'rp-companion', available: false, reason: '助手预设未启用', tools: [], owners: { storyKit: false, database: false, lastStep: false, context: false, gm: false, loop: false } }) })))
     const frames = [], mountedListeners = new Set(), registrations = [], effects = [], openTab = vi.fn()
     let mounted = 'source'
     vi.stubGlobal('requestAnimationFrame', callback => { frames.push(callback); return frames.length })

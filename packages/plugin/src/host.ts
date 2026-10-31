@@ -6,6 +6,7 @@ import { loadDefaultProductStore } from '../../../apps/gateway/src/local-data-ad
 import { createNativeTransport } from './transport.mjs'
 import { createNativeRoutes } from './routes.mjs'
 import { createStudioActions } from './actions.mjs'
+import { createCompanionStatusRoute } from './companion-status.mjs'
 
 export const name = 'rp-studio'
 export const inject = ['connection', 'typertGateway']
@@ -42,8 +43,10 @@ export function apply(ctx) {
     } catch (error) { await close(); throw error }
   })
   const actions = createStudioActions({ getService: name => ctx.get(name), authorize: (sessionId, signal) => routes.authorize(sessionId, signal) })
+  const companion = createCompanionStatusRoute(ctx)
   ctx.connection.fetch.register({ path: '/api/rp-studio/request', methods: ['POST'], requestBody: 'buffered', fetch: request => routes.request(request) })
   ctx.connection.fetch.register({ path: '/api/rp-studio/events', methods: ['GET'], requestBody: 'buffered', fetch: request => routes.events(request) })
   ctx.connection.fetch.register({ path: '/api/rp-studio/actions', methods: ['POST'], requestBody: 'buffered', fetch: request => actions.request(request) })
-  ctx.effect(() => () => { actions.close(); return routes.close() }, 'RP Studio runtime')
+  ctx.connection.fetch.register({ path: '/api/rp-studio/companion', methods: ['POST'], requestBody: 'buffered', fetch: request => companion.request(request) })
+  ctx.effect(() => () => { companion.close(); actions.close(); return routes.close() }, 'RP Studio runtime')
 }

@@ -11,7 +11,7 @@ const local = relative(tmpdir(), staging)
 if (isAbsolute(local) || local.startsWith('..') || !local.startsWith('dsh-rp-studio-pack-')) throw new Error('Unexpected staging path')
 try {
   await mkdir(output, { recursive: true })
-  for (const file of ['dist', 'cordis.patch.yml', 'README.md', 'LICENSE']) await cp(join(root, file), join(staging, file), { recursive: true })
+  for (const file of ['dist', 'skills', 'cordis.patch.yml', 'README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md']) await cp(join(root, file), join(staging, file), { recursive: true })
   const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
   // Both entry points are bundled; the installable plugin has no workspace dependencies.
   for (const key of ['dependencies', 'devDependencies', 'peerDependencies', 'scripts']) delete manifest[key]
