@@ -203,6 +203,12 @@ async function nativeUi({ page, report, scenario, shot, request, probe }) {
     await outsideInput.click(); await menu().waitFor({ state: 'hidden' })
     assert(await outsideInput.evaluate(el => el === document.activeElement), 'Outside input focus was stolen after menu close')
     report.focusChecks = { escapeReturnedToTrigger: true, blankOutsideReturnedToTrigger: true, outsideInputRetainedFocus: true }
+    await openMenu(trigger)
+    const refreshed = page.waitForResponse(response => response.url().endsWith('/api/rp-studio/request') && response.request().postDataJSON()?.path === '/api/v1/cards')
+    await page.getByRole('button', { name: '刷新 RP 工作区', exact: true }).click()
+    await menu().waitFor({ state: 'hidden' }); assert((await refreshed).ok(), 'Outside button did not execute its real refresh action')
+    await page.getByRole('button', { name: '刷新 RP 工作区', exact: true }).waitFor()
+    report.focusChecks.outsideRefreshButtonExecuted = true
     await openMenu(trigger); await trigger.click(); await menu().waitFor({ state: 'hidden' })
   })
   await scenario('third-party-slot-contribution', async () => {
