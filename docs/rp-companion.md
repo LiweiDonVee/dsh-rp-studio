@@ -1,6 +1,6 @@
 # RP 助手与聚合入口
 
-RP Studio 1.5.0 面向 DSH 0.2.1-rc.5。把 Studio、Loop、Story Kit、Database、Context、GM 和 RP 最后一步七包更新到同一 profile，重启 DSH。会话顶部与空白会话的 `RP ▾` 菜单打开故事三页、各插件自己的完整管理页，以及独立的 RP 助手。未启用的插件显示原因；没有 Studio 时，各插件仍有原独立入口。
+RP Studio 1.5.1 面向 DSH 0.2.1-rc.5。把 Studio、Loop、Story Kit、Database、Context、GM 和 RP 最后一步七包更新到同一 profile，重启 DSH。会话顶部与空白会话的 `RP ▾` 菜单打开故事三页、各插件自己的完整管理页，以及独立的 RP 助手。未启用的插件显示原因；没有 Studio 时，各插件仍有原独立入口。
 
 `RP ▾ → RP 助手` 准备一个使用 `rp-companion` 的管理草稿，也可以在新会话的 Agent Preset 中直接选择“RP 助手”。入口填入引导并保留已有草稿，检查需求和目标故事 ID 后发送；不会自动发送模型请求。管理会话与正在演绎的 `rp-gm` 故事会话分开。
 

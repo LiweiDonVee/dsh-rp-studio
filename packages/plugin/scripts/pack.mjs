@@ -13,8 +13,13 @@ try {
   await mkdir(output, { recursive: true })
   for (const file of ['dist', 'skills', 'cordis.patch.yml', 'README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md']) await cp(join(root, file), join(staging, file), { recursive: true })
   const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  // Both entry points are bundled; the installable plugin has no workspace dependencies.
-  for (const key of ['dependencies', 'devDependencies', 'peerDependencies', 'scripts']) delete manifest[key]
+  // Bundled code has no workspace dependencies. Runtime peers must remain declared:
+  // DSH uses this metadata to resolve Host packages for external linked plugins.
+  for (const key of ['dependencies', 'devDependencies', 'scripts']) delete manifest[key]
+  manifest.peerDependenciesMeta ??= {}
+  for (const name of ['@deepseek-ai/cordis', '@deepseek-ai/dsh-sandbox', 'react']) {
+    if (Object.hasOwn(manifest.peerDependencies ?? {}, name)) manifest.peerDependenciesMeta[name] = { ...manifest.peerDependenciesMeta[name], optional: true }
+  }
   await writeFile(join(staging, 'package.json'), JSON.stringify(manifest, null, 2) + '\n')
   const result = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['pack', '--pack-destination', process.platform === 'win32' ? `"${output}"` : output], { cwd: staging, shell: process.platform === 'win32', stdio: 'inherit', windowsHide: true })
   if (result.error) throw result.error
