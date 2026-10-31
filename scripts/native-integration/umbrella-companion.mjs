@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, realpath } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { syntheticStoryData } from './data-fixtures.mjs'
@@ -38,7 +38,7 @@ export async function nativeCompanion({ page, report, out, scenario, shot, reque
   const synthetic = await files(out), state = { toolCalls: [], mutations: [], negatives: [], sourceFiles: synthetic.manifest }
   state.evidenceBoundary = { positive: 'The deterministic local model emits genuine calls in the native agent loop; installed owners execute each operation.', negatives: 'Protection and DTO negatives use real scoped ToolRuntime.execute. Permission denial uses a model-originated call and native approval UI.', migration: 'The human owner sets the synthetic agent lock and required/default-off policy. The deterministic migration model classifies an unclassified writer, changes a mixed module to simulation-only, and splits its prose instructions into a source-linked render module through the real migration path. This checks dispatch, responsibility changes, preservation, review and persistence, without evaluating general semantic migration or prose quality.' }
   report.companion = state
-  const owner = (name, action, input = {}) => request(`/api/rp-${name}/request`, { action, ...input })
+  const owner = (name, action, input = {}) => request(`/api/rp-${name}/request`, { action: name === 'gm' && action === 'storyState' ? 'state' : action, ...input })
   const inspect = async (operation, input = {}) => (await call('rp_companion_inspect', { operation, input })).result
   const apply = async (operation, input) => {
     const result = await call('rp_companion_apply', { operation, input })
@@ -97,6 +97,11 @@ export async function nativeCompanion({ page, report, out, scenario, shot, reque
     await trigger.click()
     await page.getByRole('menu', { name: 'RP 工作区菜单' }).getByRole('menuitem', { name: 'RP 助手', exact: true }).click()
     await page.getByRole('menu', { name: 'RP 工作区菜单' }).waitFor({ state: 'hidden' })
+    await page.waitForFunction(target => {
+      const id = window.__umbrella.contexts['dsh-rp-studio'].sidebarRight.mounted.getSnapshot()
+      const editor = [...document.querySelectorAll('[data-composer-input]')].find(el => el.getBoundingClientRect().width > 0)
+      return id && id !== target && editor?.innerText.includes(target)
+    }, report.storySessionId)
     const editor = page.locator('[data-composer-input][contenteditable=true]').filter({ visible: true }).first()
     await editor.waitFor()
     state.unsentDraft = await editor.innerText()
@@ -112,10 +117,15 @@ export async function nativeCompanion({ page, report, out, scenario, shot, reque
     state.managerId = managerId; state.createdSession = real.header
     state.managerCatalog = await probe('catalog', { sessionId: managerId })
     assert(names.every(name => state.managerCatalog.tools.some(row => row.name === name)), 'Management scope lacks three real tools')
-    assert(state.managerCatalog.managementSkill?.source === 'bundled' && state.managerCatalog.managementSkill.contentBytes > 1000, 'Bundled management skill missing')
+    const skill = state.managerCatalog.managementSkill, installedStudio = report.installed.find(row => row.name === 'dsh-rp-studio')
+    assert(skill?.path && skill.contentBytes > 1000, 'Packaged management skill missing')
+    const observedPath = await realpath(skill.path), installedPath = await realpath(join(installedStudio.directory, 'skills/managing-rp-studio/SKILL.md'))
+    assert(observedPath === installedPath && hash(await readFile(observedPath)) === installedStudio.files['skills/managing-rp-studio/SKILL.md'], 'Management skill does not match the actual installed archive')
+    state.managementSkillArtifact = { observedPath, sha256: hash(await readFile(observedPath)), metadataSource: skill.source }
     state.overview = await inspect('overview')
     await shot('companion-overview')
   })
+  if (!managerId) { state.remaining = 'not-run: no real management session was created in the first scenario'; return state }
   await scenario('companion-original-json-png-worldbook-document-imports', async () => {
     assert(managerId, 'Management session unavailable')
     state.imports = []
@@ -154,6 +164,7 @@ export async function nativeCompanion({ page, report, out, scenario, shot, reque
     await page.locator('.rpsk').filter({ visible: true }).getByText(character.name, { exact: true }).first().waitFor()
     await shot('companion-imported-owner-assets')
   })
+  if (!character || !persona || !world) { state.remaining = 'not-run: asset import prerequisites failed'; return state }
   await scenario('companion-real-migration-review-ready-and-protection', async () => {
     const imported = await fileImport('preset', 'writing-preset.json', (await owner('last-step', 'state', { sessionId: managerId })).revision)
     const sourceProfile = await owner('last-step', 'profile', { profileId: imported.profileId, version: imported.version })
@@ -195,6 +206,7 @@ export async function nativeCompanion({ page, report, out, scenario, shot, reque
     assert(JSON.stringify(sourceBefore) === JSON.stringify(sourceAfter), 'Migration or review mutated the immutable original source')
     state.preset = { imported, sourceHash: hash(sourceAfter.source.rawText), migrated, draft: draftRead, ready: readyRead, profile }
   })
+  if (!profile) { state.remaining = 'not-run: migration/review prerequisites failed'; return state }
   await scenario('companion-launch-target-note-and-real-loop-route', async () => {
     assert(character && persona && profile && world, 'Synthetic launch dependencies unavailable')
     const launchInput = { launchId: 'umbrella-reviewed-synthetic-launch', character: { assetId: character.id, version: character.version }, persona, openingId: character.openings.find(row => row.text === synthetic.data.opening).id, sources: [...character.databaseRefs, { key: 'world', databaseId: world.databaseId, version: world.version }], profile, initialScene: { ...synthetic.data.initialScene, presentActorIds: [character.id] }, initialFacts: synthetic.data.initialFacts }
@@ -221,6 +233,34 @@ export async function nativeCompanion({ page, report, out, scenario, shot, reque
     assert(loopRead.policies.session.routes['rp-last-step.render'].provider === 'rp-umbrella-local', 'Real Loop route did not persist')
     assert(binding.binding.profileId === profile.profileId && binding.binding.version === profile.version, 'Reviewed profile not bound to explicit story')
     state.launch = { input: launchInput, receipt: launched, gm, native, narratives, gmCatalog, noteReceipt, noteRead, routeReceipt, loopRead, binding }
+  })
+  if (!launchedId) { state.remaining = 'not-run: real story launch prerequisite failed'; return state }
+  await scenario('companion-known-agent-user-macro-ready-bind', async () => {
+    const revision = (await owner('last-step', 'state', { sessionId: managerId })).revision
+    const created = await owner('last-step', 'createProfile', { name: '公开合成 agent 用户宏', expectedRevision: revision })
+    const loaded = await owner('last-step', 'profile', { profileId: created.profileId, version: created.version })
+    const ready = { ...loaded.profile, status: 'ready', entries: [{ id: 'user-agency', name: '玩家决定权', content: '保护 {{user}} 的选择，不代替玩家做决定。', role: 'system', phase: 'agent', order: 0, enabled: true, required: false, locked: false }] }
+    const preview = await inspect('presets.preview', { profile: ready, phase: 'agent', variables: { user: '玩家' } })
+    assert(!preview.blocked && preview.text.includes('保护 玩家 的选择'), 'Supported agent user macro did not compile under the actual runtime variables')
+    const saved = await apply('presets.save', { profile: ready, expectedRevision: (await owner('last-step', 'state', { sessionId: managerId })).revision })
+    const bound = await apply('presets.bind', { sessionId: report.storySessionId, profileId: saved.profileId, version: saved.version, expectedRevision: (await owner('last-step', 'state', { sessionId: report.storySessionId })).revision })
+    const readback = await owner('last-step', 'state', { sessionId: report.storySessionId })
+    assert(readback.binding.profileId === saved.profileId && readback.binding.version === saved.version, 'Known-macro ready profile was not bound to the explicit RP story')
+    const agentContext = await probe('agentContext', { sessionId: report.storySessionId })
+    assert(agentContext.text.includes('保护 玩家 的选择') && !agentContext.text.includes('{{user}}'), 'Actual LastStep agentContext did not resolve the supported user macro')
+    const actual = await owner('last-step', 'profile', { profileId: saved.profileId, version: saved.version })
+    const unknown = structuredClone(actual.profile); unknown.entries[0].content = '不得猜测 {{char}} 的值。'
+    await reject('unknown-macro-remains-blocked', 'rp_companion_apply', { operation: 'presets.save', input: { profile: unknown, expectedRevision: readback.revision } }, ['PROFILE_NOT_READY'], async () => ({ profile: await owner('last-step', 'profile', { profileId: saved.profileId }), state: await owner('last-step', 'state', { sessionId: report.storySessionId }) }))
+    const render = structuredClone(actual.profile); render.entries[0].phase = 'render'
+    await reject('render-user-without-fill-remains-blocked', 'rp_companion_apply', { operation: 'presets.save', input: { profile: render, expectedRevision: (await owner('last-step', 'state', { sessionId: report.storySessionId })).revision } }, ['PROFILE_NOT_READY'], async () => ({ profile: await owner('last-step', 'profile', { profileId: saved.profileId }), state: await owner('last-step', 'state', { sessionId: report.storySessionId }) }))
+    const filled = structuredClone(render); filled.entries[0].fills = { user: '已审阅旅人' }
+    const filledPreview = await inspect('presets.preview', { profile: filled, phase: 'render' })
+    assert(!filledPreview.blocked && filledPreview.text.includes('已审阅旅人'), 'Existing supported render fill did not compile')
+    const filledSaved = await apply('presets.save', { profile: filled, expectedRevision: (await owner('last-step', 'state', { sessionId: report.storySessionId })).revision })
+    const filledBound = await apply('presets.bind', { sessionId: report.storySessionId, profileId: filledSaved.profileId, version: filledSaved.version, expectedRevision: (await owner('last-step', 'state', { sessionId: report.storySessionId })).revision })
+    const filledReadback = await owner('last-step', 'state', { sessionId: report.storySessionId })
+    assert(filledReadback.binding.version === filledSaved.version, 'Supported render-fill ready profile did not bind')
+    state.userMacro = { created, preview, saved, bound, readback, agentContext, filledPreview, filledSaved, filledBound, filledReadback }
   })
   await scenario('companion-negative-contract-and-owner-no-write', async () => {
     const skRead = () => owner('story-kit', 'state')
@@ -269,7 +309,31 @@ export async function nativeCompanion({ page, report, out, scenario, shot, reque
     state.coldCatalog = await probe('catalog', { sessionId: managerId })
     assert(names.every(name => state.coldCatalog.tools.some(row => row.name === name)) && state.coldCatalog.managementSkill, 'Companion tool/skill did not remount cold')
     state.scopeDisposal = await probe('dispose', { sessionId: managerId })
-    assert(!state.scopeDisposal.remainingTools.some(row => names.includes(row.name)), 'Management tools remain after scope disposal')
+    assert(state.scopeDisposal.live === false && !state.scopeDisposal.globalTools.some(row => names.includes(row.name)) && state.scopeDisposal.activeScopes.every(scope => !scope.tools.some(row => names.includes(row.name))), 'Disposed manager still owns a live management capability')
+    const beforeRetired = { note: await owner('context', 'authorNote', { sessionId: launchedId }), revision: (await owner('context', 'state', { sessionId: launchedId })).revision }
+    const retiredCall = await probe('retiredTool', { sessionId: managerId, arguments: { operation: 'context.setAuthorNote', input: { sessionId: launchedId, text: 'DISPOSED_SCOPE_MUST_NOT_WRITE', expectedRevision: beforeRetired.revision } } })
+    const retiredValue = valueOf(retiredCall)
+    const afterRetired = { note: await owner('context', 'authorNote', { sessionId: launchedId }), revision: (await owner('context', 'state', { sessionId: launchedId })).revision }
+    assert(retiredCall.isError === true && retiredValue.error?.code === 'COMPANION_SCOPE_REQUIRED' && JSON.stringify(beforeRetired) === JSON.stringify(afterRetired), 'A disposed Agent reference could still mutate an owner')
+    state.disposedScopeCall = { before: beforeRetired, outcome: retiredCall, value: retiredValue, after: afterRetired, cachedGenerationSchemaRetained: state.scopeDisposal.remainingTools.some(row => names.includes(row.name)) }
+  })
+  await scenario('companion-official-preset-disable-and-restore', async () => {
+    const entries = await probe('companionPluginEntry')
+    assert(entries.length === 1 && entries[0].entryId, 'Official plugin inventory did not provide an exact companion preset entry')
+    const disabled = await probe('setCompanionPreset', { entryId: entries[0].entryId, enabled: false })
+    if (disabled.application === 'restart-required') await restart('preset-disabled')
+    else assert(disabled.application === 'applied', `Preset disable was not applied: ${JSON.stringify(disabled)}`)
+    const resolved = await probe('resolveCompanion'), status = await request('/api/rp-studio/companion', { action: 'status' }), compositions = await probe('compositions')
+    assert(!resolved.available && resolved.error.code === 'agent-preset/not-found' && !status.available && !compositions.some(row => row.id === 'rp-companion'), 'The disabled preset remains active or resolves to a fallback')
+    const before = await probe('sessions'), createAttempt = await probe('createCompanionAttempt'), after = await probe('sessions')
+    assert(!createAttempt.created && createAttempt.error?.code === 'agent-preset/not-found' && JSON.stringify(before.map(row => row.header.id).sort()) === JSON.stringify(after.map(row => row.header.id).sort()), 'Unavailable companion creation silently fell back or created a Session')
+    const disabledEntries = await probe('companionPluginEntry')
+    const enabled = await probe('setCompanionPreset', { entryId: disabledEntries[0].entryId, enabled: true })
+    if (enabled.application === 'restart-required') await restart('preset-enabled')
+    else assert(enabled.application === 'applied', `Preset enable was not applied: ${JSON.stringify(enabled)}`)
+    const restored = await request('/api/rp-studio/companion', { action: 'status' })
+    assert(restored.available, 'Official preset enable did not restore availability')
+    state.presetLifecycle = { entry: entries[0], disabled, resolved, status, compositions, createAttempt, sessionIdsUnchanged: true, enabled, restored }
   })
   await scenario('companion-real-missing-owner-capability', async () => {
     await restart('missing-database', '- id: rp-database\n  disabled: true\n')

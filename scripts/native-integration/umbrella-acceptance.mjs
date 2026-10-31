@@ -196,7 +196,13 @@ async function nativeUi({ page, report, scenario, shot, request, probe }) {
     await page.keyboard.press('Escape'); await menu().waitFor({ state: 'hidden' })
     assert(await trigger.evaluate(el => el === document.activeElement), 'Escape did not return focus')
     await openMenu(trigger); await page.mouse.click(2, 2); await menu().waitFor({ state: 'hidden' })
+    await page.waitForFunction(() => document.activeElement?.matches('.dsh-rp-workspace .dsh-rp-menu-trigger'))
     assert(await trigger.evaluate(el => el === document.activeElement), 'Outside click did not return focus')
+    await openMenu(trigger)
+    const outsideInput = page.locator('.dsh-rp-workspace textarea').filter({ visible: true }).last()
+    await outsideInput.click(); await menu().waitFor({ state: 'hidden' })
+    assert(await outsideInput.evaluate(el => el === document.activeElement), 'Outside input focus was stolen after menu close')
+    report.focusChecks = { escapeReturnedToTrigger: true, blankOutsideReturnedToTrigger: true, outsideInputRetainedFocus: true }
     await openMenu(trigger); await trigger.click(); await menu().waitFor({ state: 'hidden' })
   })
   await scenario('third-party-slot-contribution', async () => {
@@ -218,11 +224,12 @@ async function nativeUi({ page, report, scenario, shot, request, probe }) {
       const root = page.locator('.dsh-rp-workspace')
       await root.waitFor()
       await openMenu(root.locator('.dsh-rp-menu-trigger'))
-      const layout = await menu().evaluate(el => { const rect = el.getBoundingClientRect(); return { x: rect.x, right: rect.right, width: rect.width, height: rect.height, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight, overflowX: el.scrollWidth > el.clientWidth + 1, rowHeights: [...el.querySelectorAll('button')].map(row => ({ text: row.textContent, height: row.getBoundingClientRect().height })) } })
+      const layout = await menu().evaluate(el => { const rect = el.getBoundingClientRect(); return { x: rect.x, right: rect.right, width: rect.width, height: rect.height, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight, overflowX: el.scrollWidth > el.clientWidth + 1, rowHeights: [...el.querySelectorAll('button')].map(row => { const css = getComputedStyle(row); return { text: row.textContent, height: row.getBoundingClientRect().height, fontFamily: css.fontFamily, fontSize: css.fontSize, fontWeight: css.fontWeight } }) } })
       const panel = await root.evaluate(el => ({ width: el.clientWidth, height: el.clientHeight, scrollWidth: el.scrollWidth, overflowX: el.scrollWidth > el.clientWidth + 1 }))
       report.layouts.push({ width, menu: layout, panel })
       assert(layout.x >= 0 && layout.right <= width && !layout.overflowX && !panel.overflowX, `Horizontal overflow at ${width}`)
       assert(layout.rowHeights.every(row => row.height >= 44), 'Menu touch row shorter than 44px')
+      assert(new Set(layout.rowHeights.map(row => `${row.fontFamily}|${row.fontSize}`)).size === 1, 'Menu item font families or sizes differ')
       await shot(`menu-${width}`)
       await page.keyboard.press('Escape')
     }
@@ -271,11 +278,15 @@ async function fontMatrix({ page, report, scenario, shot, choose }) {
         await choose(owner.label, owner.kind === 'rp-studio' ? 'menuitemradio' : 'menuitem')
         const root = page.locator(owner.root).filter({ visible: true }).first()
         await root.waitFor()
+        if (owner.kind === 'rp-story-kit') {
+          await root.getByRole('button', { name: '新建角色资产', exact: true }).click()
+          await root.locator('.rpsk-field > span').first().waitFor()
+        }
         const row = await root.evaluate((el, owner) => {
           const visible = value => !!value && value.getBoundingClientRect().width > 0 && value.getBoundingClientRect().height > 0
           const read = value => { if (!value) return null; const css = getComputedStyle(value); return { tag: value.tagName, class: value.className, text: value.textContent?.trim().slice(0, 120), fontFamily: css.fontFamily, fontSize: css.fontSize, fontWeight: css.fontWeight, lineHeight: css.lineHeight } }
           const pick = selector => [...el.querySelectorAll(selector)].find(visible)
-          return { root: read(el), heading: read(pick(owner.heading)), ordinary: read(pick(owner.ordinary) ?? pick('label, button, p')), input: read(pick('input:not([type=hidden]):not([type=checkbox]):not([type=file]), textarea, select')), allHeadings: [...el.querySelectorAll('h1,h2,h3')].filter(visible).map(read), inputs: [...el.querySelectorAll('input:not([type=hidden]),textarea,select')].filter(visible).map(read) }
+          return { root: read(el), heading: read(pick(owner.heading)), ordinary: read(pick(owner.ordinary) ?? pick('button') ?? pick('p')), input: read(pick('input:not([type=hidden]):not([type=checkbox]):not([type=file]), textarea:not([readonly]), select')), allHeadings: [...el.querySelectorAll('h1,h2,h3')].filter(visible).map(read), inputs: [...el.querySelectorAll('input:not([type=hidden]),textarea,select')].filter(visible).map(read) }
         }, owner)
         report.fonts.push({ theme, size, kind: owner.kind, ...row })
         assert(row.root.fontSize === `${size}px`, `${owner.kind} root font ${row.root.fontSize} != ${size}px`)
@@ -362,7 +373,7 @@ async function run(options) {
       const response = await page.request.post(new URL(path, page.url()).href, { data: input, timeout: 45000 })
       const body = await response.json()
       report.http.push({ time: timestamp(), url: path, method: 'POST', status: response.status(), input, body })
-      assert(response.ok() && body.ok !== false && !body.error, `HTTP ${response.status()} ${path}: ${JSON.stringify(body)}`)
+      assert(response.ok() && body?.ok !== false && !body?.error, `HTTP ${response.status()} ${path}: ${JSON.stringify(body)}`)
       return body
     }
     const probe = async (action, input = {}) => (await request('/api/rp-umbrella-native-probe', { action, ...input })).result
@@ -381,9 +392,16 @@ async function run(options) {
       for (const input of staged.packages) await verifyInstalled(installed.home, input)
     }
     report.ready = await probe('ready')
-    await nativeUi({ page, report, scenario, shot, request, probe })
-    if (options.mode === 'full') await nativeCompanion({ page, report, out, scenario, shot, request, probe, restart })
+    if (options.mode !== 'companion') await nativeUi({ page, report, scenario, shot, request, probe })
+    else await scenario('diagnostic-companion-target-fixture', async () => {
+      const created = await request('/api/rp-studio/request', { method: 'POST', path: '/api/v1/sessions', body: { cardId: 'umbrella-story' } })
+      report.storySessionId = created.data.session.id
+      await page.evaluate(id => window.__umbrella.contexts['dsh-rp-studio'].uiWorkspace.openSession(id), report.storySessionId)
+      await page.waitForFunction(id => window.__umbrella.contexts['dsh-rp-studio'].sidebarRight.mounted.getSnapshot() === id, report.storySessionId)
+    })
+    if (['full', 'companion'].includes(options.mode)) await nativeCompanion({ page, report, out, scenario, shot, request, probe, restart })
     report.models = await probe('models')
+    report.totalLocalModelRequests = report.models.models.length + (report.segments ?? []).reduce((total, segment) => total + (segment.models?.models.length ?? 0), 0)
     assert(options.mode !== 'ui' || report.models.models.length === 0, 'UI-only acceptance unexpectedly executed a model')
     report.status = report.scenarios.every(row => row.status === 'passed') && report.pageErrors.length === 0 && report.externalNetwork.length === 0 ? 'passed' : 'failed'
   } catch (error) { report.status = 'failed'; report.error = redact(error.stack ?? error.message); console.error(redact(error.message)) }
@@ -408,9 +426,9 @@ async function run(options) {
 }
 
 const { values } = parseArgs({ options: { manifest: { type: 'string' }, out: { type: 'string' }, cli: { type: 'string' }, browser: { type: 'string' }, mode: { type: 'string', default: 'full' }, help: { type: 'boolean' } } })
-if (values.help) console.log('node scripts/native-integration/umbrella-acceptance.mjs --manifest <final-rc5-seven-package-manifest.json> [--out <new-exclusive-output-directory>] [--mode prepare|ui|full] [--cli <official-dsh.cmd>] [--browser <chromium>]')
+if (values.help) console.log('node scripts/native-integration/umbrella-acceptance.mjs --manifest <final-rc5-seven-package-manifest.json> [--out <new-exclusive-output-directory>] [--mode prepare|ui|companion|full] [--cli <official-dsh.cmd>] [--browser <chromium>]\ncompanion is a diagnostic continuation and cannot produce finalAcceptance:true.')
 else {
-  assert(values.manifest && ['prepare', 'ui', 'full'].includes(values.mode), 'Use --manifest and --mode prepare|ui|full')
+  assert(values.manifest && ['prepare', 'ui', 'companion', 'full'].includes(values.mode), 'Use --manifest and --mode prepare|ui|companion|full')
   const result = await run({ ...values, browser: values.browser ?? process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH })
   if (!['passed', 'prepared'].includes(result.status)) process.exitCode = 1
 }

@@ -3,7 +3,7 @@
 import { randomUUID, createHash } from 'node:crypto'
 
 export const name = 'rp-umbrella-native-probe'
-export const inject = ['connection', 'typertGateway', 'llm', 'agents', 'tools', 'skills', 'agentPresets', 'sessionPersistence', 'sessionQuery']
+export const inject = ['connection', 'typertGateway', 'llm', 'agents', 'tools', 'skills', 'agentPresets', 'sessionPersistence', 'sessionQuery', 'sandboxPolicy', 'pluginManager']
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 const textOf = message => typeof message.content === 'string' ? message.content : (message.content ?? []).filter(row => row.type === 'text').map(row => row.text).join('\n')
 export const MIXED_FACT_TEXT = '根据玩家实际行动判断NPC反应，先通过已有事实工具确认状态变化。'
@@ -24,7 +24,7 @@ async function* toolCall(name, args) {
 }
 
 export function apply(ctx) {
-  const models = [], queued = [], handles = new Map()
+  const models = [], queued = [], handles = new Map(), retiredAgents = new Map()
   const adapter = {
     providerInfo: id => ({ id, name: 'RP umbrella local acceptance fixture' }),
     providerRetryPolicy: () => undefined,
@@ -85,6 +85,19 @@ export function apply(ctx) {
       else if (input.action === 'models') result = { models, queued: queued.length }
       else if (input.action === 'sessions') result = await ctx.sessionPersistence.list()
       else if (input.action === 'snapshot') result = await snapshot(input.sessionId)
+      else if (input.action === 'agentContext') result = { sessionId: input.sessionId, text: ctx.get('rpLastStep').agentContext(input.sessionId) }
+      else if (input.action === 'companionPluginEntry') result = (await ctx.pluginManager.listPlugins()).filter(row => row.patchId === 'preset-rp-companion')
+      else if (input.action === 'setCompanionPreset') {
+        const entry = (await ctx.pluginManager.listPlugins()).find(row => row.patchId === 'preset-rp-companion' && row.entryId === input.entryId)
+        if (!entry || typeof input.enabled !== 'boolean') throw new Error('UMBRELLA_EXACT_PRESET_ENTRY_REQUIRED')
+        result = await ctx.pluginManager.setPluginEnabled(entry.entryId, input.enabled)
+      } else if (input.action === 'resolveCompanion') {
+        try { result = { available: true, preset: await ctx.agentPresets.resolve('rp-companion') } }
+        catch (error) { result = { available: false, error: { code: error.code, message: error.message } } }
+      } else if (input.action === 'createCompanionAttempt') {
+        try { result = { created: true, value: await invoke('create', { agentPreset: 'rp-companion' }, request.signal) } }
+        catch (error) { result = { created: false, error: { code: error.code, message: error.message } } }
+      } else if (input.action === 'compositions') result = ctx.agentPresets.inspectCompositions()
       else if (input.action === 'idle') {
         await ctx.agents.get(input.sessionId)?.whenIdle()
         await ctx.sessionPersistence.flush()
@@ -93,20 +106,25 @@ export function apply(ctx) {
         if (!ctx.agents.get(input.sessionId)) {
           const view = await snapshot(input.sessionId), preset = view.header.agentPreset
           if (!['umbrella-story', 'rp-gm', 'rp-companion'].includes(preset)) throw new Error('UMBRELLA_UNEXPECTED_PRESET')
-          handles.set(input.sessionId, await ctx.agents.resume({ resumeSessionId: input.sessionId, agentOptions: { provider: 'rp-umbrella-local', model: 'umbrella' }, setup: scope => ctx.agentPresets.mount(scope, preset), signal: request.signal }))
+          handles.set(input.sessionId, await ctx.agents.resume({ resumeSessionId: input.sessionId, agentOptions: { provider: 'rp-umbrella-local', model: 'umbrella' }, setup: async scope => { await ctx.agentPresets.mount(scope, preset) }, signal: request.signal }))
         }
         result = { sessionId: input.sessionId, live: !!ctx.agents.get(input.sessionId) }
       } else if (input.action === 'dispose') {
         const agent = ctx.agents.get(input.sessionId), handle = handles.get(input.sessionId)
         if (!handle) throw new Error('UMBRELLA_OWNED_HANDLE_REQUIRED')
         await handle.dispose(); handles.delete(input.sessionId)
-        result = { live: !!ctx.agents.get(input.sessionId), remainingTools: agent.ctx.tools.schemas(agent) }
+        retiredAgents.set(input.sessionId, agent)
+        result = { live: !!ctx.agents.get(input.sessionId), remainingTools: ctx.tools.schemas(agent), globalTools: ctx.tools.schemas(), activeScopes: ctx.agents.list().map(value => ({ id: value.id, tools: ctx.tools.schemas(value) })) }
+      } else if (input.action === 'retiredTool') {
+        const agent = retiredAgents.get(input.sessionId)
+        if (!agent || ctx.agents.get(input.sessionId)) throw new Error('UMBRELLA_DISPOSED_AGENT_REQUIRED')
+        result = await ctx.tools.execute({ callId: randomUUID(), name: 'rp_companion_apply', arguments: input.arguments, agent, signal: request.signal })
       } else if (input.action === 'catalog') {
         const agent = ctx.agents.get(input.sessionId)
         if (!agent) throw new Error('UMBRELLA_REAL_AGENT_REQUIRED')
-        const skills = await agent.ctx.skills.list({ scope: agent, signal: request.signal })
-        const bundled = await agent.ctx.skills.get('managing-rp-studio', { scope: agent, signal: request.signal })
-        result = { tools: agent.ctx.tools.schemas(agent), skills, managementSkill: bundled ? { name: bundled.name, source: bundled.source, path: bundled.path, resourceBase: bundled.resourceBase, contentBytes: Buffer.byteLength(bundled.content), contentSha256: digest(bundled.content) } : null, sandbox: await ctx.get('sandboxPolicy')?.resolve({ session: agent.session }) }
+        const skills = await ctx.skills.list({ scope: agent, signal: request.signal })
+        const bundled = await ctx.skills.get('managing-rp-studio', { scope: agent, signal: request.signal })
+        result = { tools: ctx.tools.schemas(agent), skills, managementSkill: bundled ? { name: bundled.name, source: bundled.source, path: bundled.path, resourceBase: bundled.resourceBase, contentBytes: Buffer.byteLength(bundled.content), contentSha256: digest(bundled.content) } : null, sandbox: ctx.sandboxPolicy.resolve({ session: agent.session }) }
       } else if (input.action === 'enqueue') {
         if (queued.length || !['rp_companion_inspect', 'rp_companion_apply', 'rp_companion_import_file'].includes(input.name)) throw new Error('UMBRELLA_INVALID_LOCAL_CALL')
         queued.push({ name: input.name, arguments: input.arguments })
@@ -116,7 +134,7 @@ export function apply(ctx) {
       } else if (input.action === 'tool') {
         const agent = ctx.agents.get(input.sessionId)
         if (!agent || !['rp_companion_inspect', 'rp_companion_apply', 'rp_companion_import_file'].includes(input.name)) throw new Error('UMBRELLA_INVALID_SCOPED_TOOL')
-        result = await agent.ctx.tools.execute({ callId: randomUUID(), name: input.name, arguments: input.arguments, agent, signal: request.signal })
+        result = await ctx.tools.execute({ callId: randomUUID(), name: input.name, arguments: input.arguments, agent, signal: request.signal })
       } else if (input.action === 'flush') { await ctx.sessionPersistence.flush(); result = { flushed: true } }
       else throw new Error('UMBRELLA_UNKNOWN_PROBE_ACTION')
       return Response.json({ ok: true, result })
