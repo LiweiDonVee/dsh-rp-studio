@@ -53,7 +53,7 @@ describe('RP umbrella menu', () => {
     expect(screen.getByText('RP 助手入口正在准备')).toBeTruthy()
   })
 
-  it('uses keyboard navigation, closes on Escape and outside clicks, and returns focus', () => {
+  it('uses keyboard navigation, closes on Escape and outside clicks, and returns focus', async () => {
     render(<RpMenu onSelectView={vi.fn()} />)
     const trigger = screen.getByRole('button', { name: 'RP', exact: true })
     fireEvent.keyDown(trigger, { key: 'ArrowDown' })
@@ -69,7 +69,50 @@ describe('RP umbrella menu', () => {
     fireEvent.click(trigger)
     fireEvent.pointerDown(document.body)
     expect(screen.queryByRole('menu')).toBeNull()
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+  })
+
+  it('returns focus after the browser clears it for an outside background pointer action', () => {
+    const frames = []
+    vi.stubGlobal('requestAnimationFrame', callback => { frames.push(callback); return frames.length })
+    render(<RpMenu onSelectView={vi.fn()} />)
+    const trigger = screen.getByRole('button', { name: 'RP', exact: true })
+    fireEvent.click(trigger)
+    fireEvent.pointerDown(document.body)
+    trigger.blur()
+    expect(document.activeElement).toBe(document.body)
+    act(() => frames.at(-1)())
+    expect(screen.queryByRole('menu')).toBeNull()
     expect(document.activeElement).toBe(trigger)
+  })
+
+  it('preserves the actual focus and click action of outside inputs and buttons', () => {
+    const frames = [], clicked = vi.fn()
+    vi.stubGlobal('requestAnimationFrame', callback => { frames.push(callback); return frames.length })
+    render(<><RpMenu onSelectView={vi.fn()} /><input aria-label="外部输入" /><button type="button" onClick={clicked}>外部按钮</button></>)
+    const trigger = screen.getByRole('button', { name: 'RP', exact: true })
+    const input = screen.getByRole('textbox', { name: '外部输入' }), button = screen.getByRole('button', { name: '外部按钮' })
+    for (const target of [input, button]) {
+      fireEvent.click(trigger)
+      expect(fireEvent.pointerDown(target)).toBe(true)
+      target.focus()
+      if (target === button) fireEvent.click(button)
+      act(() => frames.at(-1)())
+      expect(screen.queryByRole('menu')).toBeNull()
+      expect(document.activeElement).toBe(target)
+    }
+    expect(clicked).toHaveBeenCalledOnce()
+  })
+
+  it('cancels an outside focus frame when the original menu unmounts', () => {
+    const cancel = vi.fn()
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 42))
+    vi.stubGlobal('cancelAnimationFrame', cancel)
+    const mounted = render(<RpMenu onSelectView={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'RP', exact: true }))
+    fireEvent.pointerDown(document.body)
+    mounted.unmount()
+    expect(cancel).toHaveBeenCalledWith(42)
   })
 
   it('keeps route failures readable in the open menu and calls a real companion callback', async () => {

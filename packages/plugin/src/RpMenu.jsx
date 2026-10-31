@@ -9,6 +9,7 @@ export function RpMenu({ view, registry, hasOwnerTab, onSelectView, onOpenOwner,
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const root = useRef(null), trigger = useRef(null), surface = useRef(null)
+  const outsideFocusFrame = useRef(null)
   const id = useId()
   const availability = useMemo(() => ({
     subscribe: listener => registry?.subscribe ? registry.subscribe(listener) : () => {},
@@ -17,6 +18,7 @@ export function RpMenu({ view, registry, hasOwnerTab, onSelectView, onOpenOwner,
   const available = useSyncExternalStore(availability.subscribe, availability.snapshot, availability.snapshot).split(',')
   const close = (restoreFocus = true) => { setOpened(false); if (restoreFocus) trigger.current?.focus() }
   const items = () => [...(surface.current?.querySelectorAll('button:not(:disabled),a[href]') ?? [])]
+  useEffect(() => () => { if (outsideFocusFrame.current !== null) cancelAnimationFrame(outsideFocusFrame.current) }, [])
   useEffect(() => {
     if (!opened) return
     onMenuOpen?.()
@@ -36,7 +38,17 @@ export function RpMenu({ view, registry, hasOwnerTab, onSelectView, onOpenOwner,
     }
     position()
     items()[0]?.focus()
-    const outside = event => { if (!root.current?.contains(event.target)) close() }
+    const outside = event => {
+      if (root.current?.contains(event.target)) return
+      const origin = trigger.current
+      close(false)
+      if (outsideFocusFrame.current !== null) cancelAnimationFrame(outsideFocusFrame.current)
+      outsideFocusFrame.current = requestAnimationFrame(() => {
+        outsideFocusFrame.current = null
+        const active = document.activeElement
+        if ((!active || active === document.body || active === document.documentElement || !active.isConnected) && origin?.isConnected) origin.focus({ preventScroll: true })
+      })
+    }
     document.addEventListener('pointerdown', outside)
     window.addEventListener('resize', position)
     window.addEventListener('scroll', position, true)
