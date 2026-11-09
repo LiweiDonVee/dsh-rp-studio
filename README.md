@@ -1,24 +1,26 @@
 # DSH RP Studio
 
-DSH 内置角色扮演工作区。RP Studio 1.5.1 面向 **DSH 0.2.1-rc.5**。点击会话顶部或空白会话的 **RP ▾**，选择故事页面、各插件的完整管理页或独立的 RP 助手。工作区可以拉宽、全屏阅读或关闭，使用 dsh 本身的主题和会话导航。
+DSH 内置角色扮演工作区。RP Studio 1.5.2 面向 **DSH 0.2.2-rc.1**。点击会话顶部或空白会话的 **RP ▾**，选择故事页面、各插件的完整管理页或独立的 RP 助手。工作区可以拉宽、全屏阅读或关闭，使用 dsh 本身的主题和会话导航。
 
 1.5 收纳七包入口并统一宿主字号，随 Studio 安装真正的 `rp-companion` Agent Preset。通过 `RP ▾ → RP 助手` 打开管理草稿，或新会话选择“RP 助手”，发送需求后管理资产、ST 预设迁移、配置与开局。完整组合需把七包装入同一 profile；具体能力和权限见[助手操作合同](docs/rp-companion.md)。原故事继续使用 `rp-gm`，事实审批默认关闭。
 
 1.4 新增每故事事实审批（默认关闭）、事实重新生成和只重新写作，先确认事实，再生成正文。[审批与重新生成用法](docs/agent-rp-integration.md#事实审批与两层重新生成) · [使用与依赖](docs/agent-rp-integration.md) · [公开接口](docs/agent-rp/README.md) · [原生验证记录](docs/native-acceptance.md)。
 
-V6 七包组合已在官方 rc.3 隔离环境完成旧九场景回归及同次默认依赖回读；审批与两层重新生成的五组实际功能断言全部通过。受测包、模型计数与发行验证边界见[当前原生证据](docs/native-acceptance.md#v6-approval-and-regeneration)。
+V6 七包组合已在官方 rc.3 隔离环境完成旧九场景回归及同次默认依赖回读；审批与两层重新生成的五组实际功能断言全部通过。受测包、模型计数与发行验证边界见[历史 V6 原生证据](docs/native-acceptance.md#v6-approval-and-regeneration)。
 
 ## 项目与下载
 
 | 独立项目 | 职责 | 版本与发布页 |
 | --- | --- | --- |
-| **RP Studio（本仓库）** | 故事工作区、七包聚合入口与 RP 管理助手 | 1.5.1 · [Releases](https://github.com/LiweiDonVee/dsh-rp-studio/releases) |
-| [Loop Studio](https://github.com/LiweiDonVee/dsh-loop-studio) | 通用执行图、节点模型选择 | 0.1.0 · [Releases](https://github.com/LiweiDonVee/dsh-loop-studio/releases) |
-| [RP 最后一步](https://github.com/LiweiDonVee/dsh-rp-last-step) | ST 预设迁移、模块热组装、最终正文 | 0.4.0 · [Releases](https://github.com/LiweiDonVee/dsh-rp-last-step/releases) |
-| [RP Database](https://github.com/LiweiDonVee/dsh-rp-database) | 资料条目、来源版本、会话覆盖与检索 | 0.3.0 · [Releases](https://github.com/LiweiDonVee/dsh-rp-database/releases) |
-| [RP Context](https://github.com/LiweiDonVee/dsh-rp-context) | 中间 GM 选材、历史摘要与主动展开/折叠 | 0.3.0 · [Releases](https://github.com/LiweiDonVee/dsh-rp-context/releases) |
-| [RP GM](https://github.com/LiweiDonVee/dsh-rp-gm) | 通用故事开局、事实审批与合法前缀分支 | 0.2.0 · [Releases](https://github.com/LiweiDonVee/dsh-rp-gm/releases) |
-| [Story Kit](https://github.com/LiweiDonVee/dsh-rp-story-kit) | 角色与身份、开场、内容包与精确存档 | 0.2.0 · [Releases](https://github.com/LiweiDonVee/dsh-rp-story-kit/releases) |
+| **RP Studio（本仓库）** | 故事工作区、七包聚合入口与 RP 管理助手 | 1.5.2 · [Releases](https://github.com/LiweiDonVee/dsh-rp-studio/releases) |
+| [Loop Studio](https://github.com/LiweiDonVee/dsh-loop-studio) | 通用执行图、节点模型选择 | 0.1.2 · [Releases](https://github.com/LiweiDonVee/dsh-loop-studio/releases) |
+| [RP 最后一步](https://github.com/LiweiDonVee/dsh-rp-last-step) | ST 预设迁移、模块热组装、最终正文 | 0.4.2 · [Releases](https://github.com/LiweiDonVee/dsh-rp-last-step/releases) |
+| [RP Database](https://github.com/LiweiDonVee/dsh-rp-database) | 资料条目、来源版本、会话覆盖与检索 | 0.3.2 · [Releases](https://github.com/LiweiDonVee/dsh-rp-database/releases) |
+| [RP Context](https://github.com/LiweiDonVee/dsh-rp-context) | 中间 GM 选材、历史摘要与主动展开/折叠 | 0.3.2 · [Releases](https://github.com/LiweiDonVee/dsh-rp-context/releases) |
+| [RP GM](https://github.com/LiweiDonVee/dsh-rp-gm) | 通用故事开局、事实审批与合法前缀分支 | 0.2.2 · [Releases](https://github.com/LiweiDonVee/dsh-rp-gm/releases) |
+| [Story Kit](https://github.com/LiweiDonVee/dsh-rp-story-kit) | 角色与身份、开场、内容包与精确存档 | 0.2.2 · [Releases](https://github.com/LiweiDonVee/dsh-rp-story-kit/releases) |
+
+DSH 0.2.2-rc.1 的完整组合使用上表各最低版本；存档恢复仍使用 Story Kit 的 schema 1，并由所属 owner 验证依赖与分支前缀。
 
 这些项目可独立安装；需要组合联动时，把所需包安装到同一个 DSH profile。新插件的主仓库、独立构建和问题跟踪位于上表对应项目。本仓库保留 `packages/loop-plugin`、`packages/rp-last-step` 和迁移 skill 的历史集成快照；后续开发、当前验收与正式发布以独立仓库为准。
 
@@ -54,19 +56,19 @@ V6 七包组合已在官方 rc.3 隔离环境完成旧九场景回归及同次�
 
 ## 安装原生插件（推荐）
 
-安装包为 `dsh-rp-studio-1.5.1.tgz`，下载入口为 [发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases)。完全退出 dsh 后执行；完整组合见 [原生指南](docs/native-usage.md#插件如何搭配)：
+安装包为 `dsh-rp-studio-1.5.2.tgz`，下载入口为 [发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases)。完全退出 dsh 后执行；完整组合见 [原生指南](docs/native-usage.md#插件如何搭配)：
 
 ```powershell
-dsh plugin --profile desktop add ./dsh-rp-studio-1.5.1.tgz
+dsh plugin --profile desktop add ./dsh-rp-studio-1.5.2.tgz
 ```
 
 重新启动 dsh 即可。Web 模式将 `desktop` 换为 `web`。也可以通过右侧面板的新增页签导航找到 **RP Studio**。插件不附带角色卡；RP 预设仍需单独安装。具体说明见 [插件文档](packages/plugin/README.md)。
 
-安装时对照同一发布页的 `SHA256SUMS.txt`，可用 `Get-FileHash ./dsh-rp-studio-1.5.1.tgz -Algorithm SHA256` 核对。Windows 找不到 `dsh` 命令时，默认安装可执行：
+安装时对照同一发布页的 `SHA256SUMS.txt`，可用 `Get-FileHash ./dsh-rp-studio-1.5.2.tgz -Algorithm SHA256` 核对。Windows 找不到 `dsh` 命令时，默认安装可执行：
 
 ```powershell
 $dshCli = Join-Path $env:LOCALAPPDATA 'Programs/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd'
-& $dshCli plugin --profile desktop add ./dsh-rp-studio-1.5.1.tgz
+& $dshCli plugin --profile desktop add ./dsh-rp-studio-1.5.2.tgz
 ```
 
 源码构建：Node 24、pnpm 11，执行 `pnpm install` 与 `pnpm plugin:package`。安装包生成在 `packages/plugin/artifacts/`。仅构建原生插件时，若不需要下载旧 Electron 客户端，可以在安装依赖前设置 `ELECTRON_SKIP_BINARY_DOWNLOAD=1`。

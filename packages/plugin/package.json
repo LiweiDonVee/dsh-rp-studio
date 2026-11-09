@@ -1,6 +1,6 @@
 {
   "name": "dsh-rp-studio",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "DSH RP 聚合工作区与独立管理助手：角色、写作预设、剧情状态与沉浸阅读",
   "license": "MIT",
   "type": "module",
@@ -21,7 +21,7 @@
   ],
   "engines": {
     "node": ">=24",
-    "dsh": ">=0.2.1-rc.5 <0.3.0-0"
+    "dsh": ">=0.2.2-rc.1 <0.3.0-0"
   },
   "dsh": {
     "bundle": {
@@ -47,12 +47,15 @@
     "dsh-tavern-renderer": "https://codeload.github.com/LiweiDonVee/dsh-tavern-renderer/tar.gz/f7bbcb3fc90da01345afbbf567bd88e561f75376"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "~4.0.4",
-    "@deepseek-ai/dsh-sandbox": ">=0.2.1-rc.5 <0.3.0-0",
+    "@deepseek-ai/cordis": "~4.1.0",
+    "@deepseek-ai/dsh-sandbox": ">=0.2.2-rc.1 <0.3.0-0",
     "react": "^18.3.1"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-sandbox": {
+      "optional": true
+    },
+    "@deepseek-ai/cordis": {
       "optional": true
     }
   },
