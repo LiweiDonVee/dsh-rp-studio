@@ -1,6 +1,6 @@
 # DSH RP Studio
 
-RP Studio 1.5.1 是面向 DSH 0.2.1-rc.5 的原生角色扮演工作区。在会话顶部或空白会话点击 `RP ▾`，从菜单打开故事页面、各插件的完整管理页或独立 RP 助手。支持宿主的拖动宽度、全屏和关闭操作。
+RP Studio 1.5.2 是面向 DSH 0.2.2-rc.1 的原生角色扮演工作区。在会话顶部或空白会话点击 `RP ▾`，从菜单打开故事页面、各插件的完整管理页或独立 RP 助手。支持宿主的拖动宽度、全屏和关闭操作。
 
 - 角色与剧情：通用 GM 的当前场景与事实，以及旧预设的关系、任务、物品和记忆。
 - 沉浸阅读：玩家行动、事实审批与重新生成、正式正文、候选手改与采用、冻结材料、失败重试和作者注入口。
@@ -20,10 +20,10 @@ RP Studio 1.5.1 是面向 DSH 0.2.1-rc.5 的原生角色扮演工作区。在会
 
 “继续审批结算”和“继续候选结算”均不调用模型，也不自动写作；结算完成后明确点击“继续已批准事实的写作”。完整步骤见[审批与重新生成用法](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/agent-rp-integration.md#事实审批与两层重新生成)。
 
-安装包为 `dsh-rp-studio-1.5.1.tgz`，下载入口为 [发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases)。先完全退出 dsh，再在终端执行：
+安装包为 `dsh-rp-studio-1.5.2.tgz`，下载入口为 [发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases)。先完全退出 dsh，再在终端执行：
 
 ```powershell
-dsh plugin --profile desktop add ./dsh-rp-studio-1.5.1.tgz
+dsh plugin --profile desktop add ./dsh-rp-studio-1.5.2.tgz
 ```
 
 Web 模式请把 `desktop` 改为 `web`。重新打开 dsh，进入任一会话，点击会话顶部的 RP 按钮。新故事沿用 dsh 自己的模型、权限审批和登录状态。
@@ -34,7 +34,7 @@ Windows 找不到 `dsh` 命令时，可使用默认官方启动器：
 
 ```powershell
 $dshCli = Join-Path $env:LOCALAPPDATA 'Programs/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd'
-& $dshCli plugin --profile desktop add ./dsh-rp-studio-1.5.1.tgz
+& $dshCli plugin --profile desktop add ./dsh-rp-studio-1.5.2.tgz
 ```
 
 安装时核对同一发布页的 SHA256SUMS。完整使用、角色预设和插件搭配见 [原生指南](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/native-usage.md)。

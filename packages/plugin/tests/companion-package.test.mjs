@@ -17,7 +17,7 @@ test('external Companion Host imports declare runtime peers for DSH linked-packa
     assert.equal(manifest.dependencies?.[name], undefined)
     assert.equal(manifest.devDependencies?.[name], undefined)
   }
-  assert.equal(manifest.peerDependencies['@deepseek-ai/dsh-sandbox'], '>=0.2.1-rc.5 <0.3.0-0')
+  assert.equal(manifest.peerDependencies['@deepseek-ai/dsh-sandbox'], '>=0.2.2-rc.1 <0.3.0-0')
 })
 
 test('the actual pack script preserves optional Host peers in the generated tar manifest', async t => {
