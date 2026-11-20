@@ -32,6 +32,7 @@ export function createNativeApi(send = globalThis.fetch.bind(globalThis)) {
     cards: async signal => cardSchema.array().parse(await request('GET', '/api/v1/cards', undefined, signal)),
     sessions: async signal => sessionSummarySchema.array().parse(await request('GET', '/api/v1/sessions', undefined, signal)),
     session: async (id, signal) => sessionDetailSchema.parse(await request('GET', route(id), undefined, signal)),
+    readingSession: async (id, signal) => sessionDetailSchema.parse(await request('GET', `${route(id)}?reader=paged`, undefined, signal)),
     create: async cardId => sessionDetailSchema.parse(await request('POST', '/api/v1/sessions', { cardId })),
     send: (id, text) => request('POST', `${route(id)}/messages`, { text }),
     cancel: id => request('POST', `${route(id)}/cancel`),

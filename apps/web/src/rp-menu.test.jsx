@@ -18,6 +18,32 @@ const studioDetail = { session: { id: 'story', running: false }, card: { title: 
 const client = () => ({ cards: async () => [], sessions: async () => [studioDetail.session], session: async () => studioDetail, subscribe: () => () => {} })
 
 describe('RP umbrella menu', () => {
+  it('offers an external-conversation management draft from the blank native hero without an RP story', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ schemaVersion: 1, presetId: 'rp-companion', available: true, tools: ['rp_companion_inspect', 'rp_companion_apply', 'rp_companion_import_file'], owners: { storyKit: false, database: false, lastStep: false, context: false, gm: false, loop: false } }) })))
+    const registrations = [], effects = [], startSession = vi.fn(), initializeDefault = vi.fn(async () => ({ workspaceId: 'default' })), prompt = vi.fn()
+    apply({ effect(fn) { effects.push(fn()) }, sidebarRightTabs: registry(), sidebarRight: {}, uiWorkspace: { startSession }, sessions: { prompt }, workspaces: { list: { getSnapshot: () => ({ items: [] }) }, initializeDefault }, slots: { inject: (_key, fn) => fn(), register(options, component) { registrations.push({ options, component }); return () => {} } } })
+    const entry = registrations.find(row => row.options.name === 'conversation.hero.options'), Hero = entry.component
+    render(<Hero {...entry.options.inject()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'RP', exact: true }))
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: '从外部会话建故事' })).not.toBeDisabled())
+    expect(screen.getByText(/SillyTavern JSONL、TXT、Markdown/u)).toBeTruthy()
+    fireEvent.click(screen.getByRole('menuitem', { name: '从外部会话建故事' }))
+    await waitFor(() => expect(startSession).toHaveBeenCalledWith('default', expect.objectContaining({ agentPreset: 'rp-companion', whenDraftExists: 'append', prompt: expect.stringContaining('关键取舍') })))
+    expect(initializeDefault).toHaveBeenCalledOnce()
+    expect(prompt).not.toHaveBeenCalled()
+    expect(screen.queryByRole('menu')).toBeNull()
+    for (const release of effects.reverse()) release?.()
+  })
+
+  it('opens the existing Story Kit start view for a new story', () => {
+    const onOpenOwner = vi.fn()
+    render(<RpMenu registry={registry(['rp-story-kit'])} onSelectView={vi.fn()} onOpenOwner={onOpenOwner} />)
+    fireEvent.click(screen.getByRole('button', { name: 'RP', exact: true }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '开始新故事' }))
+    expect(onOpenOwner).toHaveBeenCalledWith('rp-story-kit', { view: 'start' })
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
   it('starts closed, routes every view and every registered native owner, and closes after selection', () => {
     const onSelectView = vi.fn(), onOpenOwner = vi.fn()
     render(<RpMenu registry={registry(ownerPages.map(([kind]) => kind))} onSelectView={onSelectView} onOpenOwner={onOpenOwner} />)
@@ -171,14 +197,14 @@ describe('RP umbrella menu', () => {
     for (const release of effects.reverse()) release?.()
   })
 
-  it('rechecks the mounted story inside the navigation frame before opening Studio', async () => {
+  it.each([undefined, 'story'])('rechecks the mounted story before opening its requested view (%s)', async view => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ schemaVersion: 1, presetId: 'rp-companion', available: false, reason: '助手预设未启用', tools: [], owners: { storyKit: false, database: false, lastStep: false, context: false, gm: false, loop: false } }) })))
     const frames = [], mountedListeners = new Set(), registrations = [], effects = [], openTab = vi.fn()
     let mounted = 'source'
     vi.stubGlobal('requestAnimationFrame', callback => { frames.push(callback); return frames.length })
     vi.stubGlobal('cancelAnimationFrame', vi.fn())
     apply({ effect(fn) { effects.push(fn()) }, sidebarRightTabs: registry(), sidebarRight: { openTab, mounted: { getSnapshot: () => mounted, subscribe: listener => { mountedListeners.add(listener); return () => mountedListeners.delete(listener) } } }, uiWorkspace: { openSession: id => { mounted = id; mountedListeners.forEach(listener => listener()) } }, slots: { inject: (_key, fn) => fn(), register(options, component) { registrations.push({ options, component }); return () => {} } } })
-    const body = registrations.find(row => row.options.name === 'sidebar.right.pane.tab'), opening = body.options.inject().openSession('target')
+    const body = registrations.find(row => row.options.name === 'sidebar.right.pane.tab'), opening = body.options.inject().openSession('target', view)
     mounted = 'unrelated'
     frames.at(-1)()
     expect(openTab).not.toHaveBeenCalled()
@@ -186,7 +212,21 @@ describe('RP umbrella menu', () => {
     mountedListeners.forEach(listener => listener())
     frames.at(-1)()
     await opening
-    expect(openTab).toHaveBeenCalledExactlyOnceWith('rp-studio', { params: { view: 'state' } })
+    expect(openTab).toHaveBeenCalledExactlyOnceWith('rp-studio', { params: { view: view || 'state' } })
+    for (const release of effects.reverse()) release?.()
+  })
+
+  it('offers one-click Story Kit start in the blank host entry without navigating on mount', async () => {
+    const registrations = [], effects = [], openTab = vi.fn(), openSession = vi.fn()
+    apply({ effect(fn) { effects.push(fn()) }, sidebarRightTabs: registry(['rp-story-kit']), sidebarRight: { openTab }, uiWorkspace: { openSession }, slots: { subscribe: () => () => {}, entries: () => [], inject: (_key, fn) => fn(), register(options, component) { registrations.push({ options, component }); return () => {} } } })
+    const entry = registrations.find(row => row.options.name === 'conversation.hero.options'), Hero = entry.component
+    render(<Hero sessionId="ordinary-chat" {...entry.options.inject()} />)
+    expect(openTab).not.toHaveBeenCalled()
+    expect(openSession).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'RP', exact: true })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '开始新故事' }))
+    await waitFor(() => expect(openTab).toHaveBeenCalledExactlyOnceWith('rp-story-kit', { params: { view: 'start' } }))
+    expect(openSession).not.toHaveBeenCalled()
     for (const release of effects.reverse()) release?.()
   })
 

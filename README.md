@@ -4,6 +4,8 @@ DSH 内置角色扮演工作区。RP Studio 1.5.2 面向 **DSH 0.2.2-rc.1**。�
 
 1.5 收纳七包入口并统一宿主字号，随 Studio 安装真正的 `rp-companion` Agent Preset。通过 `RP ▾ → RP 助手` 打开管理草稿，或新会话选择“RP 助手”，发送需求后管理资产、ST 预设迁移、配置与开局。完整组合需把七包装入同一 profile；具体能力和权限见[助手操作合同](docs/rp-companion.md)。原故事继续使用 `rp-gm`，事实审批默认关闭。
 
+也可以把外部 RP 会话或酒馆聊天导出交给助手：澄清必要取舍后，创建并读回角色、玩家身份、世界资料和带初始场景、事实的故事模板，保留原文件与已有资产。查证时优先使用授权资料，网页检索只发送公开题材词；原会话证据、外部来源与创作补全分别说明。默认只保存，明确要求后才开始故事。见[助手用法](packages/plugin/README.md#rp-助手)。
+
 1.4 新增每故事事实审批（默认关闭）、事实重新生成和只重新写作，先确认事实，再生成正文。[审批与重新生成用法](docs/agent-rp-integration.md#事实审批与两层重新生成) · [使用与依赖](docs/agent-rp-integration.md) · [公开接口](docs/agent-rp/README.md) · [原生验证记录](docs/native-acceptance.md)。
 
 V6 七包组合已在官方 rc.3 隔离环境完成旧九场景回归及同次默认依赖回读；审批与两层重新生成的五组实际功能断言全部通过。受测包、模型计数与发行验证边界见[历史 V6 原生证据](docs/native-acceptance.md#v6-approval-and-regeneration)。

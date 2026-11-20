@@ -4,8 +4,10 @@ import { registerWorkspace, TAB_KIND } from './register.mjs'
 import css from './workspace.css'
 import { ACTION_SLOT, extensionEntryIds } from './workspace-navigation.mjs'
 import { openCompanionSession, readCompanionStatus } from './companion-client.mjs'
+import { createNativeApi } from './api.js'
+import { installMobileBridge } from './mobile-bridge.mjs'
 
-export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs', 'uiWorkspace']
+export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs', 'uiWorkspace', 'sessions', 'workspaces', 'layout']
 
 export function apply(ctx) {
   ctx.effect(() => {
@@ -16,15 +18,25 @@ export function apply(ctx) {
     return () => style.remove()
   }, 'RP Studio styles')
   const pending = new Set()
+  const companionLifetime = new AbortController()
   const ownerKinds = new Set(['rp-gm', 'rp-story-kit', 'rp-database', 'rp-context', 'rp-last-step', 'loop-studio'])
   const hasOwnerTab = kind => ownerKinds.has(kind) && typeof ctx.sidebarRightTabs.get === 'function' && ctx.sidebarRightTabs.get(kind) !== undefined
-  const openOwner = kind => {
+  const openOwner = (kind, params) => {
     if (!hasOwnerTab(kind)) throw new Error('未启用对应插件。')
-    ctx.sidebarRight.openTab(kind)
+    ctx.sidebarRight.openTab(kind, params ? { params } : undefined)
   }
   const navigateView = view => ctx.sidebarRight.openTab(TAB_KIND, { params: { view } })
   const subscribeExtensions = listener => ctx.slots.subscribe(ACTION_SLOT, listener)
   const getExtensions = () => ctx.slots.entries(ACTION_SLOT)
+  const readingListeners = new Set()
+  let lastReadingSessionId = null
+  const subscribeReading = listener => { readingListeners.add(listener); return () => readingListeners.delete(listener) }
+  const getLastReading = () => lastReadingSessionId
+  const rememberReading = sessionId => {
+    if (lastReadingSessionId === sessionId) return
+    lastReadingSessionId = sessionId
+    for (const listener of readingListeners) listener()
+  }
   const companionListeners = new Set()
   let companionStatus = { available: false, reason: '正在检查 RP 助手入口' }
   let refreshCompanion = () => {}
@@ -55,10 +67,10 @@ export function apply(ctx) {
   function useCompanion(targetSessionId) {
     const status = useSyncExternalStore(subscribeCompanion, getCompanionStatus, getCompanionStatus)
     const canOpen = status.available && typeof ctx.uiWorkspace.startSession === 'function'
-    return { onOpenCompanion: canOpen ? () => openCompanionSession(ctx, { targetSessionId }) : undefined, onMenuOpen, companionReason: status.available ? '宿主未提供 RP 助手会话入口' : status.reason || 'RP 助手尚未启用' }
+    return { onOpenCompanion: canOpen ? (selection = {}) => openCompanionSession(ctx, { ...selection, targetSessionId, signal: companionLifetime.signal }) : undefined, onMenuOpen, companionReason: status.available ? '宿主未提供 RP 助手会话入口' : status.reason || 'RP 助手尚未启用' }
   }
-  ctx.effect(() => () => { for (const cancel of pending) cancel(new Error('RP Studio 已停用。')) }, 'RP Studio navigation')
-  const openSession = id => new Promise((resolve, reject) => {
+  ctx.effect(() => () => { lastReadingSessionId = null; readingListeners.clear(); companionLifetime.abort(new Error('RP Studio 已停用。')); for (const cancel of pending) cancel(new Error('RP Studio 已停用。')) }, 'RP Studio navigation')
+  const openSession = (id, view) => new Promise((resolve, reject) => {
     let frame
     let timer
     let unsubscribe = () => {}
@@ -69,7 +81,7 @@ export function apply(ctx) {
       frame = requestAnimationFrame(() => {
         frame = undefined
         if (ctx.sidebarRight.mounted.getSnapshot() !== id) return
-        try { navigateView('state'); cancel(); resolve() }
+        try { navigateView(view === 'story' ? 'story' : 'state'); cancel(); resolve() }
         catch (error) { cancel(); reject(error) }
       })
     }
@@ -82,10 +94,19 @@ export function apply(ctx) {
   function Body({ sessionId, useTabInfo, openSession: navigate, renderSlot }) {
     const { tab } = useTabInfo()
     const entries = useSyncExternalStore(subscribeExtensions, getExtensions, getExtensions)
+    const lastReading = useSyncExternalStore(subscribeReading, getLastReading, getLastReading)
     const companion = useCompanion(sessionId)
     const extensions = extensionEntryIds(entries)
-    return <Workspace key={sessionId} sessionId={sessionId} visible={tab.visible} navigation={tab.navigation} navigateView={navigateView} registry={ctx.sidebarRightTabs} openSession={navigate} openOwner={openOwner} hasOwnerTab={hasOwnerTab} {...companion} extraActions={extensions.length ? extensions.map(id => <React.Fragment key={id}>{renderSlot(ACTION_SLOT, {}, { only: id })}</React.Fragment>) : null} />
+    return <Workspace key={sessionId} sessionId={sessionId} visible={tab.visible} navigation={tab.navigation} navigateView={navigateView} registry={ctx.sidebarRightTabs} openSession={navigate} openOwner={openOwner} hasOwnerTab={hasOwnerTab} lastReadingSessionId={lastReading} onReadingOpened={rememberReading} {...companion} extraActions={extensions.length ? extensions.map(id => <React.Fragment key={id}>{renderSlot(ACTION_SLOT, {}, { only: id })}</React.Fragment>) : null} />
   }
   function Header(props) { return <HeaderEntry {...props} {...useCompanion(props.sessionId)} /> }
   registerWorkspace(ctx, { Body, Button: Header, openSession, headerProps: { registry: ctx.sidebarRightTabs, onOpenOwner: openOwner } })
+  const native = createNativeApi()
+  ctx.effect(() => installMobileBridge({
+    ctx, tabKind: TAB_KIND,
+    async validateSession(id, signal) {
+      const value = await native.session(id, signal)
+      if (value.session.id !== id) throw new Error('故事读取结果与目标会话不一致。')
+    },
+  }), 'RP Studio mobile navigation')
 }

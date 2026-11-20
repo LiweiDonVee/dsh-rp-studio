@@ -71,10 +71,18 @@ export async function nativeReading(service: NativeLastStep | undefined, session
     records = history.records
   } else {
     records = typeof service?.narratives === 'function' ? (await service.narratives({ sessionId })).records : []
-    const database = options.database
-    const projection = database?.capabilities?.factReview === 1 && typeof database.factReviewProjection === 'function' ? await database.factReviewProjection({ sessionId }) : undefined
     if (!Array.isArray(records)) throw new GatewayError({ code: 'upstream-protocol', message: '正式正文来源无效，请在 RP 最后一步检查。' }, 503)
-    if (options.hasVersionedRecords || records.some(item => item?.narrativeVersion !== undefined) || projection?.groups.some(group => group.activeReceiptId !== null || group.pendingCandidateId !== null)) throw unavailableHistory()
+    if (options.hasVersionedRecords || records.some(item => item?.narrativeVersion !== undefined)) throw unavailableHistory()
+    const database = options.database
+    if (database?.capabilities?.factReview === 1 && typeof database.factReviewProjection === 'function') {
+      try {
+        const projection = await database.factReviewProjection({ sessionId })
+        if (projection.groups.some(group => group.activeReceiptId !== null || group.pendingCandidateId !== null)) throw unavailableHistory()
+      } catch (error) {
+        // Legacy RP presets can be read without ever binding a story database.
+        if ((error as { code?: string })?.code !== 'NOT_BOUND' || canonicalIds.length || records.length || !await options.isPureLegacy?.()) throw error
+      }
+    }
     if (typeof service?.narratives !== 'function') return { messages: fallback }
   }
   if (!Array.isArray(records) || records.some(item => !item?.ref || item.ref.sessionId !== sessionId

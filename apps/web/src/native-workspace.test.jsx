@@ -23,6 +23,70 @@ function selectWorkspaceView(label) {
 }
 
 describe('native RP workspace', () => {
+  it('can hand an external conversation to the real Companion entry before any story exists', async () => {
+    const api = client(), companion = vi.fn()
+    api.cards.mockResolvedValue([]); api.sessions.mockResolvedValue([])
+    render(<Workspace client={api} onOpenCompanion={companion} />)
+    await screen.findByText('当前未读到可用的 RP 故事绑定。可在 Story Kit 选择角色、身份和开场，使用旧角色预设，或继续已有旅程。')
+    fireEvent.click(screen.getByRole('button', { name: '从外部会话建故事' }))
+    expect(companion).toHaveBeenCalledWith({ externalConversation: true })
+    expect(screen.getByText(/SillyTavern JSONL、TXT、Markdown/u)).toBeTruthy()
+    expect(api.create).not.toHaveBeenCalled()
+    expect(api.send).not.toHaveBeenCalled()
+    expect(api.fork).not.toHaveBeenCalled()
+  })
+
+  it('appends an edited suggestion to the current action draft and keeps Enter as the send gesture', async () => {
+    const api = client(), basedOn = { sessionId: 'a', presentationId: 'turn', assistantMessageId: 'writer', callSeq: 2, baseResultSeq: 3, resultSeq: 3 }
+    api.action = vi.fn(async (action, input) => {
+      if (action === 'capabilities') return { schemaVersion: 1, services: {}, actions: { readingPage: true, suggestPlayerActions: true }, story: { generic: false } }
+      if (action === 'readingPage') return { schemaVersion: 1, projectionKey: 'confirmed', records: [{ id: 'prose', ref: basedOn, action: '我来到驿站。', text: '门前贴着一张纸条。' }], hasOlder: false, nextBefore: null, totalCount: 1 }
+      if (action === 'suggestPlayerActions') return { sessionId: 'a', basedOn: input.basedOn, options: [{ text: '我查看纸条。' }, { text: '我询问守门人。' }] }
+      throw new Error(`Unexpected action ${action}`)
+    })
+    render(<Workspace sessionId="a" openSession={vi.fn()} client={api} />)
+    await screen.findByText('山间驿站')
+    selectWorkspaceView('沉浸阅读')
+    const draft = screen.getByRole('textbox', { name: '写下你的行动' })
+    fireEvent.change(draft, { target: { value: '我先等等。' } })
+    const suggest = await screen.findByRole('button', { name: '陪我想下一步' })
+    expect(suggest.closest('footer')).toBe(draft.closest('footer'))
+    expect(screen.getAllByRole('button', { name: '陪我想下一步' })).toHaveLength(1)
+    expect(api.action.mock.calls.some(([action]) => action === 'suggestPlayerActions')).toBe(false)
+    fireEvent.click(suggest)
+    fireEvent.change(await screen.findByRole('textbox', { name: '行动建议 1' }), { target: { value: '我仔细观察门口。' } })
+    fireEvent.click(screen.getByRole('button', { name: '将选项 1 加入行动草稿' }))
+    expect(draft).toHaveValue('我先等等。\n我仔细观察门口。')
+    expect(api.send).not.toHaveBeenCalled()
+    expect(api.action.mock.calls.filter(([action]) => action === 'suggestPlayerActions')).toHaveLength(1)
+    fireEvent.keyDown(draft, { key: 'Enter' })
+    await waitFor(() => expect(api.send).toHaveBeenCalledWith('a', '我先等等。\n我仔细观察门口。'))
+  })
+  it('renders the full exact presentation selected by mobile navigation', async () => {
+    const api = client()
+    const selectedText = `起点\n${'保留全部已采用正文。'.repeat(4_000)}\n结尾。`
+    const ref = (sessionId, presentationId, resultSeq) => ({ sessionId, presentationId, resultSeq })
+    api.action = vi.fn(async action => ({
+      capabilities: { schemaVersion: 1, services: {}, actions: { narratives: true, presentationSummaries: true } },
+      narratives: { records: [
+        { id: 'original', ref: ref('a', 'selected', 2), text: '旧正文' },
+        { id: 'adopted', ref: ref('a', 'selected', 7), text: selectedText },
+        { id: 'another', ref: ref('a', 'another', 9), text: '另外一段正文' },
+      ] },
+      presentationSummaries: { capabilities: {}, presentations: [] },
+    })[action])
+    const reading = presentationId => ({ params: { view: 'story', mobilePage: 'reading', mobileRequest: 'open-reading', presentationId } })
+    const view = render(<Workspace sessionId="a" openSession={vi.fn()} client={api} navigation={reading('selected')} />)
+    const heading = await screen.findByRole('heading', { name: '指定正文 · selected' })
+    const presentation = heading.closest('[data-rp-presentation]')
+    expect(presentation.querySelector('p').textContent).toBe(selectedText)
+    expect(presentation.closest('[data-rp-mobile-page]')).toHaveAttribute('data-rp-mobile-request', 'open-reading')
+    expect(screen.queryByText('风穿过门廊。')).toBeNull()
+    view.rerender(<Workspace sessionId="a" openSession={vi.fn()} client={api} navigation={reading('missing')} />)
+    await screen.findByText('指定正文呈现已不可用，请刷新后重新定位。')
+    expect(view.container.querySelector('[data-rp-presentation]')).toBeNull()
+  })
+
   it('keeps contributed workspace actions inside the closed umbrella menu', async () => {
     const api = client()
     const configure = vi.fn()
@@ -138,6 +202,74 @@ describe('native RP workspace', () => {
     await waitFor(() => expect(open).toHaveBeenCalledWith('new'))
     expect(api.create).toHaveBeenCalledWith('world')
     expect(api.subscribe).not.toHaveBeenCalled()
+  })
+
+  it('prioritizes honestly labeled recent stories and distinguishes same-title branches without redirecting a normal chat', async () => {
+    const api = client(), open = vi.fn(), rootId = 'left-abcdefgh', childId = 'right-abcdefgh'
+    api.sessions.mockResolvedValue([
+      { ...detail(rootId).session, title: '同名故事', updatedAt: Date.UTC(2026, 10, 19, 1) },
+      { ...detail(childId).session, title: '同名故事', parentSessionId: rootId, updatedAt: Date.UTC(2026, 10, 20, 2) },
+    ])
+    const view = render(<Workspace sessionId="ordinary-chat" openSession={open} client={api} />)
+    const recent = await screen.findByRole('region', { name: '继续故事' })
+    expect(within(recent).getByText('按最近更新排列。')).toBeTruthy()
+    const choices = within(recent).getAllByRole('button')
+    expect(choices[0]).toHaveAccessibleName(`继续 同名故事 · 故事 ${childId}`)
+    expect(choices[1]).toHaveAccessibleName(`继续 同名故事 · 故事 ${rootId}`)
+    expect(within(choices[0]).getByText(/分支自 同名故事/u)).toBeTruthy()
+    expect(choices[0].querySelector('.rp-story-identity span').textContent).not.toBe(choices[1].querySelector('.rp-story-identity span').textContent)
+    expect(recent.compareDocumentPosition(screen.getByRole('heading', { name: '旧角色预设开局' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(open).not.toHaveBeenCalled()
+    expect(api.session).not.toHaveBeenCalled()
+    expect(view.container.querySelector('.dsh-rp-workspace')).toHaveAttribute('data-rp-session', 'ordinary-chat')
+    fireEvent.click(choices[0])
+    await waitFor(() => expect(open).toHaveBeenCalledWith(childId, 'story'))
+    expect(api.create).not.toHaveBeenCalled()
+  })
+
+  it('starts directly through the existing Story Kit view from an empty RP workspace', async () => {
+    const api = client(), openOwner = vi.fn()
+    render(<Workspace sessionId="ordinary-chat" openSession={vi.fn()} client={api} openOwner={openOwner} hasOwnerTab={kind => kind === 'rp-story-kit'} />)
+    await screen.findByText('为这次冒险留个位置')
+    expect(openOwner).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '开始新故事' }))
+    await waitFor(() => expect(openOwner).toHaveBeenCalledWith('rp-story-kit', { view: 'start' }))
+    expect(api.create).not.toHaveBeenCalled()
+    expect(api.session).not.toHaveBeenCalled()
+  })
+
+  it('remembers an actually opened reading story only within the mounted Studio and waits for an explicit continue', async () => {
+    const entries = [], effects = [], extensions = [], open = vi.fn(), api = client()
+    applyNativeClient({
+      effect(fn) { effects.push(fn()) }, sidebarRightTabs: { register: () => () => {}, subscribe: () => () => {}, get: () => undefined }, sidebarRight: {}, uiWorkspace: {},
+      slots: { entries: () => extensions, subscribe: () => () => {}, inject: (_name, register) => register(), register(options, component) { entries.push({ options, component }); return () => {} } },
+    })
+    const Body = entries.find(entry => entry.options.name === 'sidebar.right.pane.tab').component
+    let sessionId = 'a', navigation = { params: { view: 'story' } }
+    function NativeBody() { return React.cloneElement(Body({ sessionId, useTabInfo: () => ({ tab: { visible: true, navigation } }), openSession: open, renderSlot: () => null }), { client: api }) }
+    const view = render(<NativeBody />)
+    await screen.findByText('风穿过门廊。')
+    expect(api.session).toHaveBeenCalledTimes(1)
+    sessionId = 'ordinary-chat'; navigation = { params: { view: 'archive' } }
+    view.rerender(<NativeBody />)
+    const continuing = await screen.findByRole('button', { name: '继续上次故事 · 故事 a · 故事 a' })
+    expect(screen.getByText('其他故事按最近更新排列。')).toBeTruthy()
+    expect(api.session).toHaveBeenCalledTimes(1)
+    expect(open).not.toHaveBeenCalled()
+    fireEvent.click(continuing)
+    await waitFor(() => expect(open).toHaveBeenCalledWith('a', 'story'))
+    for (const release of effects.reverse()) release?.()
+  })
+
+  it('omits a reading memory that is no longer an RP candidate and preserves an explicit active story', async () => {
+    const api = client(), open = vi.fn()
+    render(<Workspace sessionId="a" navigation={{ params: { view: 'archive' } }} lastReadingSessionId="removed-story" openSession={open} client={api} />)
+    await screen.findByRole('region', { name: '继续故事' })
+    expect(screen.queryByRole('button', { name: /^继续上次故事/u })).toBeNull()
+    expect(screen.getByRole('heading', { name: '故事 a' })).toBeTruthy()
+    expect(screen.getByText('当前故事')).toBeTruthy()
+    expect(screen.getByText('按最近更新排列。')).toBeTruthy()
+    expect(open).not.toHaveBeenCalled()
   })
 
   it('preserves the draft after a rejected send and respects IME composition', async () => {

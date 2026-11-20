@@ -68,16 +68,17 @@ describe('fact approval and separate regeneration controls (contract fixtures)',
     expect(refusal.error.code).toBe('STORY_NOT_FOUND')
     delete h.state.extensions.gm
     h.handlers.capabilities = async input => (await request({ action: 'capabilities', ...input })).json()
-    for (const action of ['reviewState', 'storyHistory', 'presentationSummaries', 'regenerateProse']) h.handlers[action] = async input => {
+    for (const action of ['reviewState', 'storyHistory', 'readingPage', 'presentationSummaries', 'regenerateProse']) h.handlers[action] = async input => {
       const response = await request({ action, ...input }), body = await response.json()
       if (!response.ok) throw Object.assign(new Error(body.error.message), { code: body.error.code, status: response.status })
       return body
     }
     mount(h)
+    fireEvent.click(await screen.findByText('事实审批与重新生成'))
     const writer = await screen.findByRole('button', { name: '只重新写作' })
     await waitFor(() => expect(writer).not.toBeDisabled())
     expect(h.calls.some(call => call.action === 'reviewState')).toBe(false)
-    expect(h.calls.find(call => call.action === 'storyHistory')?.input).toEqual({ sessionId: 'story' })
+    expect(h.calls.find(call => call.action === 'readingPage')?.input).toEqual({ sessionId: 'story', limit: 1 })
     expect(h.calls.find(call => call.action === 'presentationSummaries')?.input).toEqual({ sessionId: 'story' })
     expect(screen.queryByRole('checkbox', { name: '本故事事实审批' })).toBeNull()
     expect(screen.queryByRole('button', { name: '重新生成事实' })).toBeNull()
@@ -128,6 +129,7 @@ describe('fact approval and separate regeneration controls (contract fixtures)',
     h.handlers.capabilities = async () => ({ schemaVersion: 1, services, actions: { ...h.flags }, story: { generic: false } })
     h.handlers.storyHistory = async () => { throw Object.assign(new Error('effective history owner unavailable'), { code: 'EFFECTIVE_HISTORY_UNAVAILABLE', status: 503 }) }
     mount(h)
+    fireEvent.click(await screen.findByText('事实审批与重新生成'))
     expect(await screen.findByRole('alert')).toHaveTextContent('EFFECTIVE_HISTORY_UNAVAILABLE：effective history owner unavailable')
     expect(h.calls.some(call => call.action === 'reviewState')).toBe(false)
     expect(screen.getByRole('button', { name: '只重新写作' })).toBeDisabled()
@@ -208,7 +210,10 @@ describe('fact approval and separate regeneration controls (contract fixtures)',
     const h = fixture({ pending: false })
     h.handlers.regenerateProse = async () => { throw new Error('response lost') }
     mount(h)
-    fireEvent.click(await screen.findByRole('button', { name: '只重新写作' }))
+    fireEvent.click(await screen.findByText('事实审批与重新生成'))
+    const writer = await screen.findByRole('button', { name: '只重新写作' })
+    await waitFor(() => expect(writer).not.toBeDisabled())
+    fireEvent.click(writer)
     await screen.findByText(/response lost/u)
     fireEvent.click(screen.getByRole('button', { name: '重试上次写作请求' }))
     await waitFor(() => expect(h.calls.filter(call => call.action === 'regenerateProse')).toHaveLength(2))

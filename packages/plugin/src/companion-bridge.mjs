@@ -1,5 +1,6 @@
 import { extname, basename } from 'node:path'
-import { APPLY, INSPECT, CompanionError, fail, object, supported, validateFileInput, validateOperation } from './companion-contract.mjs'
+import { APPLY, INSPECT, CompanionError, fail, object, supported, TRANSCRIPT_MAX_BYTES, validateFileInput, validateOperation, validateTranscriptInput } from './companion-contract.mjs'
+import { readTranscriptPage, transcriptSource } from './transcript-reader.mjs'
 import { checkDatabaseProtection, checkProfileProtection, checkRevision } from './companion-guards.mjs'
 import { COMPANION_PRESET_ID } from './companion-status.mjs'
 
@@ -173,6 +174,37 @@ export function createCompanionBridge(ctx, { approveEscalation } = {}) {
       const { signal } = scope(exec)
       const { definition, input } = validateOperation(APPLY, args)
       return perform(args.operation, definition, input, exec, signal)
+    },
+    async readTranscript(args, exec) {
+      const { agent, signal } = scope(exec), input = validateTranscriptInput(args)
+      let source, chunks, target, info, fs
+      if (input.path !== undefined) {
+        const directory = get('workingDirectory')
+        fs = get('fs')
+        if (!fs || typeof fs.streamText !== 'function' || typeof directory?.ensure !== 'function') fail('CAPABILITY_UNAVAILABLE', '宿主未提供正式流式文件读取服务。', 503)
+        const cwd = await directory.ensure(agent, signal)
+        target = await fs.resolve(input.path, { cwd, signal }); info = await fs.stat(target, signal)
+        if (!info) { ctx.emit('fs/observed', target, { kind: 'absent' }, exec); fail('FS_NOT_FOUND', '找不到会话原件。', 404) }
+        if (info.type !== 'file') fail('FS_NOT_REGULAR_FILE', '会话原件必须是普通文件。')
+        if (typeof info.version !== 'string') fail('CAPABILITY_UNAVAILABLE', '宿主未提供可校验的文件版本。', 503)
+        if (info.size > TRANSCRIPT_MAX_BYTES) fail('FILE_TOO_LARGE', `会话原件超过 ${TRANSCRIPT_MAX_BYTES} bytes；请由用户分段提供。`)
+        const format = input.format ?? ({ '.jsonl': 'sillytavern-jsonl', '.txt': 'text', '.md': 'markdown', '.markdown': 'markdown' })[extname(input.path).toLowerCase()]
+        if (!format) fail('UNSUPPORTED_FORMAT', '请提供 JSONL、TXT、Markdown，或明确指定受支持的 format。')
+        source = transcriptSource({ kind: 'file', format, path: target.displayPath, identity: target.targetKey ?? target.displayPath, version: info.version, bytes: info.size })
+        if (input.cursor && input.cursor.sourceId !== source.id) fail('TRANSCRIPT_CONFLICT', '会话原件或版本已变化，请从明确的 offset 重新读取。', 409)
+        chunks = await fs.streamText(target, signal)
+      } else {
+        source = transcriptSource({ kind: 'text', format: input.format ?? 'text', text: input.text, bytes: Buffer.byteLength(input.text, 'utf8'), label: input.label })
+        chunks = [input.text]
+      }
+      const result = await readTranscriptPage(chunks, input, source, signal)
+      signal.throwIfAborted()
+      if (target) {
+        const current = await fs.stat(target, signal)
+        if (!current || current.version !== info.version) fail('TRANSCRIPT_CONFLICT', '会话原件在读取时发生变化，请重新读取。', 409)
+        ctx.emit('fs/observed', target, { kind: 'present', version: info.version }, exec)
+      }
+      return receipt('transcript.read', {}, result)
     },
     async importFile(args, exec) {
       const { agent, signal } = scope(exec)

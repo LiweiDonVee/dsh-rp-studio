@@ -1,3 +1,5 @@
+import { canReadTurnDetails, turnDetails, validNarrativeRef } from './turn-reading.mjs'
+
 export class CompanionError extends Error {
   constructor(code, message, status = 400) { super(message); this.name = 'CompanionError'; this.code = code; this.status = status }
 }
@@ -27,6 +29,7 @@ export const INSPECT = Object.freeze({
   overview: entry(null, null, null, fields({}, { sessionId: id }), null),
   'assets.state': entry('rpStoryKit', 1, 'state', fields({}), (owner, input, signal) => owner.state({ ...input, signal })),
   'assets.asset': entry('rpStoryKit', 1, 'asset', fields({ kind: enumOf(['character', 'persona']), assetId: id }, { version: ver }), (owner, input, signal) => owner.asset({ ...input, signal })),
+  'assets.template': entry('rpStoryKit', 1, 'template', fields({ templateId: id }), (owner, input, signal) => owner.template({ ...input, signal })),
   'assets.source': entry('rpStoryKit', 1, 'source', fields({ sourceId: id }), (owner, input, signal) => owner.source({ ...input, signal })),
   'assets.previewPack': entry('rpStoryKit', 1, 'previewPack', fields({ pack: object }), (owner, input, signal) => owner.previewPack({ ...input, signal })),
   'database.state': entry('rpDatabase', 2, 'state', fields({}, { sessionId: id }), (owner, input, signal) => owner.state({ ...input, signal })),
@@ -40,6 +43,7 @@ export const INSPECT = Object.freeze({
   'context.authorNote': entry('rpContext', null, 'authorNote', fields({ sessionId: id }), (owner, input, signal) => owner.authorNote({ ...input, signal })),
   'routes.inspect': entry('loopStudio', null, 'inspect', fields({ sessionId: id }), (owner, input, signal) => owner.inspect(input.sessionId, signal)),
   'story.state': entry('rpGM', 1, 'storyState', fields({ sessionId: id }), (owner, input, signal) => owner.storyState({ ...input, signal })),
+  'story.turnDetails': { ...entry('rpLastStep', 1, 'storyHistory', fields({ sessionId: id, basedOn: validNarrativeRef }), (owner, input, signal) => turnDetails(owner, { ...input, signal })), available: canReadTurnDetails },
 })
 
 export const APPLY = Object.freeze({
@@ -78,6 +82,7 @@ export function validateOperation(table, args) {
   const definition = table[args.operation]
   validateInput(definition, args.input)
   const input = structuredClone(args.input)
+  if (args.operation === 'story.turnDetails' && input.basedOn.sessionId !== input.sessionId) fail('INVALID_ARGUMENTS', '正文引用必须属于明确指定的目标故事。')
   if (args.operation === 'assets.import' && (input.format === 'json' ? typeof input.rawText !== 'string' || input.dataBase64 !== undefined : typeof input.dataBase64 !== 'string' || input.rawText !== undefined)) fail('INVALID_ARGUMENTS', 'JSON 需要 rawText，PNG 需要 dataBase64；文件请使用 import_file。')
   if (args.operation === 'database.importDocument' && ((input.text === undefined) === (input.dataBase64 === undefined) || input.mimeType === 'application/pdf' && input.text !== undefined)) fail('INVALID_ARGUMENTS', '资料需要且仅需要 text 或 dataBase64；PDF 使用原始 bytes。')
   for (const [suffix, key] of [['Character', 'character'], ['Persona', 'persona']]) {
@@ -89,7 +94,7 @@ export function validateOperation(table, args) {
 }
 
 export function supported(definition, owner) {
-  return !!owner && (definition.apiVersion === null || owner.apiVersion === definition.apiVersion) && typeof owner[definition.method] === 'function'
+  return !!owner && (definition.apiVersion === null || owner.apiVersion === definition.apiVersion) && typeof owner[definition.method] === 'function' && (!definition.available || definition.available(owner))
 }
 
 export const FILE_KINDS = Object.freeze(['character', 'worldbook', 'preset', 'document', 'content-pack'])
@@ -97,4 +102,21 @@ export function validateFileInput(input) {
   validateInput(fields({ kind: enumOf(FILE_KINDS), path: value => text(value) && !!value.trim(), expectedRevision: rev }, { name: id, requestId: id, orderCharacterId: orderId }), input)
   if (input.kind === 'document' && !id(input.requestId)) fail('INVALID_ARGUMENTS', '文档导入必须提供稳定 requestId。')
   if (input.kind !== 'document' && input.requestId !== undefined || input.kind !== 'preset' && input.orderCharacterId !== undefined) fail('INVALID_ARGUMENTS', 'requestId 仅用于文档，orderCharacterId 仅用于预设。')
+}
+
+export const TRANSCRIPT_FORMATS = Object.freeze(['sillytavern-jsonl', 'text', 'markdown'])
+export const TRANSCRIPT_MAX_BYTES = 8_000_000
+export const TRANSCRIPT_MAX_CHARS = 20_000
+export const TRANSCRIPT_DEFAULT_LIMIT = 80
+export const TRANSCRIPT_MAX_LIMIT = 200
+const transcriptCursor = value => object(value) && Object.keys(value).length === 3 && Object.keys(value).every(key => ['sourceId', 'line', 'charOffset'].includes(key))
+  && typeof value.sourceId === 'string' && /^[a-f0-9]{64}$/u.test(value.sourceId) && ver(value.line) && rev(value.charOffset)
+
+export function validateTranscriptInput(input) {
+  validateInput(fields({}, { path: value => text(value) && !!value.trim(), text, label: id, format: enumOf(TRANSCRIPT_FORMATS), offset: ver, limit: value => ver(value) && value <= TRANSCRIPT_MAX_LIMIT, cursor: transcriptCursor }), input)
+  if ((input.path === undefined) === (input.text === undefined)) fail('INVALID_ARGUMENTS', '需要且仅需要 path 或用户直接提供的 text。')
+  if (input.path !== undefined && input.label !== undefined) fail('INVALID_ARGUMENTS', 'label 只用于用户直接提供的文本片段。')
+  if (input.offset !== undefined && input.cursor !== undefined) fail('INVALID_ARGUMENTS', 'offset 与 cursor 不能同时使用；继续阅读请原样传回 nextCursor。')
+  if (input.text !== undefined && Buffer.byteLength(input.text, 'utf8') > TRANSCRIPT_MAX_BYTES) fail('FILE_TOO_LARGE', `文本片段超过 ${TRANSCRIPT_MAX_BYTES} bytes；请由用户分段提供。`)
+  return { ...structuredClone(input), offset: input.cursor?.line ?? input.offset ?? 1, limit: input.limit ?? TRANSCRIPT_DEFAULT_LIMIT }
 }

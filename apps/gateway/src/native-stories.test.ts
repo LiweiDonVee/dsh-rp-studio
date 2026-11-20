@@ -77,6 +77,15 @@ describe('native owner projection boundaries', () => {
     database.factReviewProjection = async () => { throw Object.assign(new Error('not authorized'), { code: 'PERMISSION_DENIED' }) }
     await expect(nativeTranscript(service, 'story', [], [], { database })).rejects.toMatchObject({ code: 'PERMISSION_DENIED' })
   })
+  it('uses plain legacy prose when the optional Database confirms there is no bound source', async () => {
+    const fallback = [{ id: 'legacy', seq: 3, role: 'gm' as const, text: '旧角色的原始正文。', status: 'complete' as const, createdAt: 1 }]
+    const notBound = Object.assign(new Error('Bind sources to this story first'), { code: 'NOT_BOUND' })
+    const database = { capabilities: { factReview: 1 }, factReviewProjection: async () => { throw notBound } }
+    const isPureLegacy = async () => true
+    expect(await nativeTranscript(undefined, 'story', fallback, [], { database, isPureLegacy })).toEqual(fallback)
+    await expect(nativeTranscript(undefined, 'story', fallback, ['canonical'], { database, isPureLegacy })).rejects.toBe(notBound)
+    await expect(nativeTranscript(undefined, 'story', fallback, [], { database })).rejects.toBe(notBound)
+  })
   it('carries only recorded current receipt identity for the Studio legacy eligibility explanation', () => {
     const state = storyPublicState({ binding: { schemaVersion: 1, id: 'binding', sessionId: 'story', title: '港口', status: 'active', character: { assetId: 'actor', version: 1, name: '林' }, persona: { assetId: 'persona', version: 1, name: '玩家' } }, scene: { schemaVersion: 1, title: '抵港', location: '码头', presentActorIds: [] }, facts: { schemaVersion: 1, items: [] }, lastFactReceipt: { id: 'legacy', kind: 'turn', privateData: 'PRIVATE_CANARY' }, capabilities: { rollback: false, fork: false, autoplay: false } } as unknown as Parameters<typeof storyPublicState>[0])
     expect(state.extensions.gm).toMatchObject({ lastFactReceipt: { id: 'legacy', kind: 'turn' } })

@@ -40,7 +40,7 @@ function CustomFields({ value, onChange, variables, onVariables }) {
   </fieldset>
 }
 
-export function FactTools({ sessionId, client, running, currentWorld, ownerRevision = '', onPause, onChanged }) {
+export function FactTools({ sessionId, client, running, currentWorld, ownerRevision = '', onPause, onChanged, compact = false, requestedOpen = 0 }) {
   const [data, setData] = useState({ flags: {}, generic: null, review: null, latest: null, summaries: null })
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [cancelling, setCancelling] = useState(false)
   const [tick, setTick] = useState(0), [error, setError] = useState(''), [notice, setNotice] = useState('')
@@ -48,8 +48,11 @@ export function FactTools({ sessionId, client, running, currentWorld, ownerRevis
   const [variableRows, setVariableRows] = useState([])
   const [factInstruction, setFactInstruction] = useState(''), [writerInstruction, setWriterInstruction] = useState('')
   const [retained, setRetained] = useState(null), [decisionResult, setDecisionResult] = useState(null)
+  const [opened, setOpened] = useState(!compact)
+  const surface = useRef(null)
   const live = useRef(true), operation = useRef(null), cancelOperation = useRef(null), selection = useRef(null), editVersion = useRef(0), loadVersion = useRef(0)
   useEffect(() => { live.current = true; return () => { live.current = false; operation.current?.abort(); cancelOperation.current?.abort() } }, [])
+  useEffect(() => { if (requestedOpen) { setOpened(true); surface.current?.scrollIntoView?.({ block: 'nearest' }); surface.current?.querySelector('summary')?.focus({ preventScroll: true }) } }, [requestedOpen])
   useEffect(() => {
     if (typeof client.action !== 'function') { setLoading(false); return }
     const controller = new AbortController(), version = ++loadVersion.current
@@ -60,14 +63,15 @@ export function FactTools({ sessionId, client, running, currentWorld, ownerRevis
         const { actions: flags, story } = await client.action('capabilities', { sessionId }, controller.signal)
         if (typeof story?.generic !== 'boolean' || !flags || typeof flags !== 'object' || Array.isArray(flags) || ['reviewState', 'storyHistory', 'presentationSummaries'].some(method => typeof flags[method] !== 'boolean')) throw new Error('无法读取本故事的 GM 能力，请刷新后重试。')
         const next = { flags, generic: story.generic, review: null, latest: null, summaries: null }
-        const reads = ['reviewState', 'storyHistory', 'presentationSummaries'].filter(method => flags[method] && (method !== 'reviewState' || story.generic))
-        const values = await Promise.allSettled(reads.map(method => client.action(method, { sessionId }, controller.signal)))
+        const proseRead = flags.readingPage ? 'readingPage' : 'storyHistory'
+        const reads = ['reviewState', ...(!compact || opened ? [proseRead, 'presentationSummaries'] : [])].filter(method => flags[method] && (method !== 'reviewState' || story.generic))
+        const values = await Promise.allSettled(reads.map(method => client.action(method, { sessionId, ...(method === 'readingPage' ? { limit: 1 } : {}) }, controller.signal)))
         if (!current()) return
         for (let index = 0; index < reads.length; index++) {
           if (values[index].status === 'rejected') { setError(errorText(values[index].reason)); continue }
           const value = values[index].value
           if (reads[index] === 'reviewState') next.review = value
-          if (reads[index] === 'storyHistory') next.latest = value.records.at(-1) ?? null
+          if (reads[index] === 'storyHistory' || reads[index] === 'readingPage') next.latest = value.records.at(-1) ?? null
           if (reads[index] === 'presentationSummaries') next.summaries = value
         }
         setData(next)
@@ -80,10 +84,11 @@ export function FactTools({ sessionId, client, running, currentWorld, ownerRevis
       finally { if (current()) setLoading(false) }
     })()
     return () => controller.abort()
-  }, [sessionId, client, running, ownerRevision, tick])
+  }, [sessionId, client, running, ownerRevision, tick, compact, opened])
   const { flags, generic, review, latest, summaries } = data
   const round = review?.latestRound, generation = review?.generation, intent = review?.pendingDecision
   const pending = pendingReview(review)
+  useEffect(() => { if (pending) setOpened(true) }, [pending])
   const blocked = pending || busy || loading && !!currentWorld && typeof client.action === 'function'
   useEffect(() => { onPause?.(blocked); return () => onPause?.(false) }, [blocked, onPause])
   if (typeof client.action !== 'function') return null
@@ -139,8 +144,9 @@ export function FactTools({ sessionId, client, running, currentWorld, ownerRevis
   const completeNeedsDecision = generation?.status === 'complete' && unsettledJob && staged.generationConfirmed !== false && round.pendingCandidateId === staged.id && round.approvalRequired === false && round.canRegenerate
   const recoverableJob = unsettledJob && ['interrupted', 'failed', 'cancelled'].includes(generation.status) || completeNeedsDecision
   const generationResume = recoverableJob ? generation.operationId : !generation && retained?.kind === 'generation' ? retained.input.operationId : null
-  return <section className="rp-owner-tools rp-fact-tools" aria-label="事实审批与重新生成">
-    <h3>事实审批与重新生成</h3>
+  const Container = compact ? 'details' : 'div'
+  return <section ref={surface} className="rp-owner-tools rp-fact-tools" aria-label="事实审批与重新生成" data-rp-fact-tools=""><Container {...(compact ? { open: opened || undefined, onToggle: event => setOpened(event.currentTarget.open) } : {})}>
+    {compact ? <summary>事实审批与重新生成{pending ? ' · 待处理' : ''}</summary> : <h3>事实审批与重新生成</h3>}
     {loading && <p role="status">正在读取事实审批状态…</p>}
     {error && <p role="alert" className="rp-tool-error">{error}</p>}{notice && <p role="status">{notice}</p>}
     {retained && <p>保留操作：{retained.input.operationId || retained.method}{retained.input.candidateId ? ` · 原候选 ${retained.input.candidateId}` : ''}</p>}
@@ -182,5 +188,5 @@ export function FactTools({ sessionId, client, running, currentWorld, ownerRevis
       {summaries?.regenerateBlockCode && <p>{summaries.regenerateBlockCode}</p>}
       {retained?.kind === 'writer' && <button type="button" disabled={unavailable || pending} onClick={() => void run(retained.method, retained.input, retained.kind, retained)}>重试上次写作请求</button>}
     </section>
-  </section>
+  </Container></section>
 }

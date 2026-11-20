@@ -36,7 +36,7 @@ function Capabilities({ value }) {
   </details>
 }
 
-export function StoryTools({ sessionId, client, running = false, narrativeRevision = '', readerStatus, factReviewPending = false, mode = 'story', onAdopt, openOwner, hasOwnerTab, onOpenSession }) {
+export function StoryTools({ sessionId, client, running = false, narrativeRevision = '', readerStatus, factReviewPending = false, mode = 'story', onAdopt, openOwner, hasOwnerTab, onOpenSession, expanded, presentationId }) {
   const [data, setData] = useState({ capabilities: null, records: [], audit: [], history: null, historyUnavailable: false, drafts: [], presentations: [], retryDispatch: false, note: null })
   const [tick, setTick] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -48,6 +48,8 @@ export function StoryTools({ sessionId, client, running = false, narrativeRevisi
   const [instruction, setInstruction] = useState('')
   const [material, setMaterial] = useState(null)
   const [auditOpen, setAuditOpen] = useState(false)
+  const [opened, setOpened] = useState(Boolean(expanded || presentationId !== undefined))
+  const [ownerLoaded, setOwnerLoaded] = useState(false)
   const mounted = useRef(true), operation = useRef(null), editor = useRef(null), selection = useRef(0)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; operation.current?.abort() } }, [])
   useEffect(() => {
@@ -60,7 +62,7 @@ export function StoryTools({ sessionId, client, running = false, narrativeRevisi
       try {
         const capabilities = await client.action('capabilities', args, controller.signal)
         const result = { capabilities, records: [], audit: [], history: null, historyUnavailable: readerStatus?.status === 'unavailable', drafts: [], presentations: [], retryDispatch: false, note: null }
-        if (sessionId && mode === 'story') {
+        if (sessionId && mode === 'story' && (opened || presentationId !== undefined)) {
           const reads = ['storyHistory', 'narratives', 'drafts', 'presentationSummaries', 'authorNote'].filter(action => capabilities.actions[action])
           const values = await Promise.allSettled(reads.map(action => client.action(action, { sessionId }, controller.signal)))
           let canonical = []
@@ -79,12 +81,12 @@ export function StoryTools({ sessionId, client, running = false, narrativeRevisi
           const selected = new Set(result.records.map(item => item.id))
           result.audit = canonical.filter(item => !selected.has(item.id))
         }
-        if (current()) setData(result)
+        if (current()) { setData(result); if (mode === 'story' && (opened || presentationId !== undefined)) setOwnerLoaded(true) }
       } catch (cause) { if (current()) setError(errorText(cause)) }
       finally { if (current()) setLoading(false) }
     })()
     return () => controller.abort()
-  }, [sessionId, client, mode, tick, running, narrativeRevision, readerStatus?.status])
+  }, [sessionId, client, mode, tick, opened, narrativeRevision, readerStatus?.status, presentationId])
 
   async function run(action, input, accept) {
     if (busy || operation.current) return
@@ -126,9 +128,20 @@ export function StoryTools({ sessionId, client, running = false, narrativeRevisi
     <TransferTools sessionId={sessionId} actions={flags} disabled={unavailable} run={run} onOpenSession={onOpenSession} />
   </section>
   if (mode === 'library') return <div className="rp-owner-tools">{loading && <p role="status">正在检查插件能力…</p>}{error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}<Capabilities value={data.capabilities} />{transfer}</div>
-  return <details className="rp-owner-tools"><summary>正文与材料</summary>
+  const presentation = presentationId === undefined ? undefined : data.presentations.find(item => item.presentationId === presentationId)
+  const body = presentationId === undefined ? undefined : [...data.records, ...data.audit].reduce((found, item) =>
+    item.ref?.sessionId === sessionId && item.ref.presentationId === presentationId && (!found || item.ref.resultSeq > found.ref.resultSeq) ? item : found, undefined)
+  return <>
+    {presentationId !== undefined && !loading && (body || presentation
+      ? <article className="rp-message rp-selected-presentation" data-rp-presentation={presentationId}>
+          <h3>指定正文 · {presentationId}</h3>
+          {body ? <p className="rp-presentation-body">{body.text}</p> : <p>呈现状态：{presentation.status}{presentation.errorCode ? ` · ${presentation.errorCode}` : ''}。请在生成记录查看材料。</p>}
+        </article>
+      : <p role="alert" data-rp-presentation-missing="">指定正文呈现已不可用，请刷新后重新定位。</p>)}
+    <details className="rp-owner-tools" open={expanded || opened || undefined} onToggle={event => setOpened(event.currentTarget.open)}><summary>正文与材料</summary>
     {loading && <p role="status">正在读取所属插件…</p>}
     {error && <p role="alert" className="rp-tool-error">{error}</p>}{notice && <p role="status" className="rp-tool-notice">{notice}</p>}
+    {ownerLoaded && <>
     <Capabilities value={data.capabilities} />
     <div className="rp-action-row"><button type="button" disabled={busy} onClick={() => { setError(''); setTick(value => value + 1) }}>刷新正文操作</button><OwnerButton kind="rp-last-step" {...owners}>打开 RP 最后一步</OwnerButton><OwnerButton kind="rp-database" {...owners}>管理多库与文件资料</OwnerButton></div>
     {data.historyUnavailable && <p role="status">EFFECTIVE_HISTORY_UNAVAILABLE：当前有效正文不可用，旧版本可在审计中查看。</p>}
@@ -147,5 +160,7 @@ export function StoryTools({ sessionId, client, running = false, narrativeRevisi
     {material && <Material value={material} />}
     <section className="rp-tool-section"><h3>下一轮作者注</h3>{data.note ? <><p>{noteStatus[data.note.status] || data.note.status} · v{data.note.version}</p><p>{data.note.text}</p></> : <p className="rp-note">没有已保存的下一轮作者注。</p>}<OwnerButton kind="rp-context" {...owners}>编辑下一轮作者注</OwnerButton><p className="rp-note">请从上下文原生入口编辑。作者注不是事实；已冻结的材料保留当时版本。</p></section>
     {transfer}
-  </details>
+    </>}
+    </details>
+  </>
 }

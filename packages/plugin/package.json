@@ -1,6 +1,6 @@
 {
   "name": "dsh-rp-studio",
-  "version": "1.5.2",
+  "version": "1.8.1",
   "description": "DSH RP 聚合工作区与独立管理助手：角色、写作预设、剧情状态与沉浸阅读",
   "license": "MIT",
   "type": "module",
@@ -29,7 +29,10 @@
     },
     "client": {
       "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-api-workspace-controller",
         "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-sidebar-right",
         "@deepseek-ai/dsh-client-ui-workspace"
       ],

@@ -25,6 +25,8 @@ test('native header entry and sidebar type/body register and dispose together', 
   const entry = entries.find(row => row.options.name === 'conversation.session.header.actions')
   assert.equal(entry.options.id, TAB_ID)
   assert.equal(entries.find(row => row.options.name === 'conversation.hero.options').options.id, TAB_ID)
+  assert.equal(entries.find(row => row.options.name === 'conversation.hero.options').options.inject().hero, true)
+  assert.equal(entry.options.inject().hero, undefined)
   entry.options.inject().openRp()
   assert.deepEqual(opened, [TAB_KIND])
   for (const dispose of effects.reverse()) dispose?.()

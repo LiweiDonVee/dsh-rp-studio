@@ -28,7 +28,7 @@ export interface SessionApi {
   health(): Promise<Record<string, unknown>>
   cards(): Promise<Card[]>
   sessions(): Promise<SessionSummary[]>
-  session(sessionId: string): Promise<SessionDetail>
+  session(sessionId: string, options?: { paged?: boolean }): Promise<SessionDetail>
   create(cardId: string): Promise<SessionDetail>
   prompt(sessionId: string, text: string): Promise<Record<string, unknown>>
   cancel(sessionId: string): Promise<Record<string, unknown>>
@@ -95,7 +95,13 @@ export function buildApp(options: { api: SessionApi; product?: ProductService })
   if (options.product) registerProductRoutes(app, options.product)
   app.get('/api/v1/cards', async () => successEnvelope(cardSchema.array().parse(await options.api.cards())))
   app.get('/api/v1/sessions', async () => successEnvelope(sessionSummarySchema.array().parse(await options.api.sessions())))
-  app.get('/api/v1/sessions/:id', async request => successEnvelope(sessionDetailSchema.parse(await options.api.session(sessionId(request.params)))))
+  app.get('/api/v1/sessions/:id', async request => {
+    const id = sessionId(request.params)
+    const detail = record(request.query)?.reader === 'paged'
+      ? await options.api.session(id, { paged: true })
+      : await options.api.session(id)
+    return successEnvelope(sessionDetailSchema.parse(detail))
+  })
 
   app.post('/api/v1/sessions', async (request) => {
     const cardId = record(request.body)?.cardId

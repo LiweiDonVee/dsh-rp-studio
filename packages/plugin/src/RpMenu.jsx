@@ -1,8 +1,25 @@
 import React, { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { EXTERNAL_CONVERSATION_HINT } from './companion-client.mjs'
 
 export const studioViews = [['state', '角色与剧情'], ['story', '沉浸阅读'], ['archive', '故事档案与开局']]
 export const ownerPages = [['rp-story-kit', '角色与素材'], ['rp-database', '数据库'], ['rp-context', '上下文'], ['rp-gm', '故事 GM'], ['rp-last-step', '写作预设与正文'], ['loop-studio', '流程与模型']]
 export const readStudioView = value => studioViews.some(([view]) => view === value) ? value : 'state'
+
+export function StartStoryButton({ registry, hasOwnerTab, onOpenOwner, disabled = false }) {
+  const [error, setError] = useState(''), [busy, setBusy] = useState(false)
+  const availability = useMemo(() => ({
+    subscribe: listener => registry?.subscribe ? registry.subscribe(listener) : () => {},
+    snapshot: () => registry?.get ? registry.get('rp-story-kit') !== undefined : hasOwnerTab?.('rp-story-kit') === true,
+  }), [registry, hasOwnerTab])
+  const available = useSyncExternalStore(availability.subscribe, availability.snapshot, availability.snapshot)
+  async function start() {
+    setBusy(true); setError('')
+    try { await onOpenOwner('rp-story-kit', { view: 'start' }) }
+    catch (cause) { setError(cause.message || String(cause)) }
+    finally { setBusy(false) }
+  }
+  return <span className="dsh-rp-start"><button type="button" className="dsh-rp-start-button" disabled={disabled || busy || !available || !onOpenOwner} title={!available ? '启用 Story Kit 后可开始新故事。' : undefined} onClick={() => void start()}>开始新故事</button>{error && <span role="alert">{error}</span>}</span>
+}
 
 export function RpMenu({ view, registry, hasOwnerTab, onSelectView, onOpenOwner, onOpenCompanion, onMenuOpen, companionReason = 'RP 助手入口正在准备', extensions = null, workspace = false }) {
   const [opened, setOpened] = useState(false)
@@ -79,9 +96,9 @@ export function RpMenu({ view, registry, hasOwnerTab, onSelectView, onOpenOwner,
   return <div className="dsh-rp-menu" ref={root}>
     <button ref={trigger} type="button" className="dsh-rp-menu-trigger" aria-haspopup="menu" aria-expanded={opened} aria-controls={opened ? id : undefined} aria-label={workspace ? `工作区 · ${current || '角色与剧情'}` : 'RP'} onClick={() => { setError(''); setOpened(value => !value) }} onKeyDown={event => { if (['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); setOpened(true) } }}>{workspace ? `工作区 · ${current || '角色与剧情'}` : 'RP'}<span aria-hidden="true">▾</span></button>
     {opened && <div ref={surface} id={id} popover="manual" role="menu" aria-label="RP 工作区菜单" className="dsh-rp-menu-surface" onKeyDown={onMenuKey}>
-      <section role="group" aria-label="故事"><p className="dsh-rp-menu-label">故事</p>{studioViews.map(([key, label]) => <button type="button" role="menuitemradio" key={key} aria-checked={view === key} disabled={busy} onClick={() => void select(() => onSelectView(key))}>{label}{view === key && <span aria-hidden="true">✓</span>}</button>)}</section>
+      <section role="group" aria-label="故事"><p className="dsh-rp-menu-label">故事</p><button type="button" role="menuitem" disabled={busy || available[0] !== 'true'} onClick={() => void select(() => onOpenOwner('rp-story-kit', { view: 'start' }))}>开始新故事</button>{studioViews.map(([key, label]) => <button type="button" role="menuitemradio" key={key} aria-checked={view === key} disabled={busy} onClick={() => void select(() => onSelectView(key))}>{label}{view === key && <span aria-hidden="true">✓</span>}</button>)}</section>
       <section role="group" aria-label="管理"><p className="dsh-rp-menu-label">管理</p>{ownerPages.map(([kind, label], index) => <div key={kind} className="dsh-rp-menu-row"><button type="button" role="menuitem" disabled={busy || available[index] !== 'true'} onClick={() => void select(() => onOpenOwner(kind))}>{label}</button>{available[index] !== 'true' && <small>未启用对应插件</small>}</div>)}</section>
-      <section role="group" aria-label="助手"><p className="dsh-rp-menu-label">助手</p><button type="button" role="menuitem" disabled={busy || !onOpenCompanion} onClick={() => void select(onOpenCompanion)}>RP 助手</button>{!onOpenCompanion && <small>{companionReason}</small>}</section>
+      <section role="group" aria-label="助手"><p className="dsh-rp-menu-label">助手</p><button type="button" role="menuitem" disabled={busy || !onOpenCompanion} onClick={() => void select(onOpenCompanion)}>RP 助手</button><button type="button" role="menuitem" disabled={busy || !onOpenCompanion} title={EXTERNAL_CONVERSATION_HINT} onClick={() => void select(() => onOpenCompanion({ externalConversation: true }))}>从外部会话建故事</button><small>{EXTERNAL_CONVERSATION_HINT}</small>{!onOpenCompanion && <small>{companionReason}</small>}</section>
       {extensions && <section role="group" aria-label="扩展操作" className="dsh-rp-menu-extensions" onClick={event => { if (event.target.closest('button:not(:disabled),a[href]')) close() }}><p className="dsh-rp-menu-label">扩展操作</p>{extensions}</section>}
       {error && <p role="alert" className="dsh-rp-menu-error">{error}</p>}
     </div>}

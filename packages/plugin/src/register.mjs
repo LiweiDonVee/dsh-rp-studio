@@ -17,7 +17,7 @@ export function registerWorkspace(ctx, { Body, Button, openSession, headerProps 
   // DSH hides title actions for blank conversations; keep the same entry in its native hero options.
   ctx.effect(() => ctx.slots.inject('conversation.hero.options', () => ctx.slots.register({
     name: 'conversation.hero.options', id: TAB_ID, order: 35,
-    inject: () => ({ ...headerProps, openRp: view => ctx.sidebarRight.openTab(TAB_KIND, { params: { view } }) }),
+    inject: () => ({ ...headerProps, hero: true, openRp: view => ctx.sidebarRight.openTab(TAB_KIND, { params: { view } }) }),
   }, Button)), 'RP Studio blank conversation entry')
 
 }

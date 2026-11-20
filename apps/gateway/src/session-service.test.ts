@@ -140,6 +140,32 @@ describe('generic native story services', () => {
     expect((await h.service.session('session-1')).messages.map(message => [message.role, message.text])).toEqual([['player', '靠岸。'], ['gm', '有效采用稿。']])
   })
 
+  it('bounds a paged native detail while preserving the original complete route', async () => {
+    const records = Array.from({ length: 21 }, (_, index) => {
+      const presentationId = `receipt-${index}`, resultSeq = index * 3 + 3
+      return {
+        id: JSON.stringify([presentationId, resultSeq]), turn: index, action: '', text: `正文 ${index}`,
+        ref: { ...ref, presentationId, callSeq: resultSeq - 2, baseResultSeq: resultSeq - 1, resultSeq },
+      }
+    })
+    const folded = [{ groupId: 'new-fact', activeFactReceiptId: 'new-fact', selectedPresentationId: null, pendingFacts: true, versions: [] }]
+    const h = await fixture(async () => [], undefined, undefined, undefined, undefined, {
+      getGM: () => gm(),
+      getLastStep: () => ({
+        capabilities: { narrativeRevisions: 1 },
+        storyHistory: async () => ({ schemaVersion: 1, records, folded, projectionKey: 'native-history' }),
+      }),
+    })
+    services.push(h.service)
+    const full = await h.service.session('session-1')
+    const recent = await h.service.session('session-1', { paged: true })
+    expect(full.messages).toHaveLength(21)
+    expect(full.state.extensions.reader).toMatchObject({ folded })
+    expect(recent.messages).toEqual(full.messages.slice(-16))
+    expect(recent.state.extensions.reader).toEqual({ status: 'available', projectionKey: 'native-history', pendingFacts: true })
+    expect(recent.state.extensions.gm).toEqual(full.state.extensions.gm)
+  })
+
   it('keeps facts and controls available while explicitly withholding unavailable effective prose', async () => {
     const h = await fixture(async () => [assistantEvent(1, 'OLD_BODY')], undefined, undefined, undefined, undefined, {
       getGM: () => gm(),

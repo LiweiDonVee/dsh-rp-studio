@@ -6,6 +6,8 @@ import { loadDefaultProductStore } from '../../../apps/gateway/src/local-data-ad
 import { createNativeTransport } from './transport.mjs'
 import { createNativeRoutes } from './routes.mjs'
 import { createStudioActions } from './actions.mjs'
+import { createMobileIdentity } from './mobile-identity.mjs'
+import { createPlayerActionSuggester } from './player-actions.mjs'
 import { createCompanionStatusRoute } from './companion-status.mjs'
 
 export const name = 'rp-studio'
@@ -42,7 +44,8 @@ export function apply(ctx) {
       return { app, service, close }
     } catch (error) { await close(); throw error }
   })
-  const actions = createStudioActions({ getService: name => ctx.get(name), authorize: (sessionId, signal) => routes.authorize(sessionId, signal) })
+  const getService = name => ctx.get(name)
+  const actions = createStudioActions({ getService, authorize: (sessionId, signal) => routes.authorize(sessionId, signal), mobileIdentity: createMobileIdentity({ getProfile: () => ctx.get('profileContext') }), playerActions: createPlayerActionSuggester({ getService }) })
   const companion = createCompanionStatusRoute(ctx)
   ctx.connection.fetch.register({ path: '/api/rp-studio/request', methods: ['POST'], requestBody: 'buffered', fetch: request => routes.request(request) })
   ctx.connection.fetch.register({ path: '/api/rp-studio/events', methods: ['GET'], requestBody: 'buffered', fetch: request => routes.events(request) })

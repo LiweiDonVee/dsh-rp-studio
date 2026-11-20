@@ -129,7 +129,7 @@ export class SessionService implements SessionApi {
     }).sort((a, b) => b.updatedAt - a.updatedAt)
   }
 
-  async session(sessionId: string): Promise<SessionDetail> {
+  async session(sessionId: string, { paged = false }: { paged?: boolean } = {}): Promise<SessionDetail> {
     await this.refreshSessions()
     const item = this.summaries.get(sessionId)
     if (!item) throw new GatewayError({ code: 'not-found', message: '找不到该 RP 会话。' }, 404)
@@ -163,7 +163,20 @@ export class SessionService implements SessionApi {
         },
       })
       messages = reading.messages
-      if (reading.history) state = { ...state, extensions: { ...state.extensions, reader: { status: 'available', projectionKey: reading.history.projectionKey, pendingFacts: reading.history.folded.some(group => group.pendingFacts), folded: reading.history.folded } } }
+      if (reading.history) {
+        const reader = {
+          status: 'available', projectionKey: reading.history.projectionKey,
+          pendingFacts: reading.history.folded.some(group => group.pendingFacts),
+        }
+        if (paged && owner) {
+          // The reading action provides older official turns. Keep this legacy
+          // detail bounded for first paint and for reconnect reconciliation.
+          messages = messages.slice(-16)
+        }
+        state = { ...state, extensions: { ...state.extensions, reader: {
+          ...reader, ...(paged && owner ? {} : { folded: reading.history.folded }),
+        } } }
+      }
     } catch (error) {
       if (!(error instanceof GatewayError) || error.apiError.upstreamCode !== 'EFFECTIVE_HISTORY_UNAVAILABLE') throw error
       messages = fallback.filter(item => item.role === 'player')

@@ -1,0 +1,67 @@
+{
+  "format": "dsh-rp-story-pack",
+  "schemaVersion": 1,
+  "assets": [
+    {
+      "kind": "character",
+      "asset": {
+        "id": "transcript-character",
+        "version": 1,
+        "name": "合成示例：守灯人",
+        "description": "守灯人在港口整理航图。此文件仅演示内容包结构。",
+        "personality": "谨慎，尊重旅人的决定。",
+        "scenario": "旅人已收到一张空白航图，准备决定下一步。",
+        "openings": [
+          {"id": "resume-opening", "name": "合成会话的最后一幕", "text": "守灯人把空白航图递给旅人：‘接下来由你决定。’"}
+        ],
+        "examples": "",
+        "creator": {"notes": "结构演示，非用户素材，也不是实际工具读取的会话来源。示例仅包含航图交接，未检索外部来源，未加入额外事件。"},
+        "databaseRefs": [{"key": "setting", "databaseId": "transcript-world", "version": 1}]
+      }
+    },
+    {
+      "kind": "persona",
+      "asset": {"id": "transcript-player", "version": 1, "name": "合成示例：旅人", "description": "玩家扮演的旅人，行动由玩家决定。"}
+    }
+  ],
+  "databases": [
+    {
+      "id": "transcript-world",
+      "version": 1,
+      "database": {
+        "id": "transcript-world",
+        "name": "合成示例：港口资料",
+        "version": 1,
+        "entries": [
+          {
+            "id": "harbor-setting",
+            "title": "港口与守灯人",
+            "content": "守灯人在港口整理航图。",
+            "keywords": ["港口", "守灯人", "航图"],
+            "tags": ["合成示例", "原会话"],
+            "notes": "结构演示，非实际来源引用。无外部资料，无创作补全；用于真实任务时替换为工具返回的精确证据。",
+            "readOnly": false,
+            "mode": "auto",
+            "version": 1
+          }
+        ]
+      }
+    }
+  ],
+  "profiles": [],
+  "storyTemplates": [
+    {
+      "id": "transcript-template",
+      "title": "合成示例：从最后一幕继续",
+      "character": {"assetId": "transcript-character", "version": 1},
+      "persona": {"assetId": "transcript-player", "version": 1},
+      "openingId": "resume-opening",
+      "sources": [{"key": "setting", "databaseId": "transcript-world", "version": 1}],
+      "profile": null,
+      "initialScene": {"schemaVersion": 1, "title": "航图交接后", "location": "港口", "presentActorIds": []},
+      "initialFacts": {"schemaVersion": 1, "items": [{"id": "map-received", "text": "旅人已收到守灯人递来的空白航图。"}]}
+    }
+  ],
+  "resources": [],
+  "requirements": ["dsh-rp-database"]
+}

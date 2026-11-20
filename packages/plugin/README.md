@@ -1,10 +1,13 @@
 # DSH RP Studio
 
-RP Studio 1.5.2 是面向 DSH 0.2.2-rc.1 的原生角色扮演工作区。在会话顶部或空白会话点击 `RP ▾`，从菜单打开故事页面、各插件的完整管理页或独立 RP 助手。支持宿主的拖动宽度、全屏和关闭操作。
+RP Studio 1.6.0 是面向 DSH 0.2.2-rc.1 的原生角色扮演工作区。在会话顶部或空白会话点击 `RP ▾`，从菜单打开故事页面、各插件的完整管理页或独立 RP 助手。支持宿主的拖动宽度、全屏和关闭操作。
 
 - 角色与剧情：通用 GM 的当前场景与事实，以及旧预设的关系、任务、物品和记忆。
-- 沉浸阅读：玩家行动、事实审批与重新生成、正式正文、候选手改与采用、冻结材料、失败重试和作者注入口。
-- 故事档案：Story Kit 角色、身份与开场入口，旧预设故事导航，以及阅读稿和完整存档操作。
+- 沉浸阅读：先展开最近八轮，向前加载保留当前位置。每轮可查阅冻结依据、比较其他写法，也可以保存下一轮作者注。事实审批和事实修订有独立入口。
+- 开始新故事：用 Story Kit 选择保存的角色与玩家身份版本，试读备选开场，审阅初始场景、资料与写作预设后启动。
+- 故事档案：旧预设故事导航、阅读稿和完整存档操作。
+
+进入回合下方的「本轮依据」，可查该轮公开事实变化、选中的资料版本、历史引用和已记录的阶段模型。「问 RP 助手」将这个回合放进独立草稿，发送后由助手只读查阅。「其他写法」可直接比较已保存的候选。点击「生成候选稿」才会调用 Writer，点击「明确采用」才会替换正式正文。候选采用沿用原回合的事实。
 
 可与独立的 [RP 最后一步 0.4](https://github.com/LiweiDonVee/dsh-rp-last-step) 联用：读取已确认的有效正文并接收原生正文流，候选采用不会重复事实结算。失败重试可能包含一次主模型受限调度及一次正文请求，沿用原冻结材料。旧故事及普通预设保留原有阅读方式。[Loop Studio 0.1](https://github.com/LiweiDonVee/dsh-loop-studio) 配置各阶段的实际模型。
 
@@ -20,10 +23,10 @@ RP Studio 1.5.2 是面向 DSH 0.2.2-rc.1 的原生角色扮演工作区。在会
 
 “继续审批结算”和“继续候选结算”均不调用模型，也不自动写作；结算完成后明确点击“继续已批准事实的写作”。完整步骤见[审批与重新生成用法](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/agent-rp-integration.md#事实审批与两层重新生成)。
 
-安装包为 `dsh-rp-studio-1.5.2.tgz`，下载入口为 [发布页](https://github.com/LiweiDonVee/dsh-rp-studio/releases)。先完全退出 dsh，再在终端执行：
+将 `dsh-rp-studio-1.6.0.tgz` 放到当前目录。先完全退出 dsh，再在终端执行：
 
 ```powershell
-dsh plugin --profile desktop add ./dsh-rp-studio-1.5.2.tgz
+dsh plugin --profile desktop add ./dsh-rp-studio-1.6.0.tgz
 ```
 
 Web 模式请把 `desktop` 改为 `web`。重新打开 dsh，进入任一会话，点击会话顶部的 RP 按钮。新故事沿用 dsh 自己的模型、权限审批和登录状态。
@@ -34,20 +37,26 @@ Windows 找不到 `dsh` 命令时，可使用默认官方启动器：
 
 ```powershell
 $dshCli = Join-Path $env:LOCALAPPDATA 'Programs/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd'
-& $dshCli plugin --profile desktop add ./dsh-rp-studio-1.5.2.tgz
+& $dshCli plugin --profile desktop add ./dsh-rp-studio-1.6.0.tgz
 ```
 
-安装时核对同一发布页的 SHA256SUMS。完整使用、角色预设和插件搭配见 [原生指南](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/native-usage.md)。
+安装时核对随包的 SHA256SUMS。完整使用、角色预设和插件搭配见 [原生指南](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/native-usage.md)。
+
+DSH Go 可在已配对的同源网页打开指定故事、正文、事实、档案和所属插件页面。网页在实际显示目标后返回定位确认。RP 助手使用手机原生聊天、独立 `rp-companion` 预设以及 DSH 原生审批。
 
 ## RP 助手
 
 Studio 安装包同时提供真正的 `rp-companion` Agent Preset，无需另装助手包。在 `RP ▾ → RP 助手` 打开独立管理草稿，或在新会话的 Agent Preset 中选择“RP 助手”。入口只填入引导，不自动发送；检查目标故事 ID 与需求后发送即可。原故事会话继续使用 `rp-gm`。
 
+桌面助手使用原故事所在的 DSH 工作区。未分组的故事会查找同一目录的已注册工作区。首次打开且尚未注册时，DSH 会登记原有目录，以便启用助手草稿框。
+
 完整使用时，将 Studio、Loop、Story Kit、Database、Context、GM 和 RP 最后一步七包安装到同一个 profile。助手复用各插件的公共业务服务，支持角色与身份创建/编辑、角色卡/世界书/资料/内容包导入、ST 写作预设导入与迁移、写作预设草稿调整、上下文与节点模型配置，以及经 Story Kit 审阅配置开局和读回。某个插件未启用时只报告该能力缺失，不伪造成功。
+
+也可以把外部 RP 会话、SillyTavern JSONL 导出、TXT/Markdown 原文件路径或正文交给助手，例如“把这段会话整理成从最后一幕继续的故事，保留我的玩家身份，补全必要世界设定，先保存”。附件使用宿主实际提供的文件路径；助手只读原件，按需询问续写或重启、分支、玩家身份与补全范围，然后新建角色、身份、世界资料和故事模板。它会分别说明哪些来自原会话、外部资料和创作补全，并读回具名 ID、版本、原开场、初始场景与事实。保存完成不会自动开局，也不等于恢复外部会话的原生日志。原文件和已有资产保留。
 
 文件导入使用正式宿主文件服务读取原始 JSON/PNG/PDF 字节。原始导入留在所属插件；助手不直接改 owner 数据或宿主 profile。管理写入沿用 DSH 的权限审批；非完全访问模式可能出现一次原生批准请求。锁定、必用和默认关闭的模块策略保留，迁移仍交付待审阅草稿；故事事实审批继续默认关闭。更多约束见[助手操作合同](https://github.com/LiweiDonVee/dsh-rp-studio/blob/main/docs/rp-companion.md)。
 
-助手基于 rc.5 的创造模式组成，保留官方组成编辑、插件开发和 API 检查能力，并增加 RP skill 与固定的管理工具。此预设默认不挂载 web 工具。上游许可见随包的 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+助手基于 rc.5 的创造模式组成，保留官方组成编辑、插件开发和 API 检查能力，并增加 RP skill、固定管理工具与宿主原生网页检索工具。检索取决于当前模型和实际配置的搜索服务；本地授权资料可先用于查证，公开查询只使用必要题材词，私有会话、原句和原创名称不会自动送往搜索服务。缺少可用检索或资料时会明确列出待补内容。上游许可见随包的 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
 
 ## 从源码构建
 
